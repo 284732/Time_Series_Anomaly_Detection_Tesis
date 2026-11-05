@@ -1,0 +1,47 @@
+project_name: "smd_repro"
+seed: 42
+seeds: [42]
+resume: false
+device: "cpu"
+
+paths:
+  data_dir: "dataset"
+  results_dir: "results/results_tests/results_repro_mean"
+  saved_models_dir: "results/results_tests/results_repro_mean"
+  metrics_dir: "results/results_tests/results_repro_mean/metrics"
+  plots_dir: "results/results_tests/results_repro_mean/plots"
+  scores_dir: "results/results_tests/results_repro_mean/scores"
+
+dataset:
+  window_size: 100
+  step: 1
+  train_step: 5
+  val_ratio: 0.2
+  scaler_type: "minmax"
+  machines: ["machine-1-1", "machine-3-8"]
+
+evaluation:
+  threshold_percentile: 98.0
+  timestamp_agg: "last"
+  window_time_agg: "mean"
+  save_plots: false
+
+run_models: ["pca", "pca_pointwise", "conv_autoencoder", "lstm_autoencoder"]
+
+models:
+  pca:
+    n_components: 0.9
+  pca_pointwise:
+    n_components: 0.9
+  conv_autoencoder:
+    latent_dim: 16
+    channels: [32, 64]
+    epochs: 40
+    batch_size: 64
+    early_stopping_patience: 5
+  lstm_autoencoder:
+    latent_dim: 16
+    hidden_dim: 64
+    epochs: 40
+    batch_size: 64
+    early_stopping_patience: 5
