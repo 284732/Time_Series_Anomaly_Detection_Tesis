@@ -1,0 +1,33 @@
+{
+    "n_points": 28506,
+    "prevalence": 0.048095137865712484,
+    "roc_auc": 0.8372494713669946,
+    "ap": 0.33785804264015645,
+    "best_f1": 0.44,
+    "best_f1_threshold": 0.06726936995983124,
+    "at_threshold": {
+        "precision": 0.08977183879451275,
+        "recall": 0.9212253829321663,
+        "f1": 0.16360103626943007,
+        "tp": 1263,
+        "fp": 12806,
+        "fn": 108,
+        "alert_rate": 0.4935452185504806,
+        "threshold": 0.012330415584146976
+    },
+    "point_adjusted": {
+        "precision": 0.0967059321436129,
+        "recall": 1.0,
+        "f1": 0.17635708772832517,
+        "tp": 1371,
+        "fp": 12806,
+        "fn": 0
+    },
+    "event": {
+        "n_events": 6,
+        "events_detected": 6,
+        "event_recall": 1.0,
+        "predicted_segments": 23,
+        "false_alarm_segments": 18
+    }
+}

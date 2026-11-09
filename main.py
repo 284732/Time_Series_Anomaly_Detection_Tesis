@@ -213,10 +213,11 @@ def prepare_machine_data(machine_name: str, config: Dict[str, Any]) -> Dict[str,
         n_keep = max(int(len(raw_train_part) * train_fraction), 2 * window_size)
         raw_train_part = raw_train_part[-n_keep:]   # i dati piu' recenti, vicini al validation
 
-    scaler = SMDScaler( scaler_type=dataset_cfg.get("scaler_type", "minmax"),
-                        clip_enabled=dataset_cfg.get("clip_enabled", False),
-                        clip_range=tuple(dataset_cfg.get("clip_range", [0.0, 1.0])),
-                        )
+    scaler = SMDScaler(
+    scaler_type=dataset_cfg.get("scaler_type", "minmax"),
+    clip=tuple(dataset_cfg.get("clip_range", [0.0, 1.0])) if dataset_cfg.get("clip_enabled", False) else None,
+    min_range=dataset_cfg.get("min_range", 0.0),
+)
     #scaler = SMDScaler(scaler_type=dataset_cfg.get("scaler_type", "minmax"))
     train_scaled = scaler.fit_transform(raw_train_part)
     val_scaled = scaler.transform(raw_val)

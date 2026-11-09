@@ -6,11 +6,11 @@ device: "cpu"
 
 paths:
   data_dir: "dataset"
-  results_dir: "results/results_tests/results_repro_last"
-  saved_models_dir: "results/results_tests/results_repro_last"
-  metrics_dir: "results/results_tests/results_repro_last/metrics"
-  plots_dir: "results/results_tests/results_repro_last/plots"
-  scores_dir: "results/results_tests/results_repro_last/scores"
+  results_dir: "results/results_tests/results_repro_last_01"
+  saved_models_dir: "results/results_tests/results_repro_last_01"
+  metrics_dir: "results/results_tests/results_repro_last_01/metrics"
+  plots_dir: "results/results_tests/results_repro_last_01/plots"
+  scores_dir: "results/results_tests/results_repro_last_01/scores"
 
 dataset:
   window_size: 100
