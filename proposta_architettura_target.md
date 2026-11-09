@@ -1,5 +1,10 @@
 # Proposta di architettura target
 
+> **Stato del documento (2026-11-09).** Livello 4 della gerarchia (`CLAUDE.md` §3.2). È vincolante solo per le parti
+> approvate in `docs/decisioni.md`; il resto è proposta. Il §12 (piano di migrazione) è **superato** da
+> `piano_operativo.md` (D-13). Dove questo documento e il registro divergono, prevale il registro.
+> I riferimenti `[D-xx]` rimandano alle voci del registro.
+
 Prima di progettare ho raccolto altri numeri, leggendo solo conteggi e i due CSV di riepilogo, senza toccare i dati grezzi:
 
 - **Prevalenza delle anomalie:** dallo 0,4% al 15,7% a seconda della macchina.
@@ -25,15 +30,15 @@ Questi numeri cambiano alcune premesse di `architettura_repo_v1.md`.
 **Scelte scientifiche chiave:**
 
 1. **Split cronologico in 3 parti** fit / early stopping (es) / calibrazione (cal). La calibrazione serve solo per normalizzazione e soglie.
-2. **Contesto causale per le finestre di scoring:** una finestra che *assegna uno score* può includere gli ultimi W−1 punti del segmento precedente (sono dati passati e non etichettati); una finestra che *addestra* contiene solo dati del segmento fit. Così ogni timestamp del test ha uno score e non si perdono i primi 99 punti.
+2. **Contesto causale per le finestre di scoring [D-03, approvata]:** una finestra che *assegna uno score* può includere gli ultimi W−1 punti del segmento precedente (dati passati e non etichettati); una finestra che *addestra* (o calcola la loss di early stopping) contiene solo dati del proprio segmento. Così ogni timestamp del test ha uno score. Quali segmenti ricevono il contesto è aperto [D-31]; l'applicazione all'inizio del test dipende dalla verifica di contiguità [D-32].
 3. **Due tipi di fattori metodologici, trattati in modo diverso:**
    - *fattori di design*, che fanno parte del detector (scaler, scoring, aggregazione, politica di soglia): si tarano sulle macchine di sviluppo con budget pari;
    - *fattori di misura*, cioè come si valuta (PA, oracolo, proiezione offline, metrica): li fissa il protocollo, e studiarne la variazione è il cuore di RQ1.
 4. **Statistica sulla macchina come unità:**
-   - bootstrap delle macchine **stratificato per gruppo**: con 3 gruppi un bootstrap gerarchico sui gruppi non funziona;
-   - regola di equivalenza con un δ **fissato prima** dei run ufficiali;
-   - una famiglia confermativa minima (Conv vs PCA, LSTM vs PCA), con correzione di Holm.
-5. **Migrazione in 9 fasi.** Le fasi 1–5 dimostrano l'equivalenza numerica con la pipeline attuale (risultati identici bit a bit) prima di cambiare il protocollo; il cambio di protocollo arriva nella fase 6, dichiarato e misurato.
+   - unità = macchina; metodo degli IC **aperto** [D-36]: la proposta raccomanda il bootstrap **stratificato per gruppo** (con 3 gruppi un bootstrap gerarchico sui gruppi non funziona), mentre `piano_tesi_v1.md` prevede quello gerarchico;
+   - regola di equivalenza con un δ **fissato prima** dei run ufficiali; valore e criterio aperti [D-30];
+   - una famiglia confermativa minima (Conv vs PCA, LSTM vs PCA), con correzione di Holm [proposta, D-36].
+5. **Migrazione incrementale:** vale `piano_operativo.md` (F0–F12 + M1) [D-13]. La nuova pipeline dimostra la parità con quella attuale (snapshot sintetico, poi M1 su dati reali [D-14, D-17]) prima del cambio di protocollo (F8), che è dichiarato e misurato.
 
 ## 2. Problemi principali dell'architettura attuale
 
@@ -52,6 +57,8 @@ Questi numeri cambiano alcune premesse di `architettura_repo_v1.md`.
 
 **Critica di `architettura_repo_v1.md`.**
 
+*(Il file non è presente nel repository; è superato [D-01]. La critica resta come motivazione delle scelte.)*
+
 *Cosa tengo:* split in 3 parti, residui salvati per sensore, analisi a valle senza fit, 6 macchine di sviluppo estratte con un seed, buona parte della lista di test.
 
 *Cosa cambio:*
@@ -60,7 +67,7 @@ Questi numeri cambiano alcune premesse di `architettura_repo_v1.md`.
 - **Bootstrap gerarchico con cluster = gruppo.** Con 3 cluster i ricampionamenti possibili sono 10: non si ottiene un IC credibile. Lo stesso vale per il termine `(1|gruppo)` nel modello misto.
 - **δ "≥ spread indotto dal protocollo".** È un margine ricavato dagli stessi dati che si vogliono testare (circolare): va fissato prima, oppure ricavato solo dalle macchine di sviluppo.
 - **Finestre mai a cavallo dei segmenti.** È corretto per il fit, troppo restrittivo per lo scoring.
-- **Residui dell'early stopping usati nell'analisi.** Per gli AE sono ottimistici, perché quell'epoca è stata scelta proprio per minimizzarli: vanno usati solo come storia per le soglie mobili.
+- **Residui dell'early stopping usati nell'analisi.** Per gli AE sono ottimistici, perché quell'epoca è stata scelta proprio per minimizzarli: non entrano in normalizer, soglie (neanche come storia delle soglie mobili) né metriche; si salvano solo come diagnostica [D-04].
 - **Il layout con rinomina completa delle cartelle** è inutilmente distruttivo.
 
 ## 3. Principi progettuali adottati
@@ -69,8 +76,8 @@ Questi numeri cambiano alcune premesse di `architettura_repo_v1.md`.
 2. **Confronti appaiati.** Varianti di protocollo e modelli diversi si confrontano sugli stessi timestamp, sulle stesse macchine e, per il protocollo, sullo stesso modello addestrato.
 3. **Il dato giusto per lo scopo giusto:**
    - fit → apprendere i parametri;
-   - es → scegliere l'epoca;
-   - cal → normalizzare e fissare le soglie;
+   - es → solo scegliere l'epoca degli AE; mai normalizer, soglie o metriche [D-04];
+   - cal → normalizzare, fissare le soglie statiche e fornire la storia iniziale delle soglie mobili [D-04];
    - test → solo misurare.
    Le label si usano solo sul test (per le metriche) e sulle macchine di sviluppo (per il tuning).
 4. **Causalità di default;** l'offline è sempre dichiarato.
@@ -82,33 +89,35 @@ Questi numeri cambiano alcune premesse di `architettura_repo_v1.md`.
 
 ### 4.1 Split temporali
 
-Per ogni macchina il train originale viene diviso in ordine cronologico: **fit 60% / es 20% / cal 20%** (≈14,2k / 4,7k / 4,7k punti su 23,7k). Il test resta intatto.
+Per ogni macchina il train originale viene diviso in ordine cronologico: **fit 60% / es 20% / cal 20%** [D-05, approvata] (≈14,2k / 4,7k / 4,7k punti su 23,7k; il train più corto ha 23.687 righe). Il test resta intatto.
 
 | Modello | Usa | Note |
 |---|---|---|
-| AE (Conv, LSTM) | fit (pesi), es (epoca) | massimo 100 epoche, patience 10: oggi il Conv-AE arriva al limite di 40 epoche su `machine-1-1` |
-| PCA, PCA puntuale | fit | analisi di sensibilità: PCA su fit+es (stessi dati "di modello" degli AE) |
+| AE (Conv, LSTM) | fit (pesi), es (epoca) | `max_epochs` e patience aperti [D-39]; proposta: 100 e 10 (oggi il Conv-AE arriva al limite di 40 epoche su `machine-1-1`) |
+| PCA, PCA puntuale | fit [D-06, approvata] | PCA su fit+es solo come esperimento esplorativo sulle macchine di sviluppo |
 | Baseline (input norm, rolling z, AE non addestrati) | nulla oppure fit | — |
 | Tutti | cal | normalizer z per sensore e soglie |
 
 Perché cal è l'ultimo segmento: con la deriva osservata, è il più simile al test. Perché es è separato da cal: altrimenti la soglia degli AE viene tarata su dati già usati per selezionarli (P1).
 
-*Proporzioni:* 60/20/20 è ragionevole ma non ottimizzata. Non la tarerei: renderei le frazioni configurabili e farei un'unica analisi di sensibilità sulle macchine di sviluppo.
+*Proporzioni:* frazioni configurabili; se fare una sola analisi di sensibilità sulle macchine di sviluppo è aperto [D-46].
 
 ### 4.2 Finestre
 
 - W=100, step=1 per lo scoring. `train_step` è una decisione aperta (§11).
-- **Regola dei confini (riformulata):**
-  - le finestre di *addestramento* contengono solo dati del segmento fit (e quelle di early stopping solo dati di es);
-  - le finestre di *scoring* di es, cal e test possono usare come contesto gli ultimi W−1 punti del segmento immediatamente precedente.
-  
+- **Regola dei confini [D-03, approvata]:**
+  - le finestre di *addestramento* contengono solo dati del segmento fit, e quelle della loss di early stopping solo dati di es;
+  - le finestre di *scoring* possono usare come contesto gli ultimi W−1 punti del segmento immediatamente precedente;
+  - in modalità `legacy2` nessun contesto.
+
   Non è leakage: sono dati passati, non etichettati, e vengono solo trasformati, mai usati per un fit.
-- **Assunzione da verificare (fase 0):** in SMD il test segue il train senza interruzioni. Se non fosse così, il contesto sul primo test resta causale ma diventa "innaturale"; in quel caso si torna al taglio dei bordi solo all'inizio del test.
+- **Quali segmenti ricevono il contesto [D-31, aperta]:** con `window_time_agg: mean`, le prime finestre di cal con contesto conterrebbero residui di es, ottimistici per gli AE, che finirebbero nel normalizer e nelle soglie (in contrasto con D-04). Raccomandazione: contesto solo per il test (da cal).
+- **Assunzione da verificare in F0 [D-32, aperta]:** in SMD il test segue il train senza interruzioni. I file non hanno timestamp, quindi il controllo numerico è solo un indizio: regola di esito, fonte documentale e comportamento in caso negativo vanno fissati prima di eseguirlo. In caso negativo, niente contesto all'inizio del test.
 - **Finestre senza copia:** si usa una vista `as_strided` e si convertono in float32 solo a lotti (P8).
 
 ### 4.3 Preprocessing
 
-- **Canonico:** minmax fittato solo su fit, nessun clip, nessun pavimento. È il comportamento storico, è confrontabile con la letteratura e fa da ponte per la regressione.
+- **Canonico (proposta, decisione aperta [D-40]):** minmax fittato solo su fit, nessun clip, nessun pavimento. È il comportamento storico, è confrontabile con la letteratura e fa da ponte per la regressione.
 - **Fattore di sensibilità (E4):** {storico, `min_range`, clip [−k, 1+k], standard, robust}. Applicato a tutte le macchine di valutazione per la PCA (costa poco) e con 1 seed per gli AE.
 - **Attenzione:** SMD è distribuito già normalizzato in [0,1]. Non so (e non posso verificarlo dal repo) se gli autori originali abbiano usato anche il test per farlo. Per questo `none` non è un'opzione "pulita" e va interpretato con cautela.
 
@@ -116,42 +125,44 @@ Perché cal è l'ultimo segmento: con la deriva osservata, è il più simile al 
 
 Il residuo base è r[t,f] = (x − x̂)² per sensore, all'interno di una finestra. Ne derivano tre fattori in sequenza:
 
-1. **`window_time_agg` ∈ {last, mean}** (`max` opzionale): da (W, F) a (F,) per finestra. Sono due detector diversi, entrambi causali: errore dell'ultimo istante oppure errore medio della finestra che termina in t.
-2. **`sensor_agg` ∈ {raw_mean, z_mean, z_max, z_top5}:** da (F,) a uno scalare. Il normalizer z si fitta su **cal**; aggiungerei una variante robusta (mediana/IQR), visto che gli errori hanno code pesanti.
+1. **`window_time_agg` ∈ {last, mean}** (`max` opzionale): da (W, F) a (F,) per finestra. Sono due detector diversi, entrambi causali: errore dell'ultimo istante oppure errore medio della finestra che termina in t. Quali aggregazioni salvare è aperto [D-33].
+2. **`sensor_agg` ∈ {raw_mean, z_mean, z_max, z_top5}:** da (F,) a uno scalare. Il normalizer z si fitta su **cal**; si aggiunge una variante robusta (mediana/IQR) [D-11, approvata], visto che gli errori hanno code pesanti e il train può contenere anomalie non etichettate.
 3. **`timestamp_agg` ∈ {last (causale, canonico), mean, max (offline)}:** da finestra a timestamp. Con step=1 e `last`, lo score in t è quello della finestra che termina in t.
 
-I fattori 1 e 2 sono di **design**: si scelgono per ogni famiglia di modelli sulle macchine di sviluppo, come parte del budget di tuning. Il fattore 3 è di **misura**: canonico `last`, mentre `mean`/`max` servono solo a RQ1 per quantificare quanto un protocollo offline cambia i numeri.
+I fattori 1 e 2 sono di **design**: si scelgono per ogni famiglia di modelli sulle macchine di sviluppo, come parte del budget di tuning. Il fattore 3 è di **misura**: canonico `last`, mentre `mean`/`max` servono solo a RQ1 per quantificare quanto un protocollo offline cambia i numeri. Se e come i fattori di design entrano nel budget di tuning è aperto [D-41].
 
 ### 4.5 Training e selezione dei modelli (RQ2: budget pari)
 
-- **Macchine di sviluppo:** le 6 già estratte (seed 20261109). Il tuning usa le loro label (lecito, perché sono escluse dalla valutazione).
-- **Budget:** lo stesso numero di configurazioni per famiglia, ad esempio K=8:
+- **Macchine di sviluppo:** 6 di sviluppo + 22 di valutazione [D-08, approvata]. La proposta le indica come "già estratte (seed 20261109)", ma la lista non è nel repository: identità e procedura da registrare [D-51, dipende dall'utente]. Il tuning usa le loro label (lecito, perché sono escluse dalla valutazione).
+- **Budget (aperto [D-41]):** lo stesso numero di configurazioni per famiglia, ad esempio K=8:
   - *PCA:* `n_components`, eventualmente combinato con `window_time_agg` e `sensor_agg`;
   - *AE:* latent, hidden/canali, learning rate, combinati con le stesse opzioni di scoring.
   
   Lo scoring rientra nel budget, così nessuna famiglia ottiene "gratis" la sua variante migliore.
 - **Criterio di selezione:** AP normalizzata media sulle 6 macchine, con protocollo canonico e un'unica configurazione globale per famiglia (non una per macchina).
-- **Seed:** 5 per gli AE nella valutazione (dai tempi misurati il costo è sostenibile), 3 nel tuning. PCA e baseline deterministiche girano una volta.
+- **Seed:** 5 per gli AE nella valutazione [D-09, approvata]; seed nel tuning aperti [D-41] (proposta: 3). PCA e baseline deterministiche girano una volta.
 - **Alternativa scartata come principale:** selezione per macchina in base alla loss su es. Una loss bassa non implica una buona detection, e confonderebbe RQ2.
 
 ### 4.6 Soglie (RQ4)
 
-Tutte le soglie si calibrano su cal e, per le regole mobili, usano la storia continua es → cal → test (la sequenza degli score è causale):
+Tutte le soglie si calibrano su cal e, per le regole mobili, usano la storia continua **cal → test** [D-04, approvata]: il segmento es non entra mai nelle soglie, perché per gli AE i suoi residui sono ottimistici (P1).
 
 - **statiche:** percentile di cal ∈ {95, 98, 99, 99,5};
-- **mobili:** `roll_quantile` e `roll_robust_z` con `n_past` ∈ {360, 720, 1440, 2880}, inizializzate con la storia invece che escludendo un tratto iniziale del test. Così tutte le regole vengono valutate sull'intero test;
+- **mobili:** `roll_quantile` e `roll_robust_z` con `n_past` ∈ {360, 720, 1440, 2880}, inizializzate con la storia di cal invece che escludendo un tratto iniziale del test. Cal (≈4.700 punti nella macchina più corta) basta per il `n_past` massimo. Così tutte le regole vengono valutate sull'intero test;
 - **oracolo:** solo come limite superiore diagnostico, sempre etichettato.
 
 ### 4.7 Metriche
 
 | Livello | Metrica | Ruolo |
 |---|---|---|
-| Senza soglia | **AP normalizzata** (AP−p)/(1−p) | primaria (RQ2) |
+| Senza soglia | **AP normalizzata** (AP−p)/(1−p) | primaria (RQ2) [D-07, approvata] |
 | Senza soglia | ROC-AUC, AP grezza, AP/p | secondarie |
-| Senza soglia | VUS-PR | secondaria, solo se implementata e validata contro un riferimento esterno |
+| Senza soglia | VUS-PR | secondaria [D-07, approvata]; quando implementarla e contro quale riferimento esterno validarla è aperto [D-34] |
 | Con soglia | F1, precision, recall, FPR, **falsi allarmi al giorno** | RQ4 |
 | Per evento | event recall, **ritardo di rilevamento**, segmenti di falso allarme | RQ4 (significato operativo) |
 | Diagnostiche | best-F1 (oracolo), celle A–D del 2×2 PA/oracolo | RQ1: misurare il gonfiamento (oggi il random ottiene PA_F1 = 0,92) |
+
+Quali metriche per evento e con soglia entrano in F6 è aperto [D-34].
 
 Due avvertenze da riportare nella tesi:
 
@@ -162,22 +173,22 @@ Due avvertenze da riportare nella tesi:
 
 1. **Per (macchina, modello, configurazione):** media sui seed, conservando la deviazione standard tra seed (che misura la componente di varianza dovuta al seed).
 2. **RQ2:** Δ_m = APnorm(DL) − APnorm(PCA di riferimento) per ciascuna delle 22 macchine di valutazione.
-   - IC al 95%: bootstrap delle macchine **stratificato per gruppo** (B = 10.000, metodo BCa). Sensibilità: bootstrap a due livelli (macchine, poi seed).
-   - Regola: superiore / equivalente / inferiore / inconcludente rispetto a δ, con IC corretti con Holm sulla famiglia {Conv, LSTM}.
+   - IC al 95%: metodo **aperto** [D-36]. Proposta: bootstrap delle macchine **stratificato per gruppo** (B = 10.000, BCa), sensibilità a due livelli (macchine, poi seed). `piano_tesi_v1.md` prevede invece un bootstrap gerarchico.
+   - Regola: superiore / equivalente / inferiore / inconcludente rispetto a δ [D-30, aperto], con IC corretti con Holm sulla famiglia {Conv, LSTM} [D-36].
    - Supporto: test di permutazione a segni casuali (sign-flip) sulla media di Δ; Wilcoxon solo come statistica descrittiva.
-3. **RQ1 (fattori di misura, disegno fattoriale completo e bilanciato):**
+3. **RQ1a (fattori di misura) e RQ1b (fattori di design)** [D-12, approvata]; livelli dei fattori aperti [D-42]. Per RQ1a, disegno fattoriale completo e bilanciato:
    - decomposizione della varianza con somme dei quadrati classiche. Su un disegno bilanciato è esatta, non richiede statsmodels ed è più trasparente di un modello misto;
    - stabilità del ranking con il τ di Kendall tra configurazioni;
    - quota di configurazioni in cui il segno di Δ si inverte.
-4. **RQ3:** al massimo 4 descrittori dichiarati prima (deriva train→test, quota fuori range, rango PCA effettivo, prevalenza/numero di eventi), correlazione di Spearman con IC bootstrap. Con 22 macchine la potenza è bassa, quindi questa parte è esplicitamente esplorativa.
+4. **RQ3:** al massimo 4 descrittori dichiarati prima (deriva train→test, quota fuori range, rango PCA effettivo, prevalenza/numero di eventi), correlazione di Spearman con IC bootstrap. Con 22 macchine la potenza è bassa, quindi questa parte è esplicitamente esplorativa. Scelta dei descrittori aperta [D-43].
 5. **Esplorativo e confermativo:** solo la famiglia RQ2 canonica è confermativa; tutto il resto viene etichettato come esplorativo.
 
 ### 4.9 Problemi nelle Research Questions (da discutere)
 
-- **RQ1 mescola fattori di design e fattori di misura.** Propongo di dividerla: RQ1a "quanto cambiano numeri e ranking cambiando *come si misura*" e RQ1b "quanto sono sensibili i modelli alle scelte di *design*".
-- **RQ2: quale "PCA tarata"?** Va deciso prima se il riferimento è la PCA a finestre (stesso input degli AE) o la migliore delle due PCA scelta sulle macchine di sviluppo.
-- **δ** va fissato prima dei run ufficiali (vedi §2).
-- **Il "secondo dataset" non è opzionale** se si vuole un'affermazione confermativa, perché SMD è già stato osservato in tutte le analisi precedenti. Deve avere più entità, altrimenti l'unità "macchina" non esiste: PSM ha una sola serie, quindi non va bene; ASD (12 server) sarebbe un candidato, ma i dettagli vanno verificati. Va scelto presto.
+- **RQ1 divisa in RQ1a e RQ1b** [D-12, approvata].
+- **RQ2: quale "PCA tarata"?** Aperta [D-37]: PCA a finestre (stesso input degli AE) o la migliore delle due scelta sulle macchine di sviluppo.
+- **δ** va fissato prima dei run ufficiali [D-30, aperta].
+- **Il "secondo dataset" non è opzionale** se si vuole un'affermazione confermativa, perché SMD è già stato osservato in tutte le analisi precedenti. Deve avere più entità, altrimenti l'unità "macchina" non esiste: PSM ha una sola serie, quindi non va bene; ASD (12 server) sarebbe un candidato, ma i dettagli vanno verificati. Va scelto presto. [D-45, aperta]
 - **Il train di SMD non è etichettato** e può contenere anomalie: soglie e normalizer su cal possono esserne contaminati. Conviene usare statistiche robuste e dichiararlo.
 - **La deriva domina le metriche con soglia.** L'F1 a soglia misura soprattutto la deriva, non il detector: è un argomento per RQ4, non per RQ2.
 
@@ -188,12 +199,12 @@ Due avvertenze da riportare nella tesi:
 | Componente | Responsabilità | Interfaccia principale |
 |---|---|---|
 | `utils/config.py` | Carica i YAML a livelli (base + modello + esperimento), unisce, **valida contro uno schema di dataclass** (chiave sconosciuta = errore), calcola l'hash canonico | `load_experiment(path) -> ExperimentConfig`; `cfg.fit_key(machine, model, seed) -> str` |
-| `utils/provenance.py` | Commit git, stato *dirty*, versioni di python/torch/sklearn/numpy, hash del dataset | `collect() -> dict` |
+| `utils/provenance.py` | Commit git, stato *dirty*, versioni di python/torch/sklearn/numpy, hash del dataset, numero di thread di torch [D-17] | `collect() -> dict` |
 | `data/manifest.py` | Elenco delle macchine e dei gruppi, hash sha256 dei file (calcolato una volta), lista dev/eval | `machines(split="eval")`, `data_version()` |
 | `data/segments.py` | Usa `preprocessing/split.py`; modalità `legacy2` (train/val) e `split3` | `make_segments(raw, cfg) -> Segments(fit, es, cal, test, bounds, labels)` |
 | `data/windows.py` | Finestre senza copia, con contesto opzionale, mappa finestra ↔ timestamp | `windows(seg, W, step, context=None)`, `iter_batches(...)` |
 | `preprocessing/scaler.py` | Esiste già | `fit(seg.fit)`, `transform(...)` |
-| `models/base.py` | Interfaccia unica | `fit(fit_X, es_X=None) -> FitInfo`; `residuals(windows, aggs) -> {agg: (N,F)}`; `save(dir)` / `load(dir)` |
+| `models/base.py` | Interfaccia unica | `fit(X, y=None, X_val=None) -> self` **invariata** [D-15]: la pipeline passa fit come `X` ed es come `X_val`; `FitInfo` nell'attributo `fit_info_`. Aggiunte: `residuals(windows, aggs) -> {agg: (N,F)}`, `save(dir)` / `load(dir)` |
 | `models/registry.py` | Nome → classe (spostato da `main.py`) | `get(name)` |
 | `training/trainer.py` | Esiste già; aggiunte `max_epochs`, `best_epoch` e le loss per epoca in `FitInfo` | — |
 | `pipeline/store.py` | Percorsi a indirizzamento per contenuto, scrittura atomica (tmp + rename), lettura di meta, registro | `path(fit_key)`, `exists_complete(key)`, `write(...)` |
@@ -201,7 +212,7 @@ Due avvertenze da riportare nella tesi:
 | `pipeline/residual_cache.py` | Calcola o rigenera i residui da un checkpoint (cache cancellabile) | `get_residuals(fit_key, segment, agg)` |
 | `evaluation/scoring.py` | Esiste già, più il normalizer robusto | `normalize`, `aggregate` |
 | `evaluation/protocol.py` | Proiezione e maschere (esiste) | — |
-| `evaluation/thresholds.py` | Da `rules.py` + statiche + inizializzazione con la storia | `apply(policy, score_stream, cal_range) -> pred` |
+| `evaluation/thresholds.py` | Da `rules.py` + statiche + inizializzazione con la storia | `apply(policy, score_stream, cal_range) -> pred`, con `score_stream` = cal → test [D-04] |
 | `evaluation/metrics.py` | AP, APnorm, AUC, metriche per evento, ritardo, FA/giorno; PA e oracolo da `protocols.py` | `free_metrics(y, s)`, `thr_metrics(y, s, pred)` |
 | `pipeline/analyze.py` | Griglia dei fattori di analisi per ogni fit → righe della tabella lunga | `run_analysis(experiment, plan)` |
 | `stats/` | `aggregate.py` (seed → macchina), `bootstrap.py`, `decisions.py` (δ, Holm), `ranking.py`, `variance.py`, `descriptors.py` | funzioni pure da DataFrame a DataFrame |
@@ -215,8 +226,8 @@ experiment.yaml ─► config (validazione + fit_key) ─► pipeline.fit ─►
                                                    (data, preprocessing, models, training)
 analysis_plan.yaml ─► pipeline.analyze ─► legge store/fits/* (residui, rigenerati se mancano)
                                          ─► evaluation (scoring → proiezione → soglie → metriche)
-                                         ─► store/runs/<esperimento>/tables/{free,thr}.parquet
-stats ─► legge tables/* + piano ─► stats/*.parquet ─► reporting ─► figure e tabelle LaTeX
+                                         ─► store/runs/<esperimento>/tables/{free,thr}.csv.gz
+stats ─► legge tables/* + piano ─► stats/*.csv.gz ─► reporting ─► figure e tabelle LaTeX
 ```
 
 Ogni stadio legge **solo** gli artefatti dello stadio precedente, mai gli oggetti in memoria dell'altro. Così si può rilanciare uno stadio senza ripetere quelli prima.
@@ -233,8 +244,8 @@ La **fit_key** include solo ciò che cambia il modello addestrato: versione dei 
 
 ### 5.4 Formati
 
-- `store/fits/<key>/model.pt` (AE) oppure `pca.npz` (componenti, media); `residuals.npz` con `res_{es,cal,test}_{last,mean}` in float32, forma (N_seg, F), e gli indici dei timestamp; `meta.json` con la config risolta, provenance, `FitInfo` (best/stopped epoch, loss, `n_components`), tempi e stato.
-- Tabella lunga: `machine, group, model, config_id, seed, fit_key, window_time_agg, sensor_agg, ts_agg, threshold_policy, threshold_param, pa, metric, value`. Due tabelle: `free` (senza soglia) e `thr` (con soglia).
+- `store/fits/<key>/model.pt` (AE) oppure `pca.npz` (componenti, media); `residuals.npz` con `res_{es,cal,test}_{last,mean}` (aggregazioni salvate: aperto [D-33]; `res_es` solo diagnostico, mai usato nell'analisi [D-04]) in float32, forma (N_seg, F), e gli indici dei timestamp; `meta.json` con la config risolta, provenance, `FitInfo` (best/stopped epoch, loss, `n_components`), tempi e stato.
+- Tabella lunga: `machine, group, model, config_id, seed, fit_key, window_time_agg, sensor_agg, ts_agg, threshold_policy, threshold_param, pa, metric, value`. Due tabelle: `free` (senza soglia) e `thr` (con soglia). Formato: CSV compresso (.csv.gz) [D-19].
 - `store/registry.csv`, a sola aggiunta: esperimento, tipo, data, commit, hash della config, hash del piano, stato, note.
 
 ### 5.5 Errori e logging
@@ -264,9 +275,10 @@ src/
   stats/       aggregate.py, bootstrap.py, decisions.py, ranking.py, variance.py, descriptors.py
   reporting/   tables.py, figures.py
   utils/       config.py, provenance.py, seed.py, logging.py
+docs/        decisioni.md (registro delle decisioni, livello 1)
 scripts/       compare_npz.py, confronta_run.py (legacy), make_dev_split.py, check_contiguity.py
 tests/         unit/, invariants/, integration/, regression/, stats/
-store/         # fuori da git: fits/, runs/{exploratory,official}/, registry.csv
+store/         # fuori da git, posizione e budget di disco da decidere [D-56]: fits/, runs/{exploratory,official}/, registry.csv
 dataset/, results/   # invariati, sola lettura
 main.py, aggregate_results.py   # pipeline legacy, mantenuta fino a parità dimostrata
 ```
@@ -287,14 +299,14 @@ Tengo `src/evaluation/` invece di rinominarlo: non cambia la sostanza e evita di
    - `analyze` → tabelle lunghe;
    - `stats` → IC, decisioni, decomposizione;
    - `report`.
-4. **Replica:** stesso piano congelato, applicato al secondo dataset.
+4. **Replica:** stesso piano congelato, applicato al secondo dataset. [D-45]
 
 Per ogni (macchina, fit) il percorso dei dati è:
 
 ```
 raw → segmenti → scaler(fit) → finestre (+ contesto) → modello.fit(fit, es) → checkpoint
     → residui per sensore (es/cal/test × last/mean) → [analisi] normalizer(cal) → sensor_agg
-    → proiezione ts → soglia(cal / storia) → metriche sul test (label) → righe della tabella
+    → proiezione ts → soglia(cal / storia cal → test) → metriche sul test (label) → righe della tabella
 ```
 
 ## 8. Caching e gestione degli artefatti
@@ -332,37 +344,38 @@ Marcatori pytest: `slow` e `regression`, esclusi dalla suite veloce. I test di r
 | Decisione | Alternative | Raccomandazione e motivo |
 |---|---|---|
 | Split | 2 parti (attuale) · **3 parti con ES** · 2 parti a epoche fisse · rolling-origin CV | 3 parti: elimina P1 mantenendo un ES per macchina. Epoche fisse come sensibilità; la CV è troppo costosa e poco naturale per serie con deriva |
-| Confini delle finestre | rigidi per segmento · **contesto causale per lo scoring** | contesto: nessun punto del test perso, comparabilità tra W, nessun leakage |
+| Confini delle finestre | rigidi per segmento · **contesto causale per lo scoring** | contesto: nessun punto del test perso, comparabilità tra W, nessun leakage [D-03, approvata; segmenti con contesto D-31] |
 | Artefatti | a · b · c · d · **b+d** | vedi §8 |
 | Identità | `run_id` con commit · **hash del contenuto + `FIT_CODE_VERSION`** | il commit nella chiave distrugge la cache; va registrato in meta |
 | Tuning | per macchina senza label · **globale su 6 macchine dev con label** · leave-one-group-out · nessuno | dev globale: semplice e pulito. Il leave-one-group-out permetterebbe di valutare su 28 macchine, ma triplica il tuning e produce configurazioni diverse per gruppo |
-| IC | bootstrap gerarchico (3 cluster) · **bootstrap stratificato per gruppo** · modello misto | stratificato: valido con 3 gruppi; gruppo come effetto fisso |
+| IC | bootstrap gerarchico (3 cluster) · **bootstrap stratificato per gruppo** · modello misto | stratificato: valido con 3 gruppi; gruppo come effetto fisso [D-36, aperta] |
 | Decomposizione RQ1 | modello misto (statsmodels) · **SS su disegno bilanciato** | esatta, trasparente, nessuna dipendenza nuova |
 | Tracciamento | MLflow / DVC · **registro CSV + hash** | proporzionato alla scala del progetto |
 | Config | Hydra · **YAML + dataclass** | nessuna magia, errori espliciti |
-| Tabella lunga | CSV.gz · **parquet** (richiede pyarrow) | da decidere (§11) |
+| Tabella lunga | **CSV.gz** · parquet (richiede pyarrow) | CSV.gz [D-19, approvata]; I/O isolato in `store` per un eventuale passaggio futuro |
 | Layout | rinomina completa (v1) · **incrementale** | nessuna migrazione distruttiva |
 
 ## 11. Rischi e decisioni ancora aperte
 
 **Decisioni da prendere insieme:**
 
-1. **δ e metrica primaria.** Propongo δ = 0,05 in AP normalizzata, oppure un valore ricavato solo dalle macchine di sviluppo.
-2. **PCA di riferimento per RQ2:** a finestre (la mia raccomandazione) oppure la migliore tra le due scelta sulle macchine dev.
-3. **Riformulazione di RQ1** in RQ1a e RQ1b.
-4. **`train_step`:** 5 (attuale, costo ≈ 1 min per fit) oppure 1 per tutti (≈ 5 volte più dati e più tempo). In ogni caso deve essere lo stesso per PCA e AE.
-5. **Numero di seed:** 5 nella valutazione è la mia raccomandazione, 3 il minimo.
-6. **Macchine di valutazione:** 6 dev + 22 eval (raccomandato) oppure leave-one-group-out.
-7. **Preprocessing canonico:** storico (raccomandato, studiato poi come fattore) oppure con pavimento/clip.
-8. **Secondo dataset:** quale e quando. Condiziona la forza delle conclusioni.
-9. **Dipendenza `pyarrow`** e budget di disco (~5–10 GB in `store/`).
-10. **Dataset e `__pycache__` sotto git:** toglierli dal tracciamento è una tua scelta, io non tocco nulla.
-11. **OC-SVM, Isolation Forest e VAE:** restano nel registro, esclusi dagli esperimenti ufficiali.
-12. **Scadenze e tempo disponibile:** non le conosco, e determinano quante fasi sono realistiche.
+Stato al 2026-11-09 (dettagli in `docs/decisioni.md`):
+1. δ: **aperta** [D-30]. Metrica primaria AP normalizzata: **approvata** [D-07].
+2. PCA di riferimento per RQ2: **aperta** [D-37].
+3. RQ1 in RQ1a e RQ1b: **approvata** [D-12].
+4. `train_step`: **aperta** [D-38].
+5. Numero di seed: 5 nella valutazione, **approvata** [D-09].
+6. 6 di sviluppo + 22 di valutazione: **approvata** [D-08]; lista delle macchine: **dipende dall'utente** [D-51].
+7. Preprocessing canonico: **aperta** [D-40].
+8. Secondo dataset: **aperta** [D-45].
+9. `pyarrow`: non si aggiunge, CSV.gz [D-19, approvata]; budget di disco: **dipende dall'utente** [D-56].
+10. Dataset e `__pycache__` sotto git: **dipende dall'utente** [D-53].
+11. OC-SVM, Isolation Forest e VAE esclusi dai run ufficiali: **approvata** [D-10].
+12. Scadenze: **dipende dall'utente** [D-54].
 
 **Rischi:**
 
-- L'assunzione di contiguità tra train e test non è verificata.
+- L'assunzione di contiguità tra train e test non è verificata, e senza timestamp si può verificare solo indirettamente [D-32].
 - Il train può contenere anomalie non etichettate.
 - La deriva rende poco informative le metriche a soglia.
 - Le macchine con pochi eventi pesano poco in informazione ma quanto le altre nella media.
@@ -371,6 +384,8 @@ Marcatori pytest: `slow` e `regression`, esclusi dalla suite veloce. I test di r
 - La potenza statistica con 22 unità è limitata.
 
 ## 12. Piano di migrazione incrementale
+
+> **Superato** da `piano_operativo.md` [D-13]. Differenze principali: `main.py` resta congelato (qui le fasi 1–2 lo modificano); la parità si verifica con uno snapshot sintetico e un unico controllo su dati reali (M1) invece che a ogni fase [D-14]. Il testo resta solo come storico.
 
 Ogni fase si chiude con `pytest` verde. Le fasi 1–5 non devono cambiare alcun numero.
 
@@ -440,4 +455,4 @@ Ogni fase si chiude con `pytest` verde. Le fasi 1–5 non devono cambiare alcun 
 
 ---
 
-Non ho modificato file né eseguito esperimenti; ho letto solo conteggi del dataset e due CSV piccoli. Prima di qualsiasi implementazione mi servono soprattutto le decisioni 1–4 e 8 del §11, che cambiano il disegno. Se vuoi, posso pubblicare questa proposta come pagina da condividere con il relatore.
+Non ho modificato file né eseguito esperimenti; ho letto solo conteggi del dataset e due CSV piccoli. Le decisioni ancora aperte e il momento in cui servono sono elencati in `docs/decisioni.md`. Se vuoi, posso pubblicare questa proposta come pagina da condividere con il relatore.

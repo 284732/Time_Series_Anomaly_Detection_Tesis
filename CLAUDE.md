@@ -5,19 +5,23 @@
 Anomaly detection non supervisionata su serie temporali multivariate: Server Machine Dataset (SMD),
 28 macchine (gruppi 1/2/3), 38 sensori, label solo sul test.
 
-Domanda guida (dettagli in `piano_tesi_v1.md`): in quali condizioni un autoencoder profondo
-(Conv-AE, LSTM-AE) migliora in modo praticamente rilevante una baseline lineare ben calibrata (PCA),
-e quanto di questo vantaggio sopravvive alle scelte metodologiche (scoring, aggregazione,
-preprocessing, soglia, protocollo)?
+Domanda guida (dettagli in `piano_tesi_v1.md`, con le revisioni registrate in `docs/decisioni.md`):
+in quali condizioni un autoencoder profondo (Conv-AE, LSTM-AE) migliora in modo praticamente rilevante
+una baseline lineare ben calibrata (PCA), e quanto di questo vantaggio sopravvive alle scelte
+metodologiche (scoring, aggregazione, preprocessing, soglia, protocollo)?
 
-- RQ1 misura: quanta variazione di performance/ranking è dovuta al protocollo di valutazione.
-- RQ2 confronto: Δ(DL − PCA) superiore / equivalente / inferiore rispetto a un margine δ fissato prima.
+- RQ1a misura: quanto cambiano numeri e ranking cambiando *come si misura* (PA, oracolo, proiezione
+  offline, metrica), a parità di modello addestrato.
+- RQ1b design: quanto sono sensibili i modelli alle scelte di *design* (scaler, scoring, aggregazione,
+  politica di soglia).
+- RQ2 confronto: Δ(DL − PCA) superiore / equivalente / inferiore / inconcludente rispetto a un margine δ
+  fissato prima dei run ufficiali. **Valore e criterio di δ: decisione aperta (D-30).**
 - RQ3 condizioni: quali proprietà delle macchine predicono segno e grandezza di Δ.
 - RQ4 operativa: peso della politica di soglia e della deriva rispetto alla scelta del modello.
 
-Unità di analisi = la macchina (seed mediati prima del confronto). Metrica principale: AP normalizzata
-per prevalenza, accanto a ROC-AUC. F1 solo per RQ4. Non scrivere conclusioni del tipo
-"il deep learning non vince": il codice e i testi devono permettere solo affermazioni con δ e IC.
+Unità di analisi = la macchina (seed mediati prima del confronto). Metrica primaria: AP normalizzata
+per prevalenza (AP − p)/(1 − p); secondarie ROC-AUC e VUS-PR. F1 solo per RQ4. Non scrivere conclusioni
+del tipo "il deep learning non vince": il codice e i testi devono permettere solo affermazioni con δ e IC.
 
 Questi obiettivi sono il criterio ultimo per ogni scelta tecnica: una soluzione è buona se rende le
 risposte alle RQ più corrette, confrontabili e riproducibili.
@@ -33,19 +37,35 @@ Agisci come progettista software e ricercatore esperto, non come semplice esecut
 
 L'autonomia riguarda **analisi e progettazione**, non l'esecuzione: le modifiche al codice seguono le
 regole delle sezioni 7–8, e le protezioni delle sezioni 4–5 non sono mai derogabili.
+Le decisioni metodologiche spettano all'utente: una raccomandazione non approvata resta una proposta.
 
-## 3. Codice attuale, documenti e soluzione desiderabile
+## 3. Gerarchia delle fonti
 
-Gerarchia delle fonti:
-- **Come funziona oggi** → il codice è la fonte di verità; i documenti possono essere obsoleti.
-- **Come dovrebbe funzionare** → decidono gli obiettivi scientifici e la correttezza metodologica,
-  non il comportamento storico né i documenti.
+### 3.1 Come funziona oggi
+Il **codice** è la fonte di verità; i documenti possono essere obsoleti.
 
-Il codice attuale non è corretto per il solo fatto di esistere. Quando trovi una discrepanza tra codice,
-obiettivi della tesi, architettura desiderabile e documentazione, **segnalala esplicitamente** e proponi
-una soluzione.
+### 3.2 Come deve funzionare
+Decidono gli obiettivi scientifici e la correttezza metodologica, non il comportamento storico.
+I documenti di progetto si applicano in quest'ordine di precedenza:
 
-### Pipeline ATTUALE (implementata)
+| Livello | Documento | Ambito | Stato |
+|---|---|---|---|
+| 1 | `docs/decisioni.md` | decisioni approvate e decisioni aperte, con ID `D-xx` | **vincolante** per le voci `APPROVATA`; prevale su tutti i documenti sottostanti per i punti che registra |
+| 2 | `CLAUDE.md` (questo file) | regole operative, protezioni, workflow | vincolante; deve riflettere il livello 1 |
+| 3 | `piano_tesi_v1.md` | domanda di ricerca, RQ, affermazioni consentite e vietate | vincolante, salvo i punti rivisti al livello 1 |
+| 4 | `proposta_architettura_target.md` | architettura target (sperimentale e software) | vincolante **solo** per le parti approvate al livello 1; il resto è proposta |
+| 5 | `piano_operativo.md` | fasi F0–F12, M1, ordine, criteri di completamento | vincolante per l'ordine del lavoro; **prevale sul §12 della proposta**, che è superato |
+| — | `architettura_repo_v1.md` | proposta precedente | **superata**, solo storico (il file non è presente nel repository) |
+
+Regole di applicazione:
+- se due documenti si contraddicono su un punto non registrato in `docs/decisioni.md`, **fermati e segnalalo**:
+  non scegliere da solo e non applicare il documento di livello superiore in silenzio;
+- una voce `APERTA` del registro non si risolve nel codice con un default implicito: o la si rende
+  configurabile con un valore dichiarato provvisorio, o si attende la decisione;
+- ogni nuova decisione approvata va registrata in `docs/decisioni.md` (data, motivazione, documenti toccati)
+  prima di essere implementata.
+
+### 3.3 Pipeline ATTUALE (implementata)
 
 Entry point `main.py` → `prepare_machine_data` + `run_machine`:
 
@@ -58,50 +78,76 @@ Entry point `main.py` → `prepare_machine_data` + `run_machine`:
 7. Proiezione finestra→timestamp, soglia = percentile della validation, metriche sul test (`protocol.py`).
 8. Output: JSON metriche, `.npz` con score **per timestamp già aggregati**, CSV per macchina, `summary_timestamp_metrics.csv`.
 
-Problemi noti (da risolvere, non da preservare):
+`main.py` è **congelato** (D-13): resta il riferimento storico finché la nuova pipeline non supera M1.
+
+Problemi noti (da risolvere nella nuova pipeline, non da preservare):
 - la validation è usata 3 volte (early stopping, normalizer z, soglia): asimmetria AE vs PCA;
 - `src/preprocessing/split.py` (split fit/es/calib) esiste ed è testato ma **non è collegato** a `main.py`;
 - `src/evaluation/protocols.py` (2×2 soglia × PA) e `src/evaluation/rules.py` (soglie causali) sono librerie non richiamate da nessuno script;
 - non si salvano residui per sensore: ogni cambio di `window_time_agg` o di scoring richiede un nuovo fit;
 - `configs/config.yaml` (default di `main.py`) non esiste: usare sempre una config esplicita.
 
-### Architettura di riferimento: proposta non vincolante
-
-`architettura_repo_v1.md` è **solo una proposta progettuale precedente**, non l'architettura target
-(split 60/20/20, Stadio 1 che salva residui per sensore, Stadi 2–5 senza fit, provenance/hash,
-6 macchine di sviluppo). Layout, cartelle e chiavi di config lì descritti non corrispondono al codice.
-
-Puoi mantenerne le parti valide, modificare quelle discutibili, scartare quelle inadeguate o proporre
-un'architettura alternativa. Ogni decisione architetturale va motivata rispetto a: obiettivi scientifici,
-correttezza metodologica, modularità, riproducibilità, efficienza.
+### 3.4 Architettura target
+Descritta in `proposta_architettura_target.md` e realizzata secondo `piano_operativo.md`: stadio di fit
+(checkpoint + residui per sensore, `fit_key` = hash della config rilevante + `FIT_CODE_VERSION`), stadio di
+analisi (nessun fit, tabella lunga), stadio di statistica e report. Le scelte già approvate sono in
+`docs/decisioni.md` (D-03…D-19).
 
 ## 4. Protezione di dataset, risultati e configurazioni storiche
 
 - `dataset/` è **di sola lettura**: mai modificare, spostare, rinominare, riscrivere o rigenerare file.
-- `results/` è **di sola lettura**: mai modificare o cancellare risultati esistenti, anche se sembrano obsoleti
-  (es. `results_repro_last` / `results_repro_mean` sono storico di riproduzione).
+- `results/` è **di sola lettura**: mai modificare o cancellare risultati esistenti, anche se sembrano obsoleti.
+  I run di riproduzione storici usati come riferimento per M1 sono identificati in D-50 (decisione aperta:
+  nome, config e commit da confermare).
 - Le config di riproduzione in `configs/config_tests/` non si modificano: per un nuovo esperimento se ne crea una nuova.
-- Non lanciare training, esperimenti o `main.py` senza richiesta esplicita dell'utente. I run lunghi li lancia l'utente.
+- Non lanciare training, esperimenti o `main.py` su **dati reali** senza richiesta esplicita dell'utente.
+  I run lunghi li lancia l'utente.
+- **Eccezione (D-16):** i test automatici possono addestrare modelli minimi su **dati sintetici** generati in una
+  cartella temporanea (`tmp_path`). Non sono esperimenti, non leggono `dataset/` e non scrivono mai in
+  `results/`, `store/` o in altre cartelle del repository.
 - Se un'esecuzione è autorizzata, deve scrivere in una **nuova** cartella di output, mai sovrascrivere una esistente
   (attenzione: `resume: true` salta le macchine già presenti, `resume: false` le riscrive).
 - Mai commit o push senza richiesta esplicita.
 
 ## 5. Metodologia: leakage, causalità, riproducibilità
 
+### Uso dei segmenti (D-05)
+Split cronologico del train originale in **fit 60% / es 20% / cal 20%** (frazioni configurabili):
+- fit → apprendere i parametri (AE, PCA, scaler);
+- es → solo scegliere l'epoca degli AE;
+- cal → normalizer degli errori, soglie statiche, storia delle soglie mobili;
+- test → solo misurare.
+
+La PCA si fitta solo su fit (D-06).
+
 ### Anti-leakage
-- Scaler, normalizer degli errori, PCA, statistiche per sensore e soglie si fittano **solo** su segmenti di
-  training (fit / early stopping / calibrazione), **mai** sul test né usando le label.
-- Le label del test si usano solo per calcolare metriche. Gli oracoli (best F1, celle A/B in `protocols.py`)
-  sono limiti superiori diagnostici: tenerli sempre separati ed etichettati come tali.
-- Lo split è sempre cronologico; nessuno shuffle temporale tra segmenti (lo shuffle delle finestre di training dentro il DataLoader è ammesso).
-- Nessuna finestra deve attraversare il confine tra segmenti: le finestre si costruiscono per segmento.
-- Lo stesso segmento non deve servire a due scopi che si influenzano (es. early stopping e soglia); dove succede, va dichiarato e risolto.
+- Scaler, normalizer degli errori, PCA, statistiche per sensore e soglie si fittano **solo** sul segmento
+  previsto sopra, **mai** sul test né usando le label.
+- **Il segmento es non entra mai** in normalizer, soglie (statiche o mobili) o metriche (D-04): i suoi residui,
+  ottimistici per gli AE, si salvano solo come diagnostica.
+- Le label del test si usano solo per calcolare metriche; le label delle macchine di sviluppo solo per il tuning.
+  Gli oracoli (best F1, celle A/B in `protocols.py`) sono limiti superiori diagnostici: tenerli sempre separati
+  ed etichettati come tali.
+- Lo split è sempre cronologico; nessuno shuffle temporale tra segmenti (lo shuffle delle finestre di training
+  dentro il DataLoader è ammesso).
+- **Finestre (D-03):**
+  - le finestre di **addestramento** (fit) e quelle usate per la **loss di early stopping** (es) contengono solo
+    dati del proprio segmento e non attraversano mai un confine;
+  - le finestre di **scoring** possono includere come contesto gli ultimi W−1 punti del segmento immediatamente
+    precedente: dati passati, senza label, mai usati per un fit. Quali segmenti ricevono il contesto è fissato in
+    D-31 (decisione aperta);
+  - in modalità `legacy2` le finestre restano senza contesto, come nella pipeline storica.
+- Lo stesso segmento non deve servire a due scopi che si influenzano (es. early stopping e soglia); dove succede,
+  va dichiarato e risolto.
 - Iperparametri e scelte di protocollo non si tarano guardando le metriche delle macchine di valutazione.
-- Ogni nuovo componente che fa `fit` deve avere un test che dimostri che non vede dati futuri o di test.
+  Le 6 macchine di sviluppo e le 22 di valutazione (D-08) restano separate; la lista è in D-51.
+- Ogni nuovo componente che fa `fit` deve avere un test che dimostri che non vede dati futuri, di test o di es
+  (quando non deve).
 
 ### Causalità
 - Con `timestamp_agg: last` lo score al tempo t usa solo dati fino a t. `mean`/`max` sono offline e vanno dichiarati tali.
-- Le regole di soglia causali (`rules.py`) usano solo score passati (`shift(1)`): mantenerlo.
+- Le regole di soglia causali (`rules.py`) usano solo score passati (`shift(1)`): mantenerlo. La storia iniziale
+  delle soglie mobili viene da cal (D-04).
 - I test di causalità esistenti (`tests/test_protocol.py`, `tests/test_rules.py`) non si indeboliscono né si rimuovono.
 - Non confondere `window_time_agg` (aggregazione dell'errore dentro la finestra) con `timestamp_agg`
   (proiezione finestra→timestamp): stessi valori `last`/`mean`, significati diversi.
@@ -109,21 +155,35 @@ correttezza metodologica, modularità, riproducibilità, efficienza.
 ### Riproducibilità e regressione
 - `set_seed(seed)` prima di ogni modello; i modelli `deterministic = True` girano una sola volta: non introdurre in essi dipendenze dal seed.
 - Mai valori magici nel codice se esiste una chiave di config.
-- Una modifica dichiarata "senza cambiamento numerico" deve dare score identici (o entro una tolleranza float esplicitata),
-  verificati confrontando un run di riferimento con `scripts/confronta_run.py <dir_A> <dir_B>` (stessa config, stessi seed).
+- Il numero di thread di torch usato va registrato nella provenance di ogni run.
+- **Verifica di "nessun cambiamento numerico" (D-14):**
+  - fino a M1: snapshot sintetico della pipeline storica (F1) e test golden dei residui; devono restare invariati;
+  - a M1: confronto su dati reali tra nuova pipeline in modalità `legacy2` e run storici di riferimento (lo lancia l'utente);
+  - dopo M1: confronto tra due run dello `store/` con stessa config e stessi seed;
+  - per eventuali modifiche alla pipeline storica (vietate salvo approvazione): `scripts/confronta_run.py <dir_A> <dir_B>`.
+- **Tolleranze (D-17):** PCA e baseline deterministiche → tolleranza zero. AE → prima si tenta l'identità bit a bit
+  con lo stesso numero di thread dei run storici; se ci sono differenze, prima si diagnostica la causa e la si
+  documenta, poi si fissa una tolleranza motivata. Mai alzare una tolleranza senza spiegazione.
 - Cambiare il comportamento storico è ammesso quando è metodologicamente giustificato, a tre condizioni:
-  (1) il cambiamento è dichiarato e motivato; (2) il comportamento storico resta riproducibile
-  (tramite config o commit di riferimento) per il test di regressione; (3) l'impatto sui numeri viene misurato e riportato.
+  (1) il cambiamento è dichiarato, motivato e registrato in `docs/decisioni.md`; (2) il comportamento storico resta
+  riproducibile (modalità `legacy2`, config o commit di riferimento) per il test di regressione; (3) l'impatto sui
+  numeri viene misurato e riportato.
 - I vecchi risultati numerici servono solo come test di regressione, non come risultati della tesi.
 
 ## 6. Regole di sviluppo
 
-- Python 3, numpy / pandas / scikit-learn / PyTorch su CPU. Nessuna nuova dipendenza senza chiedere.
+- Python 3, CPU. Dipendenze ammesse = quelle di `requirements.txt` (numpy, pandas, scipy, scikit-learn, PyTorch,
+  PyYAML, matplotlib, seaborn, tqdm). Nessuna nuova dipendenza senza chiedere (D-18). `pyarrow` **non** è ammesso:
+  lo store usa CSV.gz (D-19).
 - Commenti e docstring in italiano, concisi; nomi di variabili e funzioni in inglese.
 - Nuovo modello: sottoclasse di `src/models/base.py::BaseAnomalyDetector`, flag `deterministic` / `has_feature_scores`
-  corretti, voce in `MODEL_REGISTRY`, test dedicato.
+  corretti, voce nel registro dei modelli, test dedicato.
+- Interfaccia dei modelli (D-15): la firma `fit(X, y=None, X_val=None) -> self` **non cambia**. Le informazioni di
+  training (epoca migliore, epoca di stop, loss, `n_components`, tempi) vanno in un attributo `fit_info_` (`FitInfo`).
+  `residuals`, `save` e `load` (F4) sono **aggiunte**; `score_anomalies` e `score_features` restano identici.
+- Modelli fuori dal nucleo (OC-SVM, Isolation Forest, VAE): restano nel registro ma sono **esclusi dai run ufficiali**
+  (D-10). Non cancellarli senza approvazione.
 - Modifiche piccole e focalizzate sul compito; miglioramenti non richiesti si **propongono**, non si applicano di nascosto.
-- Non cancellare moduli "fuori dal nucleo" (OC-SVM, Isolation Forest, VAE) senza approvazione: puoi proporne la rimozione motivandola.
 - Riferimenti a file inesistenti nel codice (es. `experiments/diagnose_threshold.py`) vanno segnalati, non inventati.
 
 ## 7. Workflow di sviluppo e testing
@@ -136,8 +196,8 @@ Comandi (Windows, dalla root):
 - Aggregazione: `python aggregate_results.py --results-dir <cartella_run>`.
 
 Flusso per ogni compito:
-1. Leggere il codice coinvolto e i test esistenti prima di proporre modifiche.
-2. Se il compito è strutturale (sezione 8), fermarsi al piano e attendere l'approvazione.
+1. Leggere il codice coinvolto, i test esistenti e le voci pertinenti di `docs/decisioni.md` prima di proporre modifiche.
+2. Se il compito è strutturale (sezione 8) o tocca una decisione `APERTA`, fermarsi al piano e attendere l'approvazione.
 3. Per invarianti (leak, confini, causalità, coerenza protocolli) scrivere prima il test, poi il codice.
 4. Eseguire `python -m pytest -q` dopo ogni modifica e riportare l'esito reale (anche i fallimenti).
 5. Se la modifica può alterare i numeri: dirlo esplicitamente e proporre il confronto di regressione (che lancia l'utente).
@@ -158,5 +218,15 @@ Prima di scrivere codice:
    (`compare_npz.py`, `confronta_run.py`, `aggregate_results.py`), test da aggiungere, compromessi.
 6. **Piano** a passi piccoli e verificabili, poi **attendere l'approvazione esplicita dell'utente**.
 
-Durante l'implementazione, la pipeline attuale resta funzionante finché la nuova non è validata
-dal test di regressione.
+Le fasi già approvate in `piano_operativo.md` valgono come piano approvato per il loro perimetro; ogni scostamento
+dal piano torna a questa procedura.
+
+Durante l'implementazione, la pipeline attuale resta funzionante finché la nuova non è validata dal test di
+regressione (M1).
+
+## 9. Aggiornamenti previsti di questo file
+
+- F0: riconciliazione con `docs/decisioni.md` (questa versione);
+- dopo M1: la nuova pipeline diventa quella di riferimento (§3.3–3.4, §7 comandi);
+- dopo F8: protocollo canonico in vigore (§5);
+- F12: rimozione dei riferimenti alla pipeline storica.

@@ -1,3 +1,5 @@
+> Rivisto da docs/decisioni.md, che prevale sui punti che registra (D-01).
+
 # Piano tesi v1 — SMD anomaly detection (bozza di progetto, 2026-11-06)
 
 Stato: bozza da discutere. Nessun numero dei vecchi notebook è assunto come risultato; i vecchi risultati servono solo come test di regressione della nuova pipeline.
