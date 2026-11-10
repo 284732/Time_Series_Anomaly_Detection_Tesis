@@ -1,0 +1,6 @@
+# Baseline senza training. Valori = default storici del codice dei modelli.
+models:
+  rolling_zscore:
+    top_k: 5
+    eps: 1.0e-2
+  input_norm: {}

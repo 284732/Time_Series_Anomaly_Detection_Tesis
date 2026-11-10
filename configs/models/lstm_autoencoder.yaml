@@ -1,0 +1,5 @@
+# LSTM-AE. Valori storici (repro_*.yaml); training nel blocco training di base.yaml.
+models:
+  lstm_autoencoder:
+    hidden_dim: 64
+    latent_dim: 16

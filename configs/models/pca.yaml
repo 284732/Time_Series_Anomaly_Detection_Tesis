@@ -1,0 +1,9 @@
+# PCA a finestre. Valori storici (repro_*.yaml).
+models:
+  pca:
+    n_components: 0.9
+    # Verificato in main.py (righe 321-327, commit 3df7450): la PCA è deterministica, gira solo con il primo
+    # seed della lista e riceve random_state = seed (setdefault); nelle config repro_*.yaml seeds = [42].
+    # Valore fisso = 42: un solo fit condiviso tra i seed, come main.py. Con n_components float il solver è
+    # "full" e random_state non influisce sul risultato. "from_seed" resta disponibile, non è il default (D-57).
+    random_state: 42

@@ -1,0 +1,32 @@
+# Livello base della nuova pipeline (F2). Valori STORICI (main.py, configs/config_tests/repro_*.yaml):
+# diventano canonici solo in F8. I valori legati a decisioni aperte sono marcati "provvisorio".
+# Ogni esperimento aggiunge: experiment (name, kind, seeds), paths.store_root, data.machines, run_models.
+# Il piano di analisi (scoring, normalizer, soglie, metriche) non sta qui: arriva in F6.
+
+device: cpu
+
+data:
+  dataset: smd
+  data_dir: dataset
+
+split:
+  mode: legacy2            # split storico in 2 parti; split3 (fit/es/cal, D-05) da F8
+  val_ratio: 0.2
+
+preprocessing:             # provvisorio: valore storico, D-40 APERTA
+  scaler_type: minmax
+  min_range: 0.0
+  clip: null
+
+windows:
+  window_size: 100
+  step: 1
+  train_step: 5            # provvisorio: valore storico, D-38 APERTA
+
+training:                  # solo modelli addestrati (Conv-AE, LSTM-AE)
+  max_epochs: 40           # provvisorio: valore storico, D-39 APERTA
+  patience: 5              # provvisorio: valore storico, D-39 APERTA
+  min_delta: 1.0e-6        # default storico del trainer
+  learning_rate: 1.0e-3    # default storico del trainer
+  weight_decay: 1.0e-5     # default storico del trainer
+  batch_size: 64

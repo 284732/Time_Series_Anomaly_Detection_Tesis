@@ -1,0 +1,4 @@
+# PCA puntuale (38 feature: solver deterministico). Valori storici (repro_*.yaml).
+models:
+  pca_pointwise:
+    n_components: 0.9

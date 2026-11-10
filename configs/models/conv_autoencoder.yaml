@@ -1,0 +1,5 @@
+# Conv-AE. Valori storici (repro_*.yaml); training nel blocco training di base.yaml.
+models:
+  conv_autoencoder:
+    channels: [32, 64]
+    latent_dim: 16
