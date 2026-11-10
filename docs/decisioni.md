@@ -405,6 +405,17 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
   Finché il riferimento manca, il manifest di SMD si ferma con errore.
 - **Motivazione:** il controllo «hash dei file» di D-32 è bloccante solo con un riferimento fissato.
 - **Collegamenti:** D-32, D-58, D-59, D-62. **Serve entro:** passo 7 di F3; prima di M1.
+- **Nota di rimando (2026-11-10, il testo sopra resta invariato):**
+  - **Eseguito:** l'utente ha generato `configs/datasets/smd_sha256.yaml` (84 file, 28 macchine) e lo ha verificato con
+    `--check`; i test `real_data` sono passati (3, inclusa la parità di `prepare_machine_data` su `machine-1-1`).
+  - **Fatto verificato (storia git, sola lettura):** `dataset/` è stato toccato da un solo commit, `e32b1bc`
+    (2026-11-05 14:54 +0100), precedente ai commit dei run di D-50 (`843da6a` 2026-11-05 17:26 per `results_repro_*`,
+    `efdacc6` 2026-11-09 12:01 per `results_repro_*_01`). Gli 84 blob di `dataset/` in `e32b1bc`, `efdacc6` e `HEAD`
+    coincidono con `smd_sha256.yaml` (regola di D-59); l'albero di lavoro di `dataset/` è pulito.
+  - **Limite per M1:** gli output storici non registrano hash dei dati né provenance (nessun hash nei file di testo di
+    `results/results_tests/`), e la data di esecuzione dei run non è registrata (solo quella del commit). Non è quindi
+    verificabile che al momento dei run l'albero di lavoro di `dataset/` coincidesse con il commit. Se M1 trova
+    differenze, i dati restano un'ipotesi da escludere con la procedura di D-17, non un fatto già escluso.
 
 ### D-62 · Test `real_data` esclusi dalla suite di default — APPROVATA · 2026-11-10
 - **Decisione:** `tests/conftest.py` aggiunge l'opzione `--real-data`; senza l'opzione i test marcati `real_data` sono
