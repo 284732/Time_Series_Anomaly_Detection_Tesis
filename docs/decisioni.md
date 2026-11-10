@@ -253,6 +253,38 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
 - **Decisione:** chiusa da D-51: `machine-1-1` e `machine-3-8` sono macchine di sviluppo.
 - **Limite dichiarato:** l'assegnazione è avvenuta dopo averle osservate; va scritto nella tesi.
 
+### D-60 · Contesto all'inizio del test solo con `step` = 1 — APPROVATA · 2026-11-10
+- **Decisione:** la variante con contesto (D-20, D-32) è definita solo con `step` = 1: le finestre del test con contesto
+  usano esattamente gli ultimi W−1 punti di cal. Con `step` > 1 la richiesta del contesto è un errore esplicito.
+  Lo scenario con contesto è ammesso solo in `split3` (in `legacy2` confini rigidi, D-32).
+- **Motivazione:** con `step` > 1 la griglia delle finestre con contesto (inizi −(W−1) + k·step) non contiene in
+  generale quella senza contesto (inizi k·step): le finestre senza contesto non sarebbero più un sottoinsieme di quelle
+  con contesto, contro il contratto dei residui del test (`FIT_CODE_VERSION`, residui con le W−1 finestre di contesto).
+  Il valore di base è `step` = 1 e nessuna RQ richiede il caso generale. Alternativa scartata: griglia allineata sulle
+  fini delle finestre, con contesto di ⌊(W−1)/step⌋·step punti.
+- **Rapporto con altre voci:** integra D-03 e D-20, il cui testo resta invariato.
+- **Collegamenti:** D-03, D-20, D-32, D-42. **Serve entro:** F3.
+- **Documenti:** piano F3; proposta §4.2.
+
+### D-65 · Segmento di fit dello scaler in `split3` — APPROVATA · 2026-11-10
+- **Decisione:** in `split3` lo scaler (qualunque tipo e parametri, D-40) si fitta **solo su fit**; es, cal e test
+  ricevono solo `transform`. In `legacy2` vale la regola storica (D-63).
+- **Motivazione:**
+  - coerenza con D-06: lo scaler è un parametro appreso, come le componenti della PCA, e si stima sugli stessi dati;
+  - fit + cal escluso: cal deve restare non visto da ogni componente fittato (D-23, P1);
+  - fit + es scartato per simmetria con D-06.
+- **Interazione con D-40 (non indipendente):** con lo scaler su fit (60% del train) gli intervalli stimati per sensore
+  sono ≤ di quelli sulla parte di train storica (80%, `legacy2`), quindi l'amplificazione 1/range dei sensori quasi costanti può
+  aumentare. La verifica in sola lettura proposta in D-40 sulle 6 macchine di sviluppo deve misurare gli intervalli
+  anche su fit (60%), oltre che sulla parte di train storica (80%).
+- **Incoerenza documentale trovata (2026-11-10):** `CLAUDE.md` §5 («fit → apprendere i parametri (AE, PCA, scaler)»)
+  attribuiva la regola a D-05, il cui testo non cita lo scaler. Corretta in `CLAUDE.md` §5 con il rimando a D-65:
+  è solo un riferimento, il protocollo non cambia.
+- **Opzioni scartate:** (b) fit + es; (c) fit + es + cal.
+- **Serve entro:** F3 (ramo `split3` di `fit_scaler`), F8.
+- **Collegamenti:** D-04, D-05, D-06, D-23, D-40, D-63.
+- **Documenti:** `CLAUDE.md` §5; piano F3, F8.
+
 ---
 
 ## C. Software e riproducibilità — decisioni approvate
@@ -325,6 +357,104 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
 ### D-56 · Posizione di `store/` e budget di disco — APPROVATA · 2026-11-10
 - **Decisione:** `store/` nella radice del progetto, esclusa da git con `.gitignore`. Budget di disco: 5–10 GB.
 
+### D-58 · Spec del dataset e controlli strutturali parametrici — APPROVATA · 2026-11-10
+- **Decisione:**
+  - ogni dataset ha uno spec `configs/datasets/<nome>.yaml`, individuato da `data.dataset`; nel codice non ci sono
+    costanti del dataset (numero di sensori, macchine, gruppi, lunghezze);
+  - campi: `name`, `layout` (per ora solo `smd_txt` = `loader.load_smd_machine`), `n_features`, `groups`
+    (nome del gruppo come stringa → elenco delle macchine; una macchina in un solo gruppo), `max_len_diff` (intero ≥ 0 o null), `value_range` ([lo, hi] o null), `label_values`,
+    `split_file` (file dev/eval o null), `hashes_file` (riferimento degli hash, D-61, o null);
+  - lo spec e il file dev/eval passano da un validatore rigoroso con le stesse regole di F2 (chiave sconosciuta, campo
+    mancante o tipo errato → `ConfigError`); il caricamento YAML dello spec rifiuta le chiavi duplicate;
+  - i controlli strutturali di D-32 si applicano con i valori dello spec. Per SMD: `max_len_diff` 1, `n_features` 38,
+    28 macchine in 3 gruppi (8/9/11), `value_range` [0, 1], hash uguali al riferimento. Il testo di D-32 resta invariato;
+  - controlli aggiunti per ogni dataset: valori finiti; label in `label_values`; lunghezza delle label = lunghezza del test;
+  - inventario su tutto il dataset (file presenti = macchine dello spec; dev ∪ eval = macchine, dev ∩ eval = ∅);
+    controlli di contenuto per macchina prima di ogni uso;
+  - i controlli sono bloccanti: un fallimento ferma la pipeline con l'elenco completo dei fallimenti; nessuna macchina
+    viene esclusa in silenzio (le esclusioni restano a D-44).
+- **Motivazione:** D-45 richiede di riapplicare invariato il piano a un secondo dataset; i numeri di SMD in D-32 diventano
+  valori di uno spec, verificabili anche sul dataset sintetico di F1 e su un secondo dataset sintetico.
+- **Collegamenti:** D-26, D-32, D-44, D-45, D-51, D-59, D-61. **Serve entro:** F3.
+- **Documenti:** piano F3; `CLAUDE.md` §5 (al prossimo aggiornamento).
+
+### D-59 · `data_version` del fit e versione delle label — APPROVATA · 2026-11-10
+- **Decisione:**
+  - hash di file = sha256 dei byte dopo CRLF → LF (`provenance.file_sha256`), file letti in modalità binaria;
+  - `data_version(m)` = `"dv1-"` + `canonical_hash({manifest_format, dataset, machine, files: {train, test}})[:20]`:
+    solo **train e test**, nessun percorso assoluto, data di modifica o sistema operativo. È la `data_version` del `fit_key`;
+  - `labels_version(m)` = `"lv1-"` + hash del file delle label: **non** entra in `data_version` né nel `fit_key`; è
+    registrata nel manifest. Lo stadio di analisi (F6) la ricalcola, la confronta con quella del manifest e la scrive nei
+    propri metadati; una differenza è un errore. F7 non mescola analisi con `labels_version` diverse per la stessa macchina;
+  - `dataset_version` = hash delle `data_version` e `labels_version` ordinate: per provenance e registro, non per il `fit_key`;
+  - nessuna cache degli hash.
+- **Test richiesti:** cambiare le label non cambia `data_version` né `fit_key` (cambia `labels_version`); stesso
+  contenuto in LF e CRLF → stesso hash; cartella spostata → stesso hash; un byte cambiato → hash diverso; una macchina
+  modificata non cambia le altre; valore golden sul dataset sintetico.
+- **Motivazione:** checkpoint e residui non dipendono dalle label, quindi una correzione delle label non deve invalidare
+  i fit; il controllo delle label spetta all'analisi, l'unico stadio che le usa. La normalizzazione dei fine riga serve
+  perché sulla macchina di riferimento `core.autocrlf=true` e il repository non ha `.gitattributes` (verificato 2026-11-10).
+- **Collegamenti:** D-14, D-19, D-58, D-61. **Serve entro:** F3 (manifest), F6 (controllo delle label).
+- **Documenti:** piano F3, F6, F7.
+
+### D-61 · Hash di riferimento dei file di SMD — APPROVATA · 2026-11-10
+- **Decisione:** `scripts/make_data_hashes.py` legge `dataset/` in sola lettura e scrive
+  `configs/datasets/smd_sha256.yaml` (hash di train, test e label di ogni macchina, con la regola di D-59). Se il file
+  esiste con un contenuto diverso si ferma (sovrascrittura solo con `--force`); `--check` verifica senza scrivere.
+  Lo script viene scritto in F3 ma lo **lancia l'utente**, insieme ai test `real_data` (passo 7 del piano F3).
+  Finché il riferimento manca, il manifest di SMD si ferma con errore.
+- **Motivazione:** il controllo «hash dei file» di D-32 è bloccante solo con un riferimento fissato.
+- **Collegamenti:** D-32, D-58, D-59, D-62. **Serve entro:** passo 7 di F3; prima di M1.
+
+### D-62 · Test `real_data` esclusi dalla suite di default — APPROVATA · 2026-11-10
+- **Decisione:** `tests/conftest.py` aggiunge l'opzione `--real-data`; senza l'opzione i test marcati `real_data` sono
+  saltati con un motivo esplicito. I test `real_data` leggono `dataset/` solo in modalità binaria o con il loader e
+  verificano che `git status dataset/` e le date di modifica dei file siano uguali prima e dopo.
+- **Fatto verificato (2026-11-10):** nessun test è oggi marcato `real_data` (`pytest -m real_data`: 0 selezionati,
+  527 deselezionati) e nessun test legge `dataset/`; la modifica non salta alcun test oggi in esecuzione (527 passati).
+- **Motivazione:** `pytest.ini` dichiarava i test `real_data` esclusi dalla suite di default, ma niente lo imponeva.
+- **Collegamenti:** D-16, D-61. **Serve entro:** F3.
+
+### D-63 · Segmenti e scaler in `legacy2`; finestre della loss di early stopping — APPROVATA · 2026-11-10
+- **Decisione:**
+  - `legacy2`: taglio = lunghezza del primo pezzo di `protocol.chronological_split` (`int(round(n·(1 − val_ratio)))`),
+    riusato senza modificarlo; fit = [0, cut), es = cal = [cut, n), con il doppio uso dichiarato (`es_is_cal`, P1);
+  - `split3`: `preprocessing/split.py::split_bounds(n, fractions, min_len=W)`, riusato senza modificarlo; cal deve avere
+    una maschera non vuota (T_cal ≥ 2W − 1);
+  - `fit_scaler` fa parte di F3. In `legacy2` riproduce esattamente `main.prepare_machine_data`: `SMDScaler(scaler_type,
+    clip, min_range)` fittato su `raw_train[:cut]`, poi `transform` di validation e test. In `split3` vale D-65;
+  - `train_fraction` < 1 di `main.py` non è supportato dalla nuova pipeline ed è fuori dal perimetro della parità
+    (non usato dai run di D-50). Le run storiche con `train_fraction` < 1 (`train_fraction` 0,05–0,50 e varianti AE
+    al 5%) esistono fuori da questo repository, nel progetto precedente (cartella `exercises/SMD` del tirocinio), e non
+    sono riproducibili dalla nuova pipeline. Quando la
+    quantità di dati di training entrerà nel protocollo, la regola storica (ultime righe della parte di train, almeno
+    2W) non si eredita in automatico: servirà una voce nuova;
+  - finestre della loss di early stopping: regola storica `score_windows(es, step)[::max(1, train_step // step)]` in
+    entrambe le modalità; con `step` = 1 coincide con il passo `train_step`.
+- **Motivazione:** parità esatta con la pipeline storica; `split_bounds` non rappresenta lo split in due parti.
+  Per `val_ratio` = 0,2 i due tagli coincidono per ogni n (la parte frazionaria di 4n/5 non è mai 0,5), ma per altri
+  rapporti l'uguaglianza non è garantita.
+- **Collegamenti:** D-05, D-13, D-23, D-40, D-65. **Serve entro:** F3.
+
+### D-64 · Maschere `legacy2` e lotti di scoring — APPROVATA · 2026-11-10
+- **Decisione:**
+  - `eval_mask` ha un ramo `legacy2` esplicito che delega a `protocol.common_support_mask(T, [(W, step)])`, come
+    `main.py` per test e validation; i rami `split3` (`primary`, `test_context`) sono implementati a parte. Un test fissa
+    il ramo `legacy2`: cambiare la maschera primaria di `split3` non lo tocca;
+  - **F3:** `iter_batches` restituisce copie contigue, scrivibili, in float32; `batch_size` è obbligatorio, senza
+    default. In F3 non c'è altro: nessuna regola per modello;
+  - **F4:** in `legacy2` il lotto esterno di scoring deve essere allineato al blocco interno che `main.py` usa per ogni
+    modello, così ogni chiamata BLAS o torch vede le stesse matrici (identità bit a bit in F4 e M1, D-17). Ogni modello
+    espone la dimensione del proprio blocco storico come attributo (aggiunta: `_CHUNK` resta dov'è) e la pipeline genera
+    un errore in `legacy2` se il lotto è incompatibile. Contenuto della regola (confermato dall'utente il 2026-11-10):
+    - Conv-AE e LSTM-AE: multiplo di `batch_size` della config storica (64 nei run di D-50);
+    - PCA a finestre: multiplo di `PCADetector._CHUNK` (4.096);
+    - PCA puntuale: con `mean` multiplo di `PointwisePCADetector._CHUNK` (2.048); con `last` un solo blocco;
+    - `rolling_zscore` e `input_norm`: un solo blocco.
+- **Fatto verificato (2026-11-10):** per PCA e PCA puntuale il blocco di scoring di `main.py` non è una chiave di
+  config ma una costante di classe (`_CHUNK`).
+- **Collegamenti:** D-15, D-17, D-20, D-22, D-23. **Serve entro:** F3 (`eval_mask`, `iter_batches`), F4 (regola dei lotti).
+
 ### D-53 · File tracciati da git (`.pyc`, dataset) — APPROVATA · 2026-11-10
 - **Decisione:** i `.pyc` non sono tracciati: i 35 file già tracciati sono tolti dal tracciamento con
   `git rm -r --cached` sulle cartelle `__pycache__` (restano sul disco) e `.gitignore` esclude `__pycache__/` e `*.pyc`.
@@ -385,6 +515,8 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
     nel train, range nel test e valore massimo assoluto dopo lo scaler storico; contare i sensori con valore massimo
     maggiore di 2 nel test. Nessun training. Gli esiti si guardano prima solo sulle 6 macchine di sviluppo [D-51].
   - **Collegamenti:** F1, F8, D-26.
+- **Nota di rimando (2026-11-10, la voce resta APERTA):** con D-65 lo scaler in `split3` si fitta solo su fit (60%):
+  la verifica proposta sopra misura gli intervalli anche su fit, non solo sulla parte di train storica (80%).
 
 ### D-41 · Budget di tuning — APERTA
 - **Da decidere:** K per famiglia (proposta 8), griglie, criterio di selezione (proposta: AP normalizzata media sulle 6

@@ -91,7 +91,7 @@ Problemi noti (da risolvere nella nuova pipeline, non da preservare):
 Descritta in `proposta_architettura_target.md` e realizzata secondo `piano_operativo.md`: stadio di fit
 (checkpoint + residui per sensore, `fit_key` = hash della config rilevante + `FIT_CODE_VERSION`), stadio di
 analisi (nessun fit, tabella lunga), stadio di statistica e report. Le scelte già approvate sono in
-`docs/decisioni.md` (D-03…D-24, D-26, D-32, D-33, D-34, D-50, D-51, D-52, D-55, D-56); quelle ancora aperte sono nelle
+`docs/decisioni.md` (D-03…D-24, D-26, D-32, D-33, D-34, D-50, D-51, D-52, D-55, D-56, D-58…D-65); quelle ancora aperte sono nelle
 sezioni D ed E del registro.
 
 ## 4. Protezione di dataset, risultati e configurazioni storiche
@@ -115,7 +115,7 @@ sezioni D ed E del registro.
 
 ### Uso dei segmenti (D-05)
 Split cronologico del train originale in **fit 60% / es 20% / cal 20%** (frazioni configurabili):
-- fit → apprendere i parametri (AE, PCA, scaler);
+- fit → apprendere i parametri (AE, PCA [D-06], scaler [D-65]);
 - es → solo scegliere l'epoca degli AE;
 - cal → normalizer degli errori, soglie statiche, storia delle soglie mobili;
 - test → solo misurare.
