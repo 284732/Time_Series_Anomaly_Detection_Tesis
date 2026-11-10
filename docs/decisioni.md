@@ -99,6 +99,75 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
   (scaler, scoring, aggregazione, politica di soglia). Livelli dei fattori: D-42.
 - **Documenti:** `CLAUDE.md` §1; proposta §4.9; `piano_tesi_v1.md` (rivisto da questa voce).
 
+### D-32 · Confine train → test — APPROVATA · 2026-11-09
+- **Decisione** (formulazione rev. 2):
+  - **Base documentale:** secondo il README ufficiale di OmniAnomaly, per ogni macchina il train è la prima metà della
+    serie e il test la seconda. La contiguità tra fine del train e inizio del test è quindi plausibile ma non
+    verificabile; nessuna conclusione primaria dipende da essa.
+  - **Controlli strutturali bloccanti nel manifest**, per ogni macchina: differenza tra le lunghezze di train e test ≤ 1;
+    38 sensori; lunghezza delle label = lunghezza del test; valori in [0, 1]; hash dei file.
+  - **Analisi primaria:** nessuna finestra di scoring usa il contesto all'inizio del test, per tutte le macchine.
+    I primi W−1 punti del test sono esclusi dalla maschera comune di valutazione per tutti i modelli.
+  - **Variante RQ1a:** contesto da cal all'inizio del test, senza nuovi fit; l'effetto si riporta rispetto all'analisi primaria.
+  - **Confini rigidi:** tra fit ed es; nello scoring di cal ed es; nelle finestre usate per il fit; in modalità `legacy2`.
+    Mai finestre tra macchine diverse né oltre la fine del test.
+  - **Soglie mobili:** la storia parte da cal (D-04), indipendentemente dall'assunzione di contiguità.
+  - **Diagnostica di confine:** facoltativa e solo descrittiva, senza ruolo decisionale.
+- **Limiti dichiarati:** la regolarità del campionamento e l'assenza di buchi interni alle serie non sono verificabili.
+  La normalizzazione dei dati su train+test è una limitazione separata.
+- **Motivazione:** le conclusioni primarie non devono dipendere da un'assunzione non verificabile; il suo effetto si
+  misura come variante di RQ1a invece di essere assunto.
+- **Collegamenti:** D-03 (contesto nello scoring), D-04 (storia delle soglie), D-31 (segmenti con contesto), D-42 (livelli di RQ1a).
+- **Serve entro:** F0.
+- **Documenti:** `CLAUDE.md` §5; proposta §1, §2, §4.2, §10, §11; piano F0, F3, F6.
+
+### D-20 · Contesto iniziale del test e maschera di valutazione — APPROVATA · 2026-11-09
+- **Decisione:**
+  - analisi primaria: nessun contesto all'inizio del test;
+  - i primi W−1 punti del test sono esclusi dalla maschera comune di valutazione;
+  - variante RQ1a: contesto da cal all'inizio del test, senza nuovi fit;
+  - per ogni macchina tutti i modelli sono valutati sulla stessa maschera.
+- **Precisazione (2026-11-09):** la maschera è specifica dello scenario e comune a tutti i modelli all'interno dello
+  scenario: nell'analisi primaria i primi W−1 punti del test sono esclusi; nella variante con contesto sono inclusi.
+  La coda del test è disciplinata da D-22.
+- **Rapporto con altre voci:** integra D-03, il cui testo resta invariato, ed è subordinata a D-32: in caso di
+  divergenza prevale D-32.
+- **Motivazione:** rende operativa D-32 per finestre e maschere; la stessa maschera per tutti i modelli mantiene i
+  confronti appaiati sugli stessi timestamp.
+- **Collegamenti:** D-03, D-32, D-31 (sostituita), D-21, D-22, D-42 (livelli di RQ1a).
+- **Serve entro:** F3.
+- **Documenti:** `CLAUDE.md` §5; proposta §1, §2, §4.2, §10; piano F3, F6, F8.
+
+### D-21 · Soglie mobili: punti privi di score — APPROVATA · 2026-11-09
+- **Decisione:** nella sequenza cal → test usata dalle soglie mobili (D-04):
+  - i punti privi di score (ad esempio i primi W−1 punti del test nell'analisi primaria, D-20) non aggiornano la storia
+    della soglia mobile;
+  - la soglia conserva la storia accumulata in cal;
+  - l'aggiornamento riprende quando sono disponibili gli score del test.
+- **Precisazione (2026-11-09):** `n_past` indica gli ultimi `n_past` score validi disponibili, anche se non
+  corrispondono a timestamp consecutivi. I punti senza score non aggiornano la storia.
+- **Rapporto con altre voci:** integra D-04, il cui testo resta invariato.
+- **Motivazione:** la storia delle soglie resta definita anche dove manca lo score, senza riempire il vuoto con valori
+  inventati e senza escludere un tratto iniziale del test.
+- **Collegamenti:** D-04, D-20, D-32.
+- **Serve entro:** F6.
+- **Documenti:** proposta §4.6, §5.1; piano F6.
+
+### D-22 · Coda del test esclusa dalla maschera comune — APPROVATA · 2026-11-09
+- **Decisione:** gli ultimi W−1 punti del test sono esclusi dalla maschera comune di valutazione per tutti i modelli e
+  per tutti gli scenari (analisi primaria e varianti di RQ1a, qualunque `timestamp_agg`), anche quando alcuni modelli
+  producono score validi in quei punti.
+- **Rapporto con altre voci:** integra D-20, che disciplina l'inizio del test; coerente con D-32 (nessuna finestra oltre
+  la fine del test).
+- **Motivazione:** con `timestamp_agg` offline (`mean`, `max`) gli ultimi W−1 punti sono coperti da meno finestre e il
+  loro score ha una distribuzione diversa; escluderli per tutti mantiene gli scenari confrontabili sugli stessi punti
+  finali. È la stessa regola della pipeline storica (`common_support_mask` con `trim_edges=True`), quindi `legacy2` non
+  cambia.
+- **Costo:** W−1 punti per macchina, eventuali anomalie comprese; da dichiarare tra i limiti.
+- **Collegamenti:** D-12 (RQ1a), D-20, D-32, D-42.
+- **Serve entro:** F3.
+- **Documenti:** `CLAUDE.md` §5; proposta §4.2; piano F3, F6.
+
 ---
 
 ## C. Software e riproducibilità — decisioni approvate
@@ -146,21 +215,15 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
 - **Vincolo:** va fissato prima dei run ufficiali e congelato in `configs/analysis/official.yaml`.
 - **Serve entro:** F10. Il codice di F7 deve trattare δ come parametro, senza valore predefinito.
 
-### D-31 · Quali segmenti ricevono il contesto nello scoring — APERTA
+### D-31 · Quali segmenti ricevono il contesto nello scoring — SOSTITUITA da D-32 · 2026-11-09
+- **Stato:** sostituita da D-32 (2026-11-09). D-32 disciplina ora il contesto iniziale del test e i segmenti; la gestione
+  operativa del contesto iniziale del test e della maschera è in D-20. Il testo seguente resta come riferimento storico.
 - **Problema:** con `window_time_agg: mean`, le prime W−1 finestre di cal con contesto includerebbero residui di es, che
   per gli AE sono ottimistici; entrerebbero così nel normalizer e nelle soglie, in contrasto con D-04.
 - **Opzioni:** (a) contesto solo per il test (da cal); cal ed es senza contesto (si perdono W−1 punti di cal su ≈4.700);
   (b) contesto per tutti i segmenti di scoring, dichiarando l'effetto; (c) contesto per cal solo con `window_time_agg: last`.
 - **Raccomandazione:** (a).
 - **Serve entro:** F3.
-
-### D-32 · Criterio della verifica di contiguità train → test — APERTA
-- **Problema:** i file SMD non hanno timestamp; `check_contiguity.py` può solo confrontare il salto di valori tra ultima riga
-  del train e prima del test con la distribuzione dei salti tra righe consecutive. È un indizio, non una prova.
-- **Da decidere prima di eseguire il controllo:** (1) regola numerica di esito (es. salto entro un quantile prefissato per
-  la maggioranza dei sensori); (2) fonte documentale sul dataset da citare; (3) comportamento se l'esito è negativo
-  (proposta: niente contesto per l'inizio del test, come previsto in proposta §4.2).
-- **Serve entro:** F0.
 
 ### D-33 · Aggregazioni dei residui da salvare — APERTA
 - **Opzioni:** `last` e `mean` (raccomandato); `max` opzionale. Influisce sul formato di `residuals.npz` e su `fit_key`.
