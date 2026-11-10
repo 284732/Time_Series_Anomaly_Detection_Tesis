@@ -91,7 +91,8 @@ Problemi noti (da risolvere nella nuova pipeline, non da preservare):
 Descritta in `proposta_architettura_target.md` e realizzata secondo `piano_operativo.md`: stadio di fit
 (checkpoint + residui per sensore, `fit_key` = hash della config rilevante + `FIT_CODE_VERSION`), stadio di
 analisi (nessun fit, tabella lunga), stadio di statistica e report. Le scelte già approvate sono in
-`docs/decisioni.md` (D-03…D-24, D-26, D-32); quelle ancora aperte sono nelle sezioni D ed E del registro.
+`docs/decisioni.md` (D-03…D-24, D-26, D-32, D-33, D-34, D-50, D-51, D-52, D-55, D-56); quelle ancora aperte sono nelle
+sezioni D ed E del registro.
 
 ## 4. Protezione di dataset, risultati e configurazioni storiche
 
@@ -141,7 +142,8 @@ La PCA si fitta solo su fit (D-06).
 - Lo stesso segmento non deve servire a due scopi che si influenzano (es. early stopping e soglia); dove succede,
   va dichiarato e risolto.
 - Iperparametri e scelte di protocollo non si tarano guardando le metriche delle macchine di valutazione.
-  Le 6 macchine di sviluppo e le 22 di valutazione (D-08) restano separate; la lista è in D-51.
+  Le 6 macchine di sviluppo e le 22 di valutazione (D-08) restano separate; la lista è in `configs/dev_machines.yaml`,
+  generato da `scripts/make_dev_split.py` secondo D-51 (non si modifica a mano).
 - **Maschere e supporto di calibrazione:**
   - test (D-20, D-22): primi W−1 punti esclusi nell'analisi primaria e inclusi nella variante con contesto; ultimi W−1
     punti sempre esclusi; dentro ogni scenario tutti i modelli usano la stessa maschera;

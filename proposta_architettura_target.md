@@ -125,7 +125,7 @@ Perché cal è l'ultimo segmento: con la deriva osservata, è il più simile al 
 
 Il residuo base è r[t,f] = (x − x̂)² per sensore, all'interno di una finestra. Ne derivano tre fattori in sequenza:
 
-1. **`window_time_agg` ∈ {last, mean}** (`max` opzionale): da (W, F) a (F,) per finestra. Sono due detector diversi, entrambi causali: errore dell'ultimo istante oppure errore medio della finestra che termina in t. Quali aggregazioni salvare è aperto [D-33].
+1. **`window_time_agg` ∈ {last, mean}** (`max` opzionale): da (W, F) a (F,) per finestra. Sono due detector diversi, entrambi causali: errore dell'ultimo istante oppure errore medio della finestra che termina in t. Si salvano i residui con `last` e `mean`; `max` non si salva e, se servisse, si rigenera dai checkpoint [D-33, approvata].
 2. **`sensor_agg` ∈ {raw_mean, z_mean, z_max, z_top5}:** da (F,) a uno scalare. Il normalizer z si fitta su **cal**; si aggiunge una variante robusta (mediana/IQR) [D-11, approvata], visto che gli errori hanno code pesanti e il train può contenere anomalie non etichettate.
 3. **`timestamp_agg` ∈ {last (causale, canonico), mean, max (offline)}:** da finestra a timestamp. Con step=1 e `last`, lo score in t è quello della finestra che termina in t.
 
@@ -133,7 +133,7 @@ I fattori 1 e 2 sono di **design**: si scelgono per ogni famiglia di modelli sul
 
 ### 4.5 Training e selezione dei modelli (RQ2: budget pari)
 
-- **Macchine di sviluppo:** 6 di sviluppo + 22 di valutazione [D-08, approvata]. La proposta le indica come "già estratte (seed 20261109)", ma la lista non è nel repository: identità e procedura da registrare [D-51, dipende dall'utente]. Il tuning usa le loro label (lecito, perché sono escluse dalla valutazione).
+- **Macchine di sviluppo:** 6 di sviluppo + 22 di valutazione [D-08, approvata]. La lista è in `configs/dev_machines.yaml`, generata da `scripts/make_dev_split.py` [D-51, approvata]: `machine-1-1` e `machine-3-8` fisse (già osservate, D-52), più `machine-1-7`, `machine-2-6`, `machine-2-8`, `machine-3-11` estratte con seed 20261110. La lista "seed 20261109" di `architettura_repo_v1.md` non è più valida. Il tuning usa le loro label (lecito, perché sono escluse dalla valutazione).
 - **Budget (aperto [D-41]):** lo stesso numero di configurazioni per famiglia, ad esempio K=8:
   - *PCA:* `n_components`, eventualmente combinato con `window_time_agg` e `sensor_agg`;
   - *AE:* latent, hidden/canali, learning rate, combinati con le stesse opzioni di scoring.
@@ -162,12 +162,12 @@ Regole approvate:
 |---|---|---|
 | Senza soglia | **AP normalizzata** (AP−p)/(1−p) | primaria (RQ2) [D-07, approvata] |
 | Senza soglia | ROC-AUC, AP grezza, AP/p | secondarie |
-| Senza soglia | VUS-PR | secondaria [D-07, approvata]; quando implementarla e contro quale riferimento esterno validarla è aperto [D-34] |
-| Con soglia | F1, precision, recall, FPR, **falsi allarmi al giorno** | RQ4 |
+| Senza soglia | VUS-PR | secondaria [D-07, approvata]; non in F6: passo separato prima di F10, convalidato contro valori di riferimento salvati come fixture [D-34, approvata] |
+| Con soglia | F1, precision, recall, FPR, **falsi allarmi ogni 1.440 punti** (al giorno solo assumendo un punto al minuto, D-32) | RQ4 |
 | Per evento | event recall, **ritardo di rilevamento**, segmenti di falso allarme | RQ4 (significato operativo) |
 | Diagnostiche | best-F1 (oracolo), celle A–D del 2×2 PA/oracolo | RQ1: misurare il gonfiamento (oggi il random ottiene PA_F1 = 0,92) |
 
-Quali metriche per evento e con soglia entrano in F6 è aperto [D-34].
+L'elenco delle metriche di F6 è fissato da D-34 (approvata); il ritardo di rilevamento si misura in punti.
 
 Due avvertenze da riportare nella tesi:
 
@@ -249,7 +249,7 @@ La **fit_key** include solo ciò che cambia il modello addestrato: versione dei 
 
 ### 5.4 Formati
 
-- `store/fits/<key>/model.pt` (AE) oppure `pca.npz` (componenti, media); `residuals.npz` con `res_{es,cal,test}_{last,mean}` (aggregazioni salvate: aperto [D-33]; `res_es` solo diagnostico, mai usato nell'analisi [D-04]) in float32, forma (N_seg, F), e gli indici dei timestamp; `meta.json` con la config risolta, provenance, `FitInfo` (best/stopped epoch, loss, `n_components`), tempi e stato.
+- `store/fits/<key>/model.pt` (AE) oppure `pca.npz` (componenti, media); `residuals.npz` con `res_{es,cal,test}_{last,mean}` (aggregazioni salvate: `last` e `mean` [D-33]; `res_es` solo diagnostico, mai usato nell'analisi [D-04]) in float32, forma (N_seg, F), e gli indici dei timestamp; `meta.json` con la config risolta, provenance, `FitInfo` (best/stopped epoch, loss, `n_components`), tempi e stato.
 - Tabella lunga: `machine, group, model, config_id, seed, fit_key, window_time_agg, sensor_agg, ts_agg, threshold_policy, threshold_param, pa, metric, value`. Due tabelle: `free` (senza soglia) e `thr` (con soglia). Formato: CSV compresso (.csv.gz) [D-19].
 - `store/registry.csv`, a sola aggiunta: esperimento, tipo, data, commit, hash della config, hash del piano, stato, note.
 
@@ -283,7 +283,7 @@ src/
 docs/        decisioni.md (registro delle decisioni, livello 1)
 scripts/       compare_npz.py, confronta_run.py (legacy), make_dev_split.py, check_contiguity.py
 tests/         unit/, invariants/, integration/, regression/, stats/
-store/         # fuori da git, posizione e budget di disco da decidere [D-56]: fits/, runs/{exploratory,official}/, registry.csv
+store/         # nella radice, fuori da git, budget 5–10 GB [D-56]: fits/, runs/{exploratory,official}/, registry.csv
 dataset/, results/   # invariati, sola lettura
 main.py, aggregate_results.py   # pipeline legacy, mantenuta fino a parità dimostrata
 ```
@@ -370,15 +370,15 @@ Stato al 2026-11-09 (dettagli in `docs/decisioni.md`):
 3. RQ1 in RQ1a e RQ1b: **approvata** [D-12].
 4. `train_step`: **aperta** [D-38].
 5. Numero di seed: 5 nella valutazione, **approvata** [D-09].
-6. 6 di sviluppo + 22 di valutazione: **approvata** [D-08]; lista delle macchine: **dipende dall'utente** [D-51].
+6. 6 di sviluppo + 22 di valutazione: **approvata** [D-08]; lista delle macchine: **approvata** [D-51, 2026-11-10].
 7. Preprocessing canonico: **aperta** [D-40].
 8. Secondo dataset: **aperta** [D-45].
-9. `pyarrow`: non si aggiunge, CSV.gz [D-19, approvata]; budget di disco: **dipende dall'utente** [D-56].
-10. Dataset e `__pycache__` sotto git: **dipende dall'utente** [D-53].
+9. `pyarrow`: non si aggiunge, CSV.gz [D-19, approvata]; budget di disco: **approvata** [D-56, 2026-11-10].
+10. Dataset e `__pycache__` sotto git: **approvata** [D-53, 2026-11-10]: `.pyc` non tracciati, `dataset/` tracciato.
 11. OC-SVM, Isolation Forest e VAE esclusi dai run ufficiali: **approvata** [D-10].
 12. Scadenze: **dipende dall'utente** [D-54].
 
-Aggiornamento al 2026-11-10: confine train → test **approvata** [D-32] (D-31 sostituita); maschere del test **approvate** [D-20, D-22]; soglie mobili **approvate** [D-21, D-24]; supporto di calibrazione in cal **approvata** [D-23]; metodo di decomposizione della varianza per RQ1a **aperta** [D-25]; normalizzazione di SMD su train+test **verificata** [D-26].
+Aggiornamento al 2026-11-10: confine train → test **approvata** [D-32] (D-31 sostituita); maschere del test **approvate** [D-20, D-22]; soglie mobili **approvate** [D-21, D-24]; supporto di calibrazione in cal **approvata** [D-23]; metodo di decomposizione della varianza per RQ1a **aperta** [D-25]; normalizzazione di SMD su train+test **verificata** [D-26]. Chiusura di F0: aggregazioni dei residui [D-33], metriche di F6 [D-34], ambiente e lock provvisorio [D-55] **approvate**.
 
 **Rischi:**
 

@@ -51,12 +51,14 @@ soglie mobili solo con `last` [D-24], normalizzazione di SMD su train+test, fatt
 
 **Gruppo A — servono per chiudere F0:**
 1. ~~Criterio della verifica di contiguità e comportamento in caso negativo~~ — **risolta da D-32**: la contiguità non è verificabile e nessuna conclusione primaria ne dipende.
-2. Aggregazioni dei residui da salvare: `last` e `mean` raccomandati, `max` opzionale [D-33].
-3. Elenco delle metriche da implementare in F6; tempi e riferimento di validazione di VUS-PR [D-34].
-4. Posizione di `store/` e budget di disco [D-56, dipende dall'utente].
-5. Ambiente di riferimento per il file di lock [D-55, dipende dall'utente].
+2. ~~Aggregazioni dei residui da salvare~~ — **risolta da D-33** (approvata 2026-11-10): `last` e `mean`; `max` non si salva.
+3. ~~Elenco delle metriche da implementare in F6~~ — **risolta da D-34** (approvata 2026-11-10); VUS-PR in un passo separato prima di F10.
+4. ~~Posizione di `store/` e budget di disco~~ — **risolta da D-56** (approvata 2026-11-10): `store/` nella radice, esclusa da git, 5–10 GB.
+5. ~~Ambiente di riferimento per il file di lock~~ — **risolta da D-55** (approvata 2026-11-10): Python 3.13.9, `requirements-lock.txt`.
 6. ~~Run storici di riferimento per M1~~ — **risolta da D-50** (approvata 2026-11-10): `results_repro_last_01` / `results_repro_mean_01`.
-7. Lista delle 6 macchine di sviluppo [D-51, dipende dall'utente]: serve al manifest di F3.
+7. ~~Lista delle 6 macchine di sviluppo~~ — **risolta da D-51** (approvata 2026-11-10): `configs/dev_machines.yaml`, generato da `scripts/make_dev_split.py`.
+
+D-53 approvata (2026-11-10): `.pyc` tolti dal tracciamento, `dataset/` resta tracciato.
 
 **Gruppo A' — servono prima di F3 e F7:**
 8. ~~Quali segmenti ricevono il contesto nello scoring~~ — **risolta**: D-31 è sostituita da D-32; regole operative in D-20 e D-22.
@@ -78,7 +80,7 @@ soglie mobili solo con `last` [D-24], normalizzazione di SMD su train+test, fatt
 19. Regole di esclusione [D-44].
 20. Secondo dataset [D-45]: conviene sceglierlo molto prima di F10.
 
-**Dipendono dall'utente, senza una fase che le blocchi:** macchine dei numeri preliminari [D-52], file tracciati da git [D-53], scadenze [D-54].
+**Dipendono dall'utente, senza una fase che le blocchi:** scadenze [D-54]. Macchine dei numeri preliminari [D-52] e file tracciati da git [D-53] sono approvate (2026-11-10).
 
 ---
 
@@ -87,15 +89,15 @@ soglie mobili solo con `last` [D-24], normalizzazione di SMD su train+test, fatt
 ### F0 — Riconciliazione, decisioni, ambiente, contiguità
 - **Obiettivo:** documenti coerenti, decisioni del gruppo A registrate, ambiente riproducibile, confine train → test regolato da D-32 (la contiguità non è verificabile e nessuna conclusione primaria ne dipende).
 - **File:**
-  - nuovi: `docs/decisioni.md` (registro, livello 1), `requirements-lock.txt` (versioni esatte da `pip freeze`, generato dall'utente nel suo ambiente [D-55]), `.gitignore` (`__pycache__/`, `.pytest_cache/`, `store/`), `scripts/check_contiguity.py` (facoltativo, solo diagnostica descrittiva [D-32]), `configs/dev_machines.yaml` (lista delle 6 macchine di sviluppo, seed e procedura [D-51]);
+  - nuovi: `docs/decisioni.md` (registro, livello 1), `requirements-lock.txt` (versioni esatte da `pip freeze`, generato dall'utente nel suo ambiente [D-55]), `.gitignore` (`__pycache__/`, `*.pyc`, `.pytest_cache/`, `store/` [D-56]), `scripts/check_contiguity.py` (facoltativo, solo diagnostica descrittiva [D-32]), `scripts/make_dev_split.py` e `configs/dev_machines.yaml` (lista delle 6 macchine di sviluppo, seed e procedura [D-51]), `tests/test_dev_split.py`;
   - da modificare: `CLAUDE.md` (riconciliazione, D-02), `proposta_architettura_target.md` (note di stato e rimandi), `piano_operativo.md` (questo file), `README.md` (istruzioni minime).
 - **Modifiche:**
   - `check_contiguity.py`, se si scrive, legge il dataset in sola lettura e confronta il salto tra l'ultima riga del train e la prima del test con la distribuzione dei salti tra righe consecutive. È solo una diagnostica descrittiva, senza ruolo decisionale [D-32]; i controlli strutturali bloccanti di D-32 si implementano nel manifest (F3);
-  - se la lista delle macchine di sviluppo non esiste già, si estrae qui (2 per gruppo, seed dichiarato, prima di guardare qualsiasi metrica) [D-51].
+  - la lista delle macchine di sviluppo si estrae qui con `scripts/make_dev_split.py`, secondo la procedura di D-51 (2 per gruppo, `machine-1-1` e `machine-3-8` fisse, seed 20261110), senza leggere label, metriche o risultati.
 - **Dipendenze:** nessuna.
-- **Test:** suite esistente verde.
+- **Test:** suite esistente verde, più `tests/test_dev_split.py` (6 + 22 disgiunte, 2 per gruppo, 1-1 e 3-8 presenti, stessa lista a ogni esecuzione, file coerente con la procedura).
 - **Completata quando:** documenti riconciliati e approvati; decisioni del gruppo A registrate (D-32 registrata il 2026-11-09); file di lock presente; lista delle macchine di sviluppo registrata; run di riferimento per M1 identificati [D-50].
-- **Rischi:** il `.gitignore` non rimuove i `.pyc` già tracciati; toglierli dal tracciamento è una scelta dell'utente [D-53].
+- **Rischi:** il lock è provvisorio (installazione globale di Python): prima di M1 va rigenerato da un ambiente virtuale dedicato [D-55].
 - **Impatto sui risultati:** nessuno.
 
 ### F1 — Banco di prova sintetico e snapshot legacy
@@ -209,7 +211,7 @@ soglie mobili solo con `last` [D-24], normalizzazione di SMD su train+test, fatt
   - da modificare: `src/evaluation/rules.py` (diventa un modulo di compatibilità che ri-esporta le funzioni), `src/evaluation/scoring.py` (aggiunta del normalizer robusto), `src/cli.py` (comando `analyze`).
 - **Modifiche:**
   - **6a, parità:** analisi in modalità legacy → stessi `.npz` e stesso summary della pipeline storica;
-  - **6b, estensioni:** AP normalizzata, normalizer robusto [D-11], metriche per evento, ritardo di rilevamento, falsi allarmi al giorno, celle 2×2 (da `protocols.py`), secondo l'elenco fissato in D-34; soglie mobili con storia continua **cal → test** [D-04], fatta degli ultimi `n_past` score validi, senza aggiornamenti nei punti senza score [D-21], e applicate solo con `timestamp_agg: last` [D-24]; supporto di calibrazione in cal secondo D-23 (normalizer su tutte le finestre di cal, soglie statiche e baseline random su [W−1, T_cal−W+1), numero di punti di calibrazione registrato nella tabella lunga); griglia dei fattori; tabella lunga in CSV.gz [D-19]. VUS-PR secondo i tempi fissati in D-34.
+  - **6b, estensioni:** AP normalizzata, normalizer robusto [D-11], metriche per evento, ritardo di rilevamento, falsi allarmi ogni 1.440 punti, celle 2×2 (da `protocols.py`), secondo l'elenco fissato in D-34; soglie mobili con storia continua **cal → test** [D-04], fatta degli ultimi `n_past` score validi, senza aggiornamenti nei punti senza score [D-21], e applicate solo con `timestamp_agg: last` [D-24]; supporto di calibrazione in cal secondo D-23 (normalizer su tutte le finestre di cal, soglie statiche e baseline random su [W−1, T_cal−W+1), numero di punti di calibrazione registrato nella tabella lunga); griglia dei fattori; tabella lunga in CSV.gz [D-19]. VUS-PR secondo i tempi fissati in D-34.
 - **Dipendenze:** F5.
 - **Test:**
   - parità esatta con lo snapshot F1;
@@ -313,4 +315,4 @@ Vincoli aggiuntivi: F3 richiede D-51 (D-31 è sostituita da D-32); F7 richiede D
 
 ## Cosa serve per partire
 
-F0 può iniziare subito con la riconciliazione dei documenti. Per **chiuderla** servono le decisioni del gruppo A in `docs/decisioni.md`: D-33, D-34 e le informazioni dell'utente D-51, D-55, D-56 (D-32 e D-50 sono già approvate). Prima di F3 serve D-51; prima di F7 D-36 e D-25. Il gruppo B serve da F8, il gruppo C da F10.
+F0 è chiusa: le decisioni del gruppo A sono tutte approvate (D-32, D-33, D-34, D-50, D-51, D-55, D-56), così come D-52 e D-53, e i file di F0 sono presenti. Si può iniziare F1. Prima di M1 va rigenerato il lock da un ambiente virtuale dedicato (D-55). Prima di F7 servono D-36 e D-25. Il gruppo B serve da F8, il gruppo C da F10.

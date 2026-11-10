@@ -221,6 +221,38 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
 - **Serve entro:** F0 (registrazione); dichiarazione nei limiti della tesi.
 - **Documenti:** proposta §4.3, §11.
 
+### D-34 · Metriche da implementare in F6 e trattamento di VUS-PR — APPROVATA · 2026-11-10
+- **Decisione:**
+  - **senza soglia:** AP, AP normalizzata (primaria, D-07), ROC-AUC, AP/p;
+  - **con soglia (RQ4):** F1, precision, recall, FPR, falsi allarmi ogni 1.440 punti;
+  - **per evento (RQ4):** event recall, ritardo di rilevamento in punti, segmenti di falso allarme;
+  - **diagnostiche, sempre etichettate come tali:** celle 2×2 PA/oracolo, best-F1 oracolo;
+  - **VUS-PR (secondaria, D-07):** non in F6. Passo separato prima di F10, convalidato contro valori di riferimento
+    calcolati una sola volta con l'implementazione ufficiale in un ambiente separato e salvati come fixture di test.
+    Nessuna nuova dipendenza nel progetto (D-18).
+- **Nota:** "falsi allarmi al giorno" si può riportare nella tesi solo come "ogni 1.440 punti, cioè al giorno assumendo
+  un punto al minuto": la frequenza non è verificabile (D-32).
+- **Collegamenti:** D-07, D-18, D-32. **Serve entro:** F6; VUS-PR entro F10.
+- **Documenti:** proposta §4.7; piano F6, F10.
+
+### D-51 · Lista delle 6 macchine di sviluppo — APPROVATA · 2026-11-10
+- **Decisione:**
+  - **fisse:** `machine-1-1` e `machine-3-8` (già osservate: i loro numeri hanno motivato scelte di protocollo, D-52);
+  - **estratte:** 1 macchina dal gruppo 1 (esclusa 1-1), 2 dal gruppo 2, 1 dal gruppo 3 (esclusa 3-8);
+  - **procedura:** candidati di ogni gruppo ordinati per nome; `numpy.random.default_rng(20261110)`; estrazione senza
+    reinserimento, nell'ordine gruppo 1, 2, 3; nessuna lettura di label, metriche o risultati;
+  - script riproducibile `scripts/make_dev_split.py`; lista in `configs/dev_machines.yaml` con seed e procedura;
+  - le altre 22 macchine sono di valutazione.
+  - Ordinamento lessicografico dei nomi; la regola non si modifica dopo l'estrazione. Le macchine estratte hanno pochi
+    eventi (2-8: 1; 3-11: 3): da considerare in D-41.
+- **Motivazione:** chi è già stato osservato va tra le macchine di sviluppo, così le 22 di valutazione restano mai
+  usate per scelte di protocollo; 2 macchine per gruppo.
+- **Collegamenti:** D-08, D-52. **Serve entro:** F0 (usata dal manifest in F3).
+
+### D-52 · Macchine usate per i numeri preliminari — APPROVATA · 2026-11-10
+- **Decisione:** chiusa da D-51: `machine-1-1` e `machine-3-8` sono macchine di sviluppo.
+- **Limite dichiarato:** l'assegnazione è avvenuta dopo averle osservate; va scritto nella tesi.
+
 ---
 
 ## C. Software e riproducibilità — decisioni approvate
@@ -258,6 +290,13 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
   `src/pipeline/store.py` / `table_schema.py`, così un passaggio futuro a parquet resta una modifica locale.
 - **Documenti:** proposta §5.2, §5.4, §10, §11; piano gruppo A punto 5, F2.
 
+### D-33 · Aggregazioni dei residui da salvare — APPROVATA · 2026-11-10
+- **Decisione:** lo stadio di fit salva i residui per sensore con `window_time_agg` ∈ {`last`, `mean`}. `max` non si salva.
+- **Motivazione:** `last` e `mean` sono i livelli del fattore di design previsti; `max` aumenterebbe lo spazio di circa
+  il 50% e, se servisse, si rigenera dai checkpoint con `residual_cache` senza nuovi fit.
+- **Collegamenti:** D-19, D-42. **Serve entro:** F2 (schema, `fit_key`), F4–F5.
+- **Documenti:** proposta §4.4, §5.4, §8; piano F2, F4, F5.
+
 ### D-50 · Run storici di riferimento per M1 — APPROVATA · 2026-11-10
 - **Decisione:** il riferimento per M1 è la coppia `results/results_tests/results_repro_last_01` /
   `results_repro_mean_01`. `results_repro_last` e `results_repro_mean` restano solo come storico.
@@ -275,6 +314,23 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
 - **Collegamenti:** D-13, D-14, D-17, D-55.
 - **Serve entro:** M1.
 - **Documenti:** `CLAUDE.md` §4; piano gruppo A punto 6, F0, M1.
+
+### D-55 · Ambiente di riferimento e file di lock — APPROVATA · 2026-11-10
+- **Decisione:** ambiente di riferimento = ambiente Windows dell'utente con **Python 3.13.9**, lo stesso per test, M1 e
+  run ufficiali. `requirements-lock.txt` generato con `python -m pip freeze` da quell'ambiente.
+- **Nota:** lock provvisorio, generato dall'installazione globale di Python (contiene pacchetti estranei al progetto).
+  Prima di M1: ambiente virtuale dedicato e lock rigenerato da lì, registrato come aggiornamento di questa voce.
+- **Collegamenti:** D-17, D-18.
+
+### D-56 · Posizione di `store/` e budget di disco — APPROVATA · 2026-11-10
+- **Decisione:** `store/` nella radice del progetto, esclusa da git con `.gitignore`. Budget di disco: 5–10 GB.
+
+### D-53 · File tracciati da git (`.pyc`, dataset) — APPROVATA · 2026-11-10
+- **Decisione:** i `.pyc` non sono tracciati: i 35 file già tracciati sono tolti dal tracciamento con
+  `git rm -r --cached` sulle cartelle `__pycache__` (restano sul disco) e `.gitignore` esclude `__pycache__/` e `*.pyc`.
+  `dataset/` resta tracciato (sola lettura, riproducibilità).
+- **Approvazione:** utente, 2026-11-10, su raccomandazione di Claude Project.
+- **Collegamenti:** D-55, D-56.
 
 ---
 
@@ -294,17 +350,6 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
   (c) altro valore motivato. Criterio scartato: δ ≥ spread del protocollo sugli stessi dati (circolare).
 - **Vincolo:** va fissato prima dei run ufficiali e congelato in `configs/analysis/official.yaml`.
 - **Serve entro:** F10. Il codice di F7 deve trattare δ come parametro, senza valore predefinito.
-
-### D-33 · Aggregazioni dei residui da salvare — APERTA
-- **Opzioni:** `last` e `mean` (raccomandato); `max` opzionale. Influisce sul formato di `residuals.npz` e su `fit_key`.
-- **Serve entro:** F0 (gruppo A).
-
-### D-34 · Metriche da implementare in F6 e trattamento di VUS-PR — APERTA
-- **Da decidere:** se in F6 entrano metriche per evento, ritardo di rilevamento, falsi allarmi al giorno, celle 2×2
-  (raccomandato: sì). Per VUS-PR (approvata come secondaria, D-07): quando implementarla e contro quale riferimento
-  esterno validarla, senza nuove dipendenze (D-18). Proposta: implementazione separata dopo F6, con test contro valori
-  pubblicati da un'implementazione di riferimento.
-- **Serve entro:** F0 (gruppo A) per l'elenco; VUS-PR entro F10.
 
 ### D-36 · Metodo degli intervalli di confidenza e famiglia confermativa — APERTA
 - **Contrasto non risolto:** `piano_tesi_v1.md` prevede bootstrap gerarchico (cluster = gruppo); la proposta raccomanda
@@ -353,27 +398,8 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
 
 ## E. Decisioni aperte che dipendono dall'utente
 
-### D-51 · Lista delle 6 macchine di sviluppo — APERTA — DIPENDE DALL'UTENTE
-- La proposta le dice "già estratte (seed 20261109)", ma nel repository non ce n'è traccia. Se la lista esiste, va
-  registrata qui con procedura e seed. Se non esiste: estrarla in F0, 2 per gruppo, prima di guardare qualsiasi metrica.
-- **Serve entro:** F3 (il manifest separa sviluppo e valutazione), non F8.
-
-### D-52 · Macchine usate per i numeri preliminari della proposta — APERTA — DIPENDE DALL'UTENTE
-- Verificare se `machine-1-1` e `machine-3-8` sono tra quelle di sviluppo. Se non lo sono, va dichiarato tra i limiti
-  (scelte di protocollo motivate da metriche di macchine di valutazione).
-
-### D-53 · File tracciati da git (`.pyc`, dataset) — APERTA — DIPENDE DALL'UTENTE
-- 35 file `.pyc` sono tracciati. Il `.gitignore` di F0 non li rimuove dal tracciamento: `git rm --cached` è una scelta dell'utente.
-
 ### D-54 · Scadenze e tempo disponibile — APERTA — DIPENDE DALL'UTENTE
 - Determinano se F9 e il secondo dataset sono realistici.
-
-### D-55 · Ambiente di riferimento e file di lock — APERTA — DIPENDE DALL'UTENTE
-- `requirements-lock.txt` va generato con `pip freeze` nell'ambiente Windows dell'utente, lo stesso che produrrà M1 e i
-  run ufficiali. Da indicare: versione di Python e ambiente usato.
-
-### D-56 · Posizione di `store/` e budget di disco — APERTA — DIPENDE DALL'UTENTE
-- Stima della proposta: ~5–10 GB. **Serve entro:** F0.
 
 ---
 
