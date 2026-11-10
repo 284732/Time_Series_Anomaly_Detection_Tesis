@@ -407,6 +407,23 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
 ### D-46 · Sensibilità delle proporzioni dello split — APERTA
 - **Opzioni:** nessuna; oppure una sola variante (es. 70/15/15) sulle macchine di sviluppo in F9. **Serve entro:** F9.
 
+### D-57 · PCA a finestre con `n_components` intero: determinismo — APERTA · 2026-11-10
+- **Fatto verificato (codice, piano F2, K6):** con `n_components` intero, `PCADetector` usa `svd_solver="auto"`; con più
+  di 1.000 feature (W·F = 3.800) e poche componenti scikit-learn sceglie il solver randomizzato, e `random_state` vale il
+  seed (`setdefault` in `main.py`). Il modello è marcato deterministico, ma non lo è. Con `n_components` float (0,9,
+  run storici e M1) il solver è `full` e il problema non si presenta. La PCA puntuale (38 feature) usa
+  `covariance_eigh` ed è deterministica.
+- **Impatto:** nessuno sui run storici e su M1. Rilevante per il `fit_key` (il seed è escluso per i modelli
+  deterministici) e per D-41 se la griglia di tuning contiene `n_components` interi.
+- **Opzioni:** (a) forzare `svd_solver="full"`: deterministica, costo maggiore, da misurare; (b) lasciare `auto` e
+  trattare la PCA come non deterministica quando `n_components` è intero (seed nel `fit_key`, varianza tra seed da
+  riportare).
+- **Raccomandazione:** (a). La PCA è il riferimento di RQ2 (D-37): una varianza tra seed dovuta solo al solver
+  aggiungerebbe rumore al confronto senza un significato metodologico.
+- **In F2:** `random_state` esplicito; il validatore rifiuta la combinazione incoerente. Correzione del modello in F4.
+- **Serve entro:** F4 (implementazione), D-41 (griglia).
+- **Collegamenti:** D-37, D-41, `CLAUDE.md` §5.
+
 ---
 
 ## E. Decisioni aperte che dipendono dall'utente
