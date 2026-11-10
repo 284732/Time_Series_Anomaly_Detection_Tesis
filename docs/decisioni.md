@@ -48,6 +48,9 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
 - **Condizione:** l'applicazione al primo tratto del test dipende dall'esito della verifica di contiguità (D-32).
 - **Serve entro:** F3.
 - **Documenti:** `CLAUDE.md` §5; proposta §1, §2, §4.2, §10; piano F3.
+- **Nota di rimando (2026-11-10):** integrata da D-20 (contesto iniziale del test e maschera) e D-22 (coda del test),
+  entrambe subordinate a D-32. La «Condizione» sul primo tratto del test è risolta da D-32: nell'analisi primaria
+  nessun contesto all'inizio del test; il contesto da cal è solo una variante di RQ1a. Il testo sopra resta invariato.
 
 ### D-04 · Il segmento es non entra nell'analisi — APPROVATA · 2026-11-09
 - **Decisione:** la storia delle soglie mobili parte da cal (sequenza cal → test), per tutti i modelli. Il segmento es non
@@ -168,6 +171,56 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
 - **Serve entro:** F3.
 - **Documenti:** `CLAUDE.md` §5; proposta §4.2; piano F3, F6.
 
+### D-23 · Supporto di calibrazione in cal — APPROVATA · 2026-11-10
+- **Decisione:**
+  - **Normalizer degli errori** (storico e robusto, D-11): fittato sui residui di tutte le finestre di scoring di cal
+    (interne a cal, senza contesto, D-32), a livello di finestra, prima della proiezione sui timestamp.
+  - **Soglie statiche e baseline random:** percentile degli score per timestamp di cal sulla maschera
+    M_cal = [W−1, T_cal−W+1), uguale per tutti i modelli, per ogni `timestamp_agg` e per entrambi gli scenari di RQ1a
+    (D-20, D-22).
+  - **Storia delle soglie mobili:** tutti gli score validi di cal in ordine temporale, coda inclusa, poi il test (D-04, D-21).
+  - **Calibrazione di `roll_robust_z`:** percentile dello z su M_cal ∩ {timestamp con almeno `n_past` score validi precedenti}.
+  - In `legacy2` coincide con la pipeline storica: cal inizia allo stesso indice della validation storica
+    (`round(0,8·n)`) in tutte le 28 macchine (verificato con `split_bounds` sulle 28 lunghezze reali).
+  - Il numero di punti di calibrazione per macchina e configurazione si registra nella tabella lunga.
+- **Motivazione:** le finestre di cal sono tutte complete, quindi il normalizer non ha motivo di scartarne; le soglie
+  statiche usano la stessa regola di maschera del test, quindi il quantile è confrontabile per ogni `timestamp_agg`;
+  il supporto non dipende dalla proiezione e non si confonde con essa in RQ1a; parità con lo storico per costruzione.
+- **Limiti dichiarati:** normalizer e soglie stimati sullo stesso segmento (coerente con D-04): la quota di allarmi su cal
+  è esatta per costruzione. Con `n_past` alto la calibrazione di `roll_robust_z` dispone di pochi punti
+  (1.659 sulla macchina più corta con `n_past` = 2.880; vedi D-42).
+- **Collegamenti:** D-04, D-11, D-20, D-21, D-22, D-24, D-32, D-42.
+- **Serve entro:** F6.
+- **Documenti:** proposta §4.4, §4.6; piano F6.
+
+### D-24 · Soglie mobili solo con proiezione causale — APPROVATA · 2026-11-10
+- **Decisione:** le politiche di soglia mobile (`roll_quantile`, `roll_robust_z`) si applicano solo con
+  `timestamp_agg: last`. Con proiezioni offline (`mean`, `max`) si usano solo soglie statiche e metriche senza soglia.
+- **Motivazione:** con proiezioni offline lo score al tempo t dipende da dati fino a t + W − 1; una soglia mobile
+  applicata a quello score non sarebbe causale.
+- **Conseguenza:** il disegno di RQ1a non è un fattoriale completo (manca la combinazione soglia mobile × proiezione
+  offline); il metodo di decomposizione va deciso in D-25.
+- **Collegamenti:** D-21, D-23, D-25, D-42.
+- **Serve entro:** F6.
+- **Documenti:** proposta §4.6, §4.8; piano F6.
+
+### D-26 · Normalizzazione originale di SMD su train+test — APPROVATA · 2026-11-10 (fatto verificato)
+- **Fatto verificato** (2026-11-10, sola lettura di `dataset/`, tolleranza 1e−6): sulle 28 macchine ci sono 1.064 sensori,
+  di cui 175 costanti su train+test. Tutti gli 889 sensori non costanti hanno minimo esattamente 0 e massimo
+  esattamente 1 sull'**unione** train+test; sul solo train questo vale per 186 sensori, sul solo test per 498.
+  Nessun valore esce da [0, 1].
+- **Interpretazione:** i dati distribuiti sono normalizzati min-max per sensore e per macchina usando train e test
+  insieme. Una normalizzazione sul solo train darebbe minimo 0 e massimo 1 sul train per tutti i sensori non costanti,
+  ed è quindi esclusa. La procedura esatta degli autori non è documentata nel repository.
+- **Conseguenze:**
+  - è la «limitazione separata» citata da D-32: il range dei dati dipende anche dal test, per tutti i modelli allo
+    stesso modo; va dichiarata tra i limiti della tesi e non è correggibile a valle;
+  - lo scaler `none` non è un'opzione pulita (proposta §4.3, D-40);
+  - il controllo strutturale «valori in [0, 1]» di D-32 è soddisfatto sui dati reali.
+- **Collegamenti:** D-32, D-40.
+- **Serve entro:** F0 (registrazione); dichiarazione nei limiti della tesi.
+- **Documenti:** proposta §4.3, §11.
+
 ---
 
 ## C. Software e riproducibilità — decisioni approvate
@@ -205,25 +258,42 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
   `src/pipeline/store.py` / `table_schema.py`, così un passaggio futuro a parquet resta una modifica locale.
 - **Documenti:** proposta §5.2, §5.4, §10, §11; piano gruppo A punto 5, F2.
 
+### D-50 · Run storici di riferimento per M1 — APPROVATA · 2026-11-10
+- **Decisione:** il riferimento per M1 è la coppia `results/results_tests/results_repro_last_01` /
+  `results_repro_mean_01`. `results_repro_last` e `results_repro_mean` restano solo come storico.
+- **Approvazione:** utente, 2026-11-10, su raccomandazione di Claude Project.
+- **Fatti verificati (2026-11-10):** `results/` contiene solo `results_tests/`, con quattro run tracciati da git, tutti
+  su `machine-1-1` e `machine-3-8` con seed 42:
+  - `results_repro_last_01` e `results_repro_mean_01`: aggiunti nel commit `efdacc6` (2026-11-09), insieme al nuovo
+    `scaler.py`; le config attuali `configs/config_tests/repro_{last,mean}.yaml` puntano a queste cartelle;
+  - `results_repro_last` e `results_repro_mean`: aggiunti nel commit `843da6a` (2026-11-05), con lo scaler precedente.
+  Il codice di calcolo (`src/`, `main.py`, `aggregate_results.py`, `configs/`) è invariato da `efdacc6` a `e3b28f0`.
+- **Motivazione:** i run `*_01` sono prodotti con lo scaler attuale e con lo stesso codice di calcolo della pipeline
+  storica congelata (D-13), quindi sono il confronto corretto per la parità di M1.
+- **Limite:** le versioni delle librerie usate per produrre i run non sono registrate negli output; in caso di
+  differenze a M1 si applica la procedura di D-17.
+- **Collegamenti:** D-13, D-14, D-17, D-55.
+- **Serve entro:** M1.
+- **Documenti:** `CLAUDE.md` §4; piano gruppo A punto 6, F0, M1.
+
 ---
 
 ## D. Decisioni aperte (metodologiche)
+
+### D-25 · Metodo di decomposizione della varianza per RQ1a — APERTA
+- **Conflitto:** `piano_tesi_v1.md` §2 prevede un modello misto
+  (`metrica ~ modello * fattori + (1|macchina) + (1|gruppo)`); la proposta §4.8 prevede somme dei quadrati su disegno
+  bilanciato, che con D-24 non è più completo.
+- **Opzioni:** (a) decomposizione a blocchi, separata per proiezione causale e offline; (b) modello lineare per disegno
+  sbilanciato (somme dei quadrati di tipo II/III) con numpy/scipy; (c) modello misto, che richiede statsmodels:
+  nuova dipendenza da approvare (D-18).
+- **Serve entro:** F7.
 
 ### D-30 · Margine δ — APERTA
 - **Opzioni:** (a) δ = 0,05 in AP normalizzata; (b) δ ricavato solo dalle macchine di sviluppo con una regola dichiarata;
   (c) altro valore motivato. Criterio scartato: δ ≥ spread del protocollo sugli stessi dati (circolare).
 - **Vincolo:** va fissato prima dei run ufficiali e congelato in `configs/analysis/official.yaml`.
 - **Serve entro:** F10. Il codice di F7 deve trattare δ come parametro, senza valore predefinito.
-
-### D-31 · Quali segmenti ricevono il contesto nello scoring — SOSTITUITA da D-32 · 2026-11-09
-- **Stato:** sostituita da D-32 (2026-11-09). D-32 disciplina ora il contesto iniziale del test e i segmenti; la gestione
-  operativa del contesto iniziale del test e della maschera è in D-20. Il testo seguente resta come riferimento storico.
-- **Problema:** con `window_time_agg: mean`, le prime W−1 finestre di cal con contesto includerebbero residui di es, che
-  per gli AE sono ottimistici; entrerebbero così nel normalizer e nelle soglie, in contrasto con D-04.
-- **Opzioni:** (a) contesto solo per il test (da cal); cal ed es senza contesto (si perdono W−1 punti di cal su ≈4.700);
-  (b) contesto per tutti i segmenti di scoring, dichiarando l'effetto; (c) contesto per cal solo con `window_time_agg: last`.
-- **Raccomandazione:** (a).
-- **Serve entro:** F3.
 
 ### D-33 · Aggregazioni dei residui da salvare — APERTA
 - **Opzioni:** `last` e `mean` (raccomandato); `max` opzionale. Influisce sul formato di `residuals.npz` e su `fit_key`.
@@ -264,6 +334,11 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
   robusto rientrano nel budget. **Serve entro:** F9.
 
 ### D-42 · Livelli dei fattori per RQ1a e RQ1b — APERTA · **Serve entro:** F10.
+- **Nota (2026-11-10, la voce resta APERTA):**
+  - **Raccomandazione per i livelli di `n_past` di `roll_robust_z`:** escludere 2.880 dai livelli ufficiali oppure
+    limitarlo agli esperimenti esplorativi (circa 8 superamenti per un percentile al 99,5% su 1.659 punti autocorrelati).
+  - Già fissato da D-32: fattore "contesto all'inizio del test: sì/no". Vincolo da D-24: soglie mobili solo con `last`.
+
 ### D-43 · Descrittori per RQ3 (massimo 4) e ipotesi — APERTA · **Serve entro:** F10.
 ### D-44 · Regole di esclusione (fit fallito, macchina con un solo evento) — APERTA · **Serve entro:** F10.
 
@@ -277,12 +352,6 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
 ---
 
 ## E. Decisioni aperte che dipendono dall'utente
-
-### D-50 · Run storici di riferimento per M1 — APERTA — DIPENDE DALL'UTENTE
-- Nel repository `results/` contiene solo `results_tests/`. Da confermare: esistenza locale dei run di riproduzione
-  (`results_repro_*_01` nella proposta e nel piano, `results_repro_last` / `results_repro_mean` nel vecchio `CLAUDE.md`),
-  nome esatto, config e commit che li hanno prodotti. Se non esistono: rigenerarli con `main.py` a un commit noto (li lancia l'utente).
-- **Serve entro:** M1 (meglio in F0, per pianificare).
 
 ### D-51 · Lista delle 6 macchine di sviluppo — APERTA — DIPENDE DALL'UTENTE
 - La proposta le dice "già estratte (seed 20261109)", ma nel repository non ce n'è traccia. Se la lista esiste, va
@@ -305,3 +374,17 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
 
 ### D-56 · Posizione di `store/` e budget di disco — APERTA — DIPENDE DALL'UTENTE
 - Stima della proposta: ~5–10 GB. **Serve entro:** F0.
+
+---
+
+## F. Voci sostituite (storico)
+
+### D-31 · Quali segmenti ricevono il contesto nello scoring — SOSTITUITA da D-32 · 2026-11-09
+- **Stato:** sostituita da D-32 (2026-11-09). D-32 disciplina ora il contesto iniziale del test e i segmenti; la gestione
+  operativa del contesto iniziale del test e della maschera è in D-20. Il testo seguente resta come riferimento storico.
+- **Problema:** con `window_time_agg: mean`, le prime W−1 finestre di cal con contesto includerebbero residui di es, che
+  per gli AE sono ottimistici; entrerebbero così nel normalizer e nelle soglie, in contrasto con D-04.
+- **Opzioni:** (a) contesto solo per il test (da cal); cal ed es senza contesto (si perdono W−1 punti di cal su ≈4.700);
+  (b) contesto per tutti i segmenti di scoring, dichiarando l'effetto; (c) contesto per cal solo con `window_time_agg: last`.
+- **Raccomandazione:** (a).
+- **Serve entro:** F3.

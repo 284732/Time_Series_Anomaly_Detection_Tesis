@@ -30,7 +30,7 @@ Questi numeri cambiano alcune premesse di `architettura_repo_v1.md`.
 **Scelte scientifiche chiave:**
 
 1. **Split cronologico in 3 parti** fit / early stopping (es) / calibrazione (cal). La calibrazione serve solo per normalizzazione e soglie.
-2. **Contesto causale per le finestre di scoring [D-03, approvata]:** una finestra che *assegna uno score* può includere gli ultimi W−1 punti del segmento precedente (dati passati e non etichettati); una finestra che *addestra* (o calcola la loss di early stopping) contiene solo dati del proprio segmento. Così ogni timestamp del test ha uno score. Quali segmenti ricevono il contesto è aperto [D-31]; l'applicazione all'inizio del test dipende dalla verifica di contiguità [D-32].
+2. **Contesto causale per le finestre di scoring [D-03, approvata]:** una finestra che *assegna uno score* può includere gli ultimi W−1 punti del segmento precedente (dati passati e non etichettati); una finestra che *addestra* (o calcola la loss di early stopping) contiene solo dati del proprio segmento. Per D-32 lo scoring di es e cal non usa contesto e, nell'analisi primaria, nemmeno l'inizio del test: i primi W−1 punti del test sono esclusi dalla maschera (D-20) e gli ultimi W−1 sempre (D-22). Il contesto da cal all'inizio del test è solo una variante di RQ1a. D-31 è sostituita da D-32.
 3. **Due tipi di fattori metodologici, trattati in modo diverso:**
    - *fattori di design*, che fanno parte del detector (scaler, scoring, aggregazione, politica di soglia): si tarano sulle macchine di sviluppo con budget pari;
    - *fattori di misura*, cioè come si valuta (PA, oracolo, proiezione offline, metrica): li fissa il protocollo, e studiarne la variazione è il cuore di RQ1.
@@ -111,15 +111,15 @@ Perché cal è l'ultimo segmento: con la deriva osservata, è il più simile al 
   - in modalità `legacy2` nessun contesto.
 
   Non è leakage: sono dati passati, non etichettati, e vengono solo trasformati, mai usati per un fit.
-- **Quali segmenti ricevono il contesto [D-31, aperta]:** con `window_time_agg: mean`, le prime finestre di cal con contesto conterrebbero residui di es, ottimistici per gli AE, che finirebbero nel normalizer e nelle soglie (in contrasto con D-04). Raccomandazione: contesto solo per il test (da cal).
-- **Assunzione da verificare in F0 [D-32, aperta]:** in SMD il test segue il train senza interruzioni. I file non hanno timestamp, quindi il controllo numerico è solo un indizio: regola di esito, fonte documentale e comportamento in caso negativo vanno fissati prima di eseguirlo. In caso negativo, niente contesto all'inizio del test.
+- **Contesto e maschere [D-32, D-20, D-22, approvate; D-31 sostituita]:** lo scoring di es e cal non usa mai contesto. Nell'analisi primaria nemmeno l'inizio del test lo usa: maschera del test [W−1, T−W+1). Nella variante di RQ1a l'inizio del test usa il contesto da cal, senza nuovi fit: maschera [0, T−W+1). Dentro ogni scenario tutti i modelli usano la stessa maschera.
+- **Confine train → test [D-32, approvata]:** secondo il README ufficiale di OmniAnomaly il train è la prima metà della serie e il test la seconda; la contiguità è plausibile ma non verificabile, e nessuna conclusione primaria ne dipende. Il manifest applica controlli strutturali bloccanti (lunghezze, 38 sensori, label, valori in [0, 1], hash). Un'eventuale diagnostica del salto tra train e test è solo descrittiva.
 - **Finestre senza copia:** si usa una vista `as_strided` e si convertono in float32 solo a lotti (P8).
 
 ### 4.3 Preprocessing
 
 - **Canonico (proposta, decisione aperta [D-40]):** minmax fittato solo su fit, nessun clip, nessun pavimento. È il comportamento storico, è confrontabile con la letteratura e fa da ponte per la regressione.
 - **Fattore di sensibilità (E4):** {storico, `min_range`, clip [−k, 1+k], standard, robust}. Applicato a tutte le macchine di valutazione per la PCA (costa poco) e con 1 seed per gli AE.
-- **Attenzione:** SMD è distribuito già normalizzato in [0,1]. Non so (e non posso verificarlo dal repo) se gli autori originali abbiano usato anche il test per farlo. Per questo `none` non è un'opzione "pulita" e va interpretato con cautela.
+- **Attenzione:** SMD è distribuito già normalizzato in [0,1], con min-max per sensore calcolato su train+test (verificato sui dati, D-26). Per questo `none` non è un'opzione "pulita" e va interpretato con cautela.
 
 ### 4.4 Residui e score
 
@@ -151,6 +151,11 @@ Tutte le soglie si calibrano su cal e, per le regole mobili, usano la storia con
 - **mobili:** `roll_quantile` e `roll_robust_z` con `n_past` ∈ {360, 720, 1440, 2880}, inizializzate con la storia di cal invece che escludendo un tratto iniziale del test. Cal (≈4.700 punti nella macchina più corta) basta per il `n_past` massimo. Così tutte le regole vengono valutate sull'intero test;
 - **oracolo:** solo come limite superiore diagnostico, sempre etichettato.
 
+Regole approvate:
+- **storia delle soglie mobili [D-21]:** gli ultimi `n_past` score validi; i punti senza score (ad esempio i primi W−1 del test nell'analisi primaria) non la aggiornano;
+- **solo proiezione causale [D-24]:** le soglie mobili si usano solo con `timestamp_agg: last`; con `mean`/`max` si usano solo soglie statiche e metriche senza soglia;
+- **supporto di calibrazione in cal [D-23]:** normalizer su tutte le finestre di cal; soglie statiche e baseline random sulla maschera [W−1, T_cal−W+1); `roll_robust_z` calibrato sulla stessa maschera dopo `n_past` score validi. Con `n_past` = 2.880 restano 1.659 punti di calibrazione sulla macchina più corta (vedi D-42).
+
 ### 4.7 Metriche
 
 | Livello | Metrica | Ruolo |
@@ -177,7 +182,7 @@ Due avvertenze da riportare nella tesi:
    - Regola: superiore / equivalente / inferiore / inconcludente rispetto a δ [D-30, aperto], con IC corretti con Holm sulla famiglia {Conv, LSTM} [D-36].
    - Supporto: test di permutazione a segni casuali (sign-flip) sulla media di Δ; Wilcoxon solo come statistica descrittiva.
 3. **RQ1a (fattori di misura) e RQ1b (fattori di design)** [D-12, approvata]; livelli dei fattori aperti [D-42]. Per RQ1a, disegno fattoriale completo e bilanciato:
-   - decomposizione della varianza con somme dei quadrati classiche. Su un disegno bilanciato è esatta, non richiede statsmodels ed è più trasparente di un modello misto;
+   - decomposizione della varianza con somme dei quadrati classiche. Su un disegno bilanciato è esatta, non richiede statsmodels ed è più trasparente di un modello misto. Con D-24 il disegno non è più un fattoriale completo (manca la combinazione soglia mobile × proiezione offline): il metodo è aperto [D-25];
    - stabilità del ranking con il τ di Kendall tra configurazioni;
    - quota di configurazioni in cui il segno di Δ si inverte.
 4. **RQ3:** al massimo 4 descrittori dichiarati prima (deriva train→test, quota fuori range, rango PCA effettivo, prevalenza/numero di eventi), correlazione di Spearman con IC bootstrap. Con 22 macchine la potenza è bassa, quindi questa parte è esplicitamente esplorativa. Scelta dei descrittori aperta [D-43].
@@ -344,12 +349,12 @@ Marcatori pytest: `slow` e `regression`, esclusi dalla suite veloce. I test di r
 | Decisione | Alternative | Raccomandazione e motivo |
 |---|---|---|
 | Split | 2 parti (attuale) · **3 parti con ES** · 2 parti a epoche fisse · rolling-origin CV | 3 parti: elimina P1 mantenendo un ES per macchina. Epoche fisse come sensibilità; la CV è troppo costosa e poco naturale per serie con deriva |
-| Confini delle finestre | rigidi per segmento · **contesto causale per lo scoring** | contesto: nessun punto del test perso, comparabilità tra W, nessun leakage [D-03, approvata; segmenti con contesto D-31] |
+| Confini delle finestre | rigidi per segmento · **contesto causale per lo scoring** | contesto ammesso per lo scoring [D-03]; nell'analisi primaria nessun contesto all'inizio del test, maschera [W−1, T−W+1) [D-32, D-20, D-22]; il contesto da cal è una variante di RQ1a |
 | Artefatti | a · b · c · d · **b+d** | vedi §8 |
 | Identità | `run_id` con commit · **hash del contenuto + `FIT_CODE_VERSION`** | il commit nella chiave distrugge la cache; va registrato in meta |
 | Tuning | per macchina senza label · **globale su 6 macchine dev con label** · leave-one-group-out · nessuno | dev globale: semplice e pulito. Il leave-one-group-out permetterebbe di valutare su 28 macchine, ma triplica il tuning e produce configurazioni diverse per gruppo |
 | IC | bootstrap gerarchico (3 cluster) · **bootstrap stratificato per gruppo** · modello misto | stratificato: valido con 3 gruppi; gruppo come effetto fisso [D-36, aperta] |
-| Decomposizione RQ1 | modello misto (statsmodels) · **SS su disegno bilanciato** | esatta, trasparente, nessuna dipendenza nuova |
+| Decomposizione RQ1 | modello misto (statsmodels) · **SS su disegno bilanciato** | esatta, trasparente, nessuna dipendenza nuova; con D-24 il disegno non è più completo: metodo aperto [D-25] |
 | Tracciamento | MLflow / DVC · **registro CSV + hash** | proporzionato alla scala del progetto |
 | Config | Hydra · **YAML + dataclass** | nessuna magia, errori espliciti |
 | Tabella lunga | **CSV.gz** · parquet (richiede pyarrow) | CSV.gz [D-19, approvata]; I/O isolato in `store` per un eventuale passaggio futuro |
@@ -373,9 +378,12 @@ Stato al 2026-11-09 (dettagli in `docs/decisioni.md`):
 11. OC-SVM, Isolation Forest e VAE esclusi dai run ufficiali: **approvata** [D-10].
 12. Scadenze: **dipende dall'utente** [D-54].
 
+Aggiornamento al 2026-11-10: confine train → test **approvata** [D-32] (D-31 sostituita); maschere del test **approvate** [D-20, D-22]; soglie mobili **approvate** [D-21, D-24]; supporto di calibrazione in cal **approvata** [D-23]; metodo di decomposizione della varianza per RQ1a **aperta** [D-25]; normalizzazione di SMD su train+test **verificata** [D-26].
+
 **Rischi:**
 
-- L'assunzione di contiguità tra train e test non è verificata, e senza timestamp si può verificare solo indirettamente [D-32].
+- La contiguità tra train e test non è verificabile (non ci sono timestamp); per D-32 nessuna conclusione primaria ne dipende.
+- I dati SMD distribuiti sono normalizzati min-max su train+test (verificato, D-26): è un limite da dichiarare, non correggibile a valle.
 - Il train può contenere anomalie non etichettate.
 - La deriva rende poco informative le metriche a soglia.
 - Le macchine con pochi eventi pesano poco in informazione ma quanto le altre nella media.

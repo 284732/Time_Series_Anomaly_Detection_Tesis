@@ -45,18 +45,23 @@ modelli fuori dal nucleo esclusi [D-10], normalizer robusto come variante [D-11]
 [D-13], verifica di non regressione [D-14], interfaccia di `fit` [D-15], training sintetico nei test [D-16],
 procedura di M1 [D-17], dipendenze [D-18], CSV.gz [D-19].
 
+**Approvate dopo (2026-11-09/10):** confine train → test [D-32], contesto iniziale del test e maschera [D-20],
+soglie mobili e punti senza score [D-21], coda del test esclusa [D-22], supporto di calibrazione in cal [D-23],
+soglie mobili solo con `last` [D-24], normalizzazione di SMD su train+test, fatto verificato [D-26]. D-31 è sostituita da D-32.
+
 **Gruppo A — servono per chiudere F0:**
-1. Criterio della verifica di contiguità e comportamento in caso negativo [D-32].
+1. ~~Criterio della verifica di contiguità e comportamento in caso negativo~~ — **risolta da D-32**: la contiguità non è verificabile e nessuna conclusione primaria ne dipende.
 2. Aggregazioni dei residui da salvare: `last` e `mean` raccomandati, `max` opzionale [D-33].
 3. Elenco delle metriche da implementare in F6; tempi e riferimento di validazione di VUS-PR [D-34].
 4. Posizione di `store/` e budget di disco [D-56, dipende dall'utente].
 5. Ambiente di riferimento per il file di lock [D-55, dipende dall'utente].
-6. Run storici di riferimento per M1 [D-50, dipende dall'utente]: serve saperlo subito per pianificare M1.
+6. ~~Run storici di riferimento per M1~~ — **risolta da D-50** (approvata 2026-11-10): `results_repro_last_01` / `results_repro_mean_01`.
 7. Lista delle 6 macchine di sviluppo [D-51, dipende dall'utente]: serve al manifest di F3.
 
 **Gruppo A' — servono prima di F3 e F7:**
-8. Quali segmenti ricevono il contesto nello scoring [D-31] (prima di F3).
+8. ~~Quali segmenti ricevono il contesto nello scoring~~ — **risolta**: D-31 è sostituita da D-32; regole operative in D-20 e D-22.
 9. Metodo degli IC e famiglia confermativa [D-36] (prima di F7, oppure F7 implementa entrambi i metodi).
+9-bis. Metodo di decomposizione della varianza per RQ1a [D-25] (prima di F7): con D-24 il disegno non è più un fattoriale completo.
 
 **Gruppo B — prima degli esperimenti esplorativi (F8–F9):**
 10. `train_step` [D-38].
@@ -80,16 +85,16 @@ procedura di M1 [D-17], dipendenze [D-18], CSV.gz [D-19].
 ## Fasi
 
 ### F0 — Riconciliazione, decisioni, ambiente, contiguità
-- **Obiettivo:** documenti coerenti, decisioni del gruppo A registrate, ambiente riproducibile, assunzione di contiguità verificata.
+- **Obiettivo:** documenti coerenti, decisioni del gruppo A registrate, ambiente riproducibile, confine train → test regolato da D-32 (la contiguità non è verificabile e nessuna conclusione primaria ne dipende).
 - **File:**
-  - nuovi: `docs/decisioni.md` (registro, livello 1), `requirements-lock.txt` (versioni esatte da `pip freeze`, generato dall'utente nel suo ambiente [D-55]), `.gitignore` (`__pycache__/`, `.pytest_cache/`, `store/`), `scripts/check_contiguity.py`, `configs/dev_machines.yaml` (lista delle 6 macchine di sviluppo, seed e procedura [D-51]);
+  - nuovi: `docs/decisioni.md` (registro, livello 1), `requirements-lock.txt` (versioni esatte da `pip freeze`, generato dall'utente nel suo ambiente [D-55]), `.gitignore` (`__pycache__/`, `.pytest_cache/`, `store/`), `scripts/check_contiguity.py` (facoltativo, solo diagnostica descrittiva [D-32]), `configs/dev_machines.yaml` (lista delle 6 macchine di sviluppo, seed e procedura [D-51]);
   - da modificare: `CLAUDE.md` (riconciliazione, D-02), `proposta_architettura_target.md` (note di stato e rimandi), `piano_operativo.md` (questo file), `README.md` (istruzioni minime).
 - **Modifiche:**
-  - `check_contiguity.py` legge il dataset in sola lettura e confronta il salto tra l'ultima riga del train e la prima del test con la distribuzione dei salti tra righe consecutive. I file non hanno timestamp: l'esito è un indizio, valutato con la regola fissata **prima** di eseguirlo [D-32];
+  - `check_contiguity.py`, se si scrive, legge il dataset in sola lettura e confronta il salto tra l'ultima riga del train e la prima del test con la distribuzione dei salti tra righe consecutive. È solo una diagnostica descrittiva, senza ruolo decisionale [D-32]; i controlli strutturali bloccanti di D-32 si implementano nel manifest (F3);
   - se la lista delle macchine di sviluppo non esiste già, si estrae qui (2 per gruppo, seed dichiarato, prima di guardare qualsiasi metrica) [D-51].
 - **Dipendenze:** nessuna.
 - **Test:** suite esistente verde.
-- **Completata quando:** documenti riconciliati e approvati; decisioni del gruppo A registrate; esito della contiguità documentato; file di lock presente; lista delle macchine di sviluppo registrata; run di riferimento per M1 identificati [D-50].
+- **Completata quando:** documenti riconciliati e approvati; decisioni del gruppo A registrate (D-32 registrata il 2026-11-09); file di lock presente; lista delle macchine di sviluppo registrata; run di riferimento per M1 identificati [D-50].
 - **Rischi:** il `.gitignore` non rimuove i `.pyc` già tracciati; toglierli dal tracciamento è una scelta dell'utente [D-53].
 - **Impatto sui risultati:** nessuno.
 
@@ -134,15 +139,17 @@ procedura di M1 [D-17], dipendenze [D-18], CSV.gz [D-19].
 ### F3 — Segmenti e finestre
 - **Obiettivo:** implementare split e finestre nella nuova pipeline.
 - **File:**
-  - nuovi: `src/data/manifest.py`, `src/data/segments.py` (modalità `legacy2` e `split3`, basate su `preprocessing/split.py`), `src/data/windows.py` (contesto opzionale, viste senza copia, iterazione a lotti, mappa finestra ↔ timestamp); Regola dei confini [D-03]: finestre di fit ed es solo dentro il proprio segmento; contesto solo per lo scoring e solo nei segmenti stabiliti da D-31; nessun contesto in `legacy2`.
+  - nuovi: `src/data/manifest.py`, `src/data/segments.py` (modalità `legacy2` e `split3`, basate su `preprocessing/split.py`), `src/data/windows.py` (contesto opzionale, viste senza copia, iterazione a lotti, mappa finestra ↔ timestamp); Regola dei confini [D-03]: finestre di fit ed es solo dentro il proprio segmento; contesto solo per lo scoring, mai per es e cal, e all'inizio del test solo nella variante di RQ1a [D-32, D-20]; nessun contesto in `legacy2`. Maschere del test: [W−1, T−W+1) nell'analisi primaria, [0, T−W+1) nella variante con contesto, uguali per tutti i modelli dello scenario [D-20, D-22].
   - `src/data/dataset.py` resta invariato.
-- **Dipendenze:** F2; decisioni D-31 (segmenti con contesto) e D-51 (lista delle macchine di sviluppo, usata dal manifest).
+- **Dipendenze:** F2; decisioni D-32, D-20, D-22 (approvate) e D-51 (lista delle macchine di sviluppo, usata dal manifest).
 - **Test:**
   - i segmenti coprono tutto il train, contigui e senza sovrapposizioni;
   - le finestre di fit contengono solo indici del segmento fit;
   - il contesto usa solo indici precedenti;
   - le finestre della loss di early stopping contengono solo indici di es;
-  - i segmenti senza contesto secondo D-31 non ricevono contesto;
+  - es e cal non ricevono mai contesto; il test lo riceve solo nello scenario della variante di RQ1a [D-32, D-20];
+  - maschere del test: primi W−1 punti esclusi nell'analisi primaria e inclusi nella variante, ultimi W−1 sempre esclusi, identiche per tutti i modelli dello scenario [D-20, D-22];
+  - il manifest blocca la pipeline se un controllo strutturale fallisce: differenza tra lunghezze di train e test ≤ 1, 38 sensori, lunghezza delle label = test, valori in [0, 1], hash dei file [D-32];
   - **parità:** in modalità `legacy2` senza contesto, le finestre coincidono con quelle di `main.prepare_machine_data` sul dataset sintetico;
   - il manifest elenca 28 macchine e i 3 gruppi, con 6 di sviluppo e 22 di valutazione disgiunte [D-08, D-51];
   - l'hash dei dati è stabile.
@@ -202,7 +209,7 @@ procedura di M1 [D-17], dipendenze [D-18], CSV.gz [D-19].
   - da modificare: `src/evaluation/rules.py` (diventa un modulo di compatibilità che ri-esporta le funzioni), `src/evaluation/scoring.py` (aggiunta del normalizer robusto), `src/cli.py` (comando `analyze`).
 - **Modifiche:**
   - **6a, parità:** analisi in modalità legacy → stessi `.npz` e stesso summary della pipeline storica;
-  - **6b, estensioni:** AP normalizzata, normalizer robusto [D-11], metriche per evento, ritardo di rilevamento, falsi allarmi al giorno, celle 2×2 (da `protocols.py`), secondo l'elenco fissato in D-34; soglie mobili con storia continua **cal → test** [D-04]; griglia dei fattori; tabella lunga in CSV.gz [D-19]. VUS-PR secondo i tempi fissati in D-34.
+  - **6b, estensioni:** AP normalizzata, normalizer robusto [D-11], metriche per evento, ritardo di rilevamento, falsi allarmi al giorno, celle 2×2 (da `protocols.py`), secondo l'elenco fissato in D-34; soglie mobili con storia continua **cal → test** [D-04], fatta degli ultimi `n_past` score validi, senza aggiornamenti nei punti senza score [D-21], e applicate solo con `timestamp_agg: last` [D-24]; supporto di calibrazione in cal secondo D-23 (normalizer su tutte le finestre di cal, soglie statiche e baseline random su [W−1, T_cal−W+1), numero di punti di calibrazione registrato nella tabella lunga); griglia dei fattori; tabella lunga in CSV.gz [D-19]. VUS-PR secondo i tempi fissati in D-34.
 - **Dipendenze:** F5.
 - **Test:**
   - parità esatta con lo snapshot F1;
@@ -210,6 +217,9 @@ procedura di M1 [D-17], dipendenze [D-18], CSV.gz [D-19].
   - proprietà: l'oracolo è ≥ dell'F1 calibrato, il PA è ≥ del no-PA;
   - le soglie con storia coincidono con quelle senza storia quando la storia è vuota;
   - perturbare il segmento es lascia invariati normalizer, soglie e metriche [D-04];
+  - la storia delle soglie mobili conta solo score validi e salta i punti senza score [D-21]. L'attuale `rules.py` conta per righe: la nuova `thresholds.py` non deve farlo;
+  - le politiche di soglia mobile rifiutano `timestamp_agg` offline [D-24];
+  - il normalizer usa tutte le finestre di cal e le soglie statiche la maschera di cal; in `legacy2` coincidono con la pipeline storica [D-23];
   - le metriche nuove sono verificate su casi calcolati a mano.
 - **Completata quando:** 6a esatta; 6b verde; la tabella lunga rispetta lo schema di F2.
 - **Rischi:** numero di combinazioni della griglia (si stimano circa 15 minuti per l'esperimento ufficiale). Va misurato su dati sintetici e, se serve, parallelizzato per macchina.
@@ -239,7 +249,7 @@ procedura di M1 [D-17], dipendenze [D-18], CSV.gz [D-19].
 - **Impatto sui risultati:** nessuno. **Da qui la pipeline storica non serve più come oracolo**, ma resta disponibile fino a F12.
 
 ### F8 — Nuovo protocollo canonico (cambiamento numerico dichiarato)
-- **Obiettivo:** passare a `split3` 60/20/20 [D-05], contesto causale per lo scoring [D-03, D-31], normalizer e soglie su cal con storia cal → test [D-04], PCA solo su fit [D-06], `max_epochs`/patience secondo D-39, `train_step` secondo D-38, preprocessing secondo D-40.
+- **Obiettivo:** passare a `split3` 60/20/20 [D-05], nessun contesto all'inizio del test nell'analisi primaria e contesto da cal solo nella variante di RQ1a [D-03, D-32, D-20], maschere secondo D-20 e D-22, normalizer e soglie su cal secondo D-23 con storia cal → test [D-04, D-21], PCA solo su fit [D-06], `max_epochs`/patience secondo D-39, `train_step` secondo D-38, preprocessing secondo D-40.
 - **File:**
   - da modificare: `configs/base.yaml` (valori canonici);
   - nuovi: `configs/experiments/protocol_switch_dev.yaml`, test di leakage end-to-end;
@@ -251,7 +261,7 @@ procedura di M1 [D-17], dipendenze [D-18], CSV.gz [D-19].
   - la modalità `legacy2` resta riproducibile, verificata con lo snapshot.
 - **Esperimento (lo lanci tu):** confronto legacy vs canonico sulle 6 macchine dev, con report delle differenze.
 - **Completata quando:** report approvato da te.
-- **Rischi:** con il contesto, la maschera di valutazione cambia: va confrontata anche sulla maschera comune, per separare l'effetto del protocollo da quello della maschera.
+- **Rischi:** nell'analisi primaria la maschera del test coincide con quella storica [W−1, T−W+1) [D-20, D-22] e cal coincide con la validation storica [D-23], quindi il confronto legacy vs canonico avviene sugli stessi timestamp. La variante con contesto cambia la maschera e va confrontata a parte.
 - **Impatto sui risultati:** **sì, dichiarato e documentato.**
 
 ### F9 — Tuning e sensibilità (esperimenti esplorativi)
@@ -295,7 +305,7 @@ F0 → F1 → F2 ─┬→ F3 → F4 → F5 → F6 ─┐
               └→ F7 (in parallelo) ──┴→ M1 → F8 → F9 → F10 → F11 → F12
 ```
 
-Vincoli aggiuntivi: F3 richiede D-31 e D-51; F7 richiede D-36 (oppure implementa entrambi i metodi).
+Vincoli aggiuntivi: F3 richiede D-51 (D-31 è sostituita da D-32); F7 richiede D-36 (oppure implementa entrambi i metodi) e D-25.
 
 - **Si può interrompere in qualunque punto:** fino a M1 nessun risultato cambia e la pipeline storica resta intatta. Ogni fase è un branch e un commit separato, su tua richiesta.
 - **`CLAUDE.md` va aggiornato tre volte:** in F0 (riconciliazione, D-02), dopo M1 (la nuova pipeline diventa quella di riferimento) e dopo F8 (il protocollo canonico cambia). Ogni nuova decisione si registra prima in `docs/decisioni.md`.
@@ -303,4 +313,4 @@ Vincoli aggiuntivi: F3 richiede D-31 e D-51; F7 richiede D-36 (oppure implementa
 
 ## Cosa serve per partire
 
-F0 può iniziare subito con la riconciliazione dei documenti. Per **chiuderla** servono le decisioni del gruppo A in `docs/decisioni.md`: D-32, D-33, D-34 e le informazioni dell'utente D-50, D-51, D-55, D-56. Prima di F3 servono D-31 e D-51; prima di F7 D-36. Il gruppo B serve da F8, il gruppo C da F10.
+F0 può iniziare subito con la riconciliazione dei documenti. Per **chiuderla** servono le decisioni del gruppo A in `docs/decisioni.md`: D-33, D-34 e le informazioni dell'utente D-51, D-55, D-56 (D-32 e D-50 sono già approvate). Prima di F3 serve D-51; prima di F7 D-36 e D-25. Il gruppo B serve da F8, il gruppo C da F10.

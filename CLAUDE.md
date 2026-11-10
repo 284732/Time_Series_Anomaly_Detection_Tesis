@@ -91,14 +91,15 @@ Problemi noti (da risolvere nella nuova pipeline, non da preservare):
 Descritta in `proposta_architettura_target.md` e realizzata secondo `piano_operativo.md`: stadio di fit
 (checkpoint + residui per sensore, `fit_key` = hash della config rilevante + `FIT_CODE_VERSION`), stadio di
 analisi (nessun fit, tabella lunga), stadio di statistica e report. Le scelte già approvate sono in
-`docs/decisioni.md` (D-03…D-19).
+`docs/decisioni.md` (D-03…D-24, D-26, D-32); quelle ancora aperte sono nelle sezioni D ed E del registro.
 
 ## 4. Protezione di dataset, risultati e configurazioni storiche
 
 - `dataset/` è **di sola lettura**: mai modificare, spostare, rinominare, riscrivere o rigenerare file.
 - `results/` è **di sola lettura**: mai modificare o cancellare risultati esistenti, anche se sembrano obsoleti.
-  I run di riproduzione storici usati come riferimento per M1 sono identificati in D-50 (decisione aperta:
-  nome, config e commit da confermare).
+  Riferimento per M1 (D-50): `results/results_tests/results_repro_last_01` e `results_repro_mean_01` (commit `efdacc6`,
+  scaler attuale, codice di calcolo invariato da allora). `results_repro_last` e `results_repro_mean` (commit `843da6a`)
+  restano solo come storico. Nessuno dei quattro si modifica.
 - Le config di riproduzione in `configs/config_tests/` non si modificano: per un nuovo esperimento se ne crea una nuova.
 - Non lanciare training, esperimenti o `main.py` su **dati reali** senza richiesta esplicita dell'utente.
   I run lunghi li lancia l'utente.
@@ -134,20 +135,28 @@ La PCA si fitta solo su fit (D-06).
   - le finestre di **addestramento** (fit) e quelle usate per la **loss di early stopping** (es) contengono solo
     dati del proprio segmento e non attraversano mai un confine;
   - le finestre di **scoring** possono includere come contesto gli ultimi W−1 punti del segmento immediatamente
-    precedente: dati passati, senza label, mai usati per un fit. Quali segmenti ricevono il contesto è fissato in
-    D-31 (decisione aperta);
+    precedente: dati passati, senza label, mai usati per un fit. Per D-32 lo scoring di es e di cal non usa mai
+    contesto; all'inizio del test il contesto (da cal) si usa solo nella variante di RQ1a, mai nell'analisi primaria (D-20);
   - in modalità `legacy2` le finestre restano senza contesto, come nella pipeline storica.
 - Lo stesso segmento non deve servire a due scopi che si influenzano (es. early stopping e soglia); dove succede,
   va dichiarato e risolto.
 - Iperparametri e scelte di protocollo non si tarano guardando le metriche delle macchine di valutazione.
   Le 6 macchine di sviluppo e le 22 di valutazione (D-08) restano separate; la lista è in D-51.
+- **Maschere e supporto di calibrazione:**
+  - test (D-20, D-22): primi W−1 punti esclusi nell'analisi primaria e inclusi nella variante con contesto; ultimi W−1
+    punti sempre esclusi; dentro ogni scenario tutti i modelli usano la stessa maschera;
+  - cal (D-23): normalizer su tutte le finestre di cal; soglie statiche e baseline random sulla maschera
+    [W−1, T_cal−W+1); storia delle soglie mobili = tutti gli score validi di cal.
+- **Limite non correggibile (D-26):** i dati SMD distribuiti sono normalizzati min-max su train+test (verificato);
+  va dichiarato tra i limiti, e lo scaler `none` non è un'opzione pulita.
 - Ogni nuovo componente che fa `fit` deve avere un test che dimostri che non vede dati futuri, di test o di es
   (quando non deve).
 
 ### Causalità
 - Con `timestamp_agg: last` lo score al tempo t usa solo dati fino a t. `mean`/`max` sono offline e vanno dichiarati tali.
 - Le regole di soglia causali (`rules.py`) usano solo score passati (`shift(1)`): mantenerlo. La storia iniziale
-  delle soglie mobili viene da cal (D-04).
+  delle soglie mobili viene da cal (D-04); `n_past` conta gli ultimi score validi e i punti senza score non aggiornano
+  la storia (D-21). Le soglie mobili si usano solo con `timestamp_agg: last` (D-24).
 - I test di causalità esistenti (`tests/test_protocol.py`, `tests/test_rules.py`) non si indeboliscono né si rimuovono.
 - Non confondere `window_time_agg` (aggregazione dell'errore dentro la finestra) con `timestamp_agg`
   (proiezione finestra→timestamp): stessi valori `last`/`mean`, significati diversi.
