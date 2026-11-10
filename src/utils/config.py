@@ -89,9 +89,35 @@ def merge_layers(*layers: Dict[str, Any]) -> Dict[str, Any]:
     return out
 
 
-def _read_yaml(path: Path) -> Dict[str, Any]:
+class _UniqueKeyLoader(yaml.SafeLoader):
+    """SafeLoader che rifiuta le chiavi duplicate in una mappa (``safe_load`` terrebbe l'ultima in silenzio)."""
+
+    def construct_mapping(self, node, deep=False):
+        seen = set()
+        for key_node, _ in node.value:
+            key = self.construct_object(key_node, deep=deep)
+            try:
+                dup = key in seen
+            except TypeError:       # chiave non hashable: ci pensa il costruttore standard
+                dup = False
+            if dup:
+                raise _schema.ConfigError(
+                    f"chiave YAML duplicata {key!r} (riga {key_node.start_mark.line + 1})")
+            seen.add(key)
+        return super().construct_mapping(node, deep=deep)
+
+
+def load_yaml_strict(path: Union[str, Path]) -> Any:
+    """Legge un file YAML con ``SafeLoader`` rifiutando le chiavi duplicate (``ConfigError``)."""
     with open(path, "r", encoding="utf-8") as fh:
-        data = yaml.safe_load(fh)
+        try:
+            return yaml.load(fh, Loader=_UniqueKeyLoader)
+        except _schema.ConfigError as exc:
+            raise _schema.ConfigError(f"{path}: {exc}") from None
+
+
+def _read_yaml(path: Path) -> Dict[str, Any]:
+    data = load_yaml_strict(path)
     if data is None:
         return {}
     if not isinstance(data, dict):
