@@ -120,7 +120,7 @@ D-53 approvata (2026-11-10): `.pyc` tolti dal tracciamento, `dataset/` resta tra
 ### F2 — Config, provenance, archivio, schema della tabella
 - **Obiettivo:** infrastruttura che non tocca alcun calcolo.
 - **File:**
-  - nuovi: `src/utils/schema.py` (dataclass della configurazione), `src/utils/provenance.py` (include il numero di thread di torch [D-17]), `src/utils/logging.py`, `src/pipeline/store.py`, `src/pipeline/table_schema.py`, `configs/base.yaml`, `configs/models/*.yaml` (valori storici);
+  - nuovi: `src/utils/schema.py` (dataclass della configurazione), `src/utils/provenance.py` (include il numero di thread di torch e `threadpoolctl.threadpool_info()` senza i percorsi dei file: backend BLAS/OpenMP, versione, numero di thread [D-17]), `src/utils/logging.py`, `src/pipeline/store.py`, `src/pipeline/table_schema.py`, `configs/base.yaml`, `configs/models/*.yaml` (valori storici);
   - da modificare: `src/utils/config.py` (aggiunte: merge, validazione, hash; `load_config` resta invariato per `main.py`).
 - **Modifiche:**
   - `fit_key` = hash canonico del sottoinsieme della config rilevante per il fit, più `FIT_CODE_VERSION`; le aggregazioni dei residui salvate [D-33] fanno parte della config rilevante;
@@ -135,7 +135,9 @@ D-53 approvata (2026-11-10): `.pyc` tolti dal tracciamento, `dataset/` resta tra
   - il registro è a sola aggiunta;
   - provenance in un repository modificato.
 - **Completata quando:** test verdi e snapshot legacy (F1) invariato.
-- **Rischi:** uno schema troppo rigido può rifiutare chiavi legittime. Le config legacy non passano da questo schema.
+- **Rischi:**
+  - uno schema troppo rigido può rifiutare chiavi legittime. Le config legacy non passano da questo schema.
+  - fuori dai test l'ambiente usa 8 thread per BLAS e 4 per torch (misurato in F1); i run storici di M1 sono stati fatti così, quindi la provenance deve registrare anche i thread di BLAS, altrimenti una divergenza di qualche ULP sulla PCA in M1 non è diagnosticabile [D-17].
 - **Impatto sui risultati:** nessuno.
 
 ### F3 — Segmenti e finestre

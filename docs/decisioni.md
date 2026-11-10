@@ -372,6 +372,19 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
 ### D-40 · Preprocessing canonico — APERTA
 - **Opzioni:** storico (minmax su fit, senza clip né pavimento; raccomandato) oppure con pavimento o clip.
   **Serve entro:** F8.
+- **Nota (2026-11-10, la voce resta APERTA):**
+  - **Osservazione su dati sintetici (F1):** nel banco di prova sintetico un sensore quasi costante nel train
+    (deviazione 0,05 nel test) dopo lo scaler minmax senza pavimento (`min_range = 0`) arrivava a ±27 e dominava
+    tutti gli score per finestra: PCA a finestre e AE avevano AUC e AP vicine al caso e le 4 varianti di scoring erano
+    quasi identiche. Il generatore è stato ritarato (2,5 volte la deviazione del train, circa ±1,9) solo perché lo
+    snapshot distinguesse i percorsi di scoring.
+  - **Ipotesi (non verificata su SMD):** su alcune macchine reali l'amplificazione 1/range dei sensori quasi costanti
+    nel train potrebbe penalizzare PCA a finestre e AE rispetto alle baseline. Se confermata, è un artefatto del
+    protocollo pertinente alla domanda della tesi, e indebolisce la raccomandazione "storico, senza pavimento".
+  - **Verifica proposta, prima di decidere D-40:** in sola lettura su `dataset/`, per ogni macchina e sensore, range
+    nel train, range nel test e valore massimo assoluto dopo lo scaler storico; contare i sensori con valore massimo
+    maggiore di 2 nel test. Nessun training. Gli esiti si guardano prima solo sulle 6 macchine di sviluppo [D-51].
+  - **Collegamenti:** F1, F8, D-26.
 
 ### D-41 · Budget di tuning — APERTA
 - **Da decidere:** K per famiglia (proposta 8), griglie, criterio di selezione (proposta: AP normalizzata media sulle 6
