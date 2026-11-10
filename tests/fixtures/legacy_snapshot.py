@@ -233,8 +233,15 @@ def canonical_json_sha256(obj: Any) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+def line_ending_independent_sha256(data: bytes) -> str:
+    """sha256 dei byte dopo aver sostituito CRLF con LF (nessuna decodifica né altra trasformazione)."""
+    return hashlib.sha256(data.replace(b"\r\n", b"\n")).hexdigest()
+
+
 def main_py_sha256() -> str:
-    return hashlib.sha256(MAIN_PY.read_bytes()).hexdigest()
+    """sha256 di main.py indipendente dai fine riga: con ``core.autocrlf`` il file su disco è CRLF
+    mentre nel repository è LF, e l'hash non deve dipendere da come git lo ha estratto."""
+    return line_ending_independent_sha256(MAIN_PY.read_bytes())
 
 
 def _main_py_commit() -> Optional[str]:

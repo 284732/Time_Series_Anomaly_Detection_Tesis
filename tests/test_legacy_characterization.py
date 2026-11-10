@@ -5,7 +5,8 @@ Esegue ``main.run_experiment`` sul dataset sintetico (2 macchine, 6 sensori) con
 (``window_time_agg`` last / mean, seed [42, 43]) e confronta il risultato con lo snapshot
 ``tests/golden/legacy_synth.json``, a tolleranza zero. Tutti gli output stanno in ``tmp_path``.
 
-Lo snapshot è legato all'ambiente (lock D-55) e a main.py (sha256 del contenuto): se cambiano le
+Lo snapshot è legato all'ambiente (lock D-55) e a main.py (sha256 dei byte dopo aver sostituito CRLF
+con LF, senza decodifica né altre trasformazioni: indipendente da ``core.autocrlf``): se cambiano le
 versioni delle librerie, il backend BLAS o main.py, il test fallisce (non viene saltato).
 
 Procedura di rigenerazione (comando esplicito, mai eseguito da pytest):

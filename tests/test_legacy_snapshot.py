@@ -8,7 +8,8 @@ import pytest
 
 import tests.test_legacy_characterization as charac
 from tests.fixtures.legacy_snapshot import (
-    array_summary, artifact_key, compare_arrays, compare_snapshots, key_str,
+    MAIN_PY, array_summary, artifact_key, compare_arrays, compare_snapshots, key_str,
+    line_ending_independent_sha256, main_py_sha256,
 )
 from tests.fixtures.synth_smd import CONSTANT_SENSOR, CONSTANT_VALUE, MACHINES, generate_machine
 
@@ -125,6 +126,22 @@ def test_artifact_key_parses_names_and_takes_aggs_from_run_config():
     assert kind2 == "metrics_json" and key_str(key2) != key_str(key)
     with pytest.raises(ValueError):
         artifact_key("machine-9-2", "plot.png", "last", "last")
+
+
+# --- hash di main.py -------------------------------------------------------
+def test_main_py_hash_ignores_line_endings_but_not_content():
+    lf = b'import x\n\ndef f():\n    return "a"\n'
+    crlf = lf.replace(b"\n", b"\r\n")
+    assert line_ending_independent_sha256(lf) == line_ending_independent_sha256(crlf)
+    one_byte = lf.replace(b'"a"', b'"b"')
+    assert line_ending_independent_sha256(one_byte) != line_ending_independent_sha256(lf)
+    assert line_ending_independent_sha256(b"a\rb") != line_ending_independent_sha256(b"a\nb")  # CR solo: invariato
+
+
+def test_main_py_hash_matches_file_in_both_line_endings():
+    data = MAIN_PY.read_bytes()
+    lf = data.replace(b"\r\n", b"\n")
+    assert main_py_sha256() == line_ending_independent_sha256(lf.replace(b"\n", b"\r\n"))
 
 
 # --- --write-golden --------------------------------------------------------
