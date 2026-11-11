@@ -2,10 +2,11 @@
 Rolling z-score baseline: the simplest causal detector for multivariate sensors.
 """
 
-from typing import Any, Dict, Optional
+from pathlib import Path
+from typing import Any, Dict, Optional, Sequence, Union
 import numpy as np
 
-from src.models.base import BaseAnomalyDetector
+from src.models.base import BaseAnomalyDetector, FitInfo
 
 
 class RollingZScoreDetector(BaseAnomalyDetector):
@@ -39,6 +40,7 @@ class RollingZScoreDetector(BaseAnomalyDetector):
         if X.ndim != 3:
             raise ValueError(f"RollingZScore requires 3D windows (N, W, F), got shape {X.shape}")
         self.is_fitted = True
+        self.fit_info_ = FitInfo(n_fit_samples=len(X), fit_seconds=0.0)   # nessun parametro appreso
         return self
 
     def score_anomalies(self, X: np.ndarray) -> np.ndarray:
@@ -54,3 +56,30 @@ class RollingZScoreDetector(BaseAnomalyDetector):
 
         k = min(self.top_k, z.shape[1])
         return np.partition(z, -k, axis=1)[:, -k:].mean(axis=1)
+
+    # ------------------------------------------------------------------ F4: aggiunte (D-33, D-64, D-66, D-67)
+    def residuals(self, X: np.ndarray, aggs: Sequence[str]) -> Dict[str, np.ndarray]:
+        """|z| per sensore dell'ultimo punto, (N, F): stessa formula di ``score_anomalies``, che ne prende la
+        media dei ``top_k`` più grandi. Solo ``last`` (nota su D-33)."""
+        self._check_residual_aggs(aggs)
+        if not self.is_fitted:
+            raise RuntimeError(f"Model {self.name} is not fitted yet.")
+        if X.ndim != 3 or X.shape[1] < 3:
+            raise ValueError(f"Expected windows (N, W>=3, F), got shape {X.shape}")
+        history, last = X[:, :-1, :], X[:, -1, :]
+        mu = history.mean(axis=1)
+        sd = np.maximum(history.std(axis=1), self.eps)
+        return {"last": np.abs(last - mu) / sd}
+
+    @property
+    def legacy_score_block(self) -> Dict[str, Optional[int]]:
+        return {"last": None}   # un solo blocco (D-64)
+
+    def save(self, path: Union[str, Path]) -> None:
+        self._write_checkpoint(path, {})                     # top_k ed eps stanno nella config
+
+    @classmethod
+    def load(cls, path: Union[str, Path], allow_version_mismatch: bool = False) -> "RollingZScoreDetector":
+        model, _, _ = cls._read_checkpoint(path, allow_version_mismatch)
+        model.is_fitted = True
+        return model

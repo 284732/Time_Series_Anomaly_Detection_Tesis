@@ -488,6 +488,21 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
     F5 può allentarla solo con una decisione esplicita;
   - approvazione: utente, 2026-11-11, su raccomandazione di Claude Project (piano F4, C7; estensione a `split3`
     decisa dall'utente il 2026-11-11, passo 2).
+- **Nota di rimando (2026-11-11, F4 passo 3, il testo sopra resta invariato): layout dei lotti.**
+  - **Fatto verificato:** `create_sliding_windows` (`main.py`) fa `as_strided(...).astype(np.float32)`, e `astype`
+    conserva l'ordine dei passi: le finestre storiche non sono C-contigue (lungo la finestra i valori sono contigui,
+    passi `(80, 4, ...)` con 6 sensori). `iter_batches` (F3) produce copie C-contigue. Con valori identici,
+    `mean(axis=1)` di numpy somma in un altro ordine e cambia l'ultimo bit: i residui di `input_norm` (`mean`) e del
+    rolling z-score differivano da quelli storici. Le due PCA non ne risentono (copiano in ordine C con `reshape`).
+    Gli array scalati di F3 hanno già i passi di quelli di `main.py`.
+  - **Decisione** (utente, 2026-11-11, su raccomandazione di Claude Project): `compute_residuals` costruisce i lotti come
+    `create_sliding_windows` (`view[a:b].astype(np.float32)`, ordine dei passi conservato), in entrambe le modalità,
+    così in F8 la differenza tra `legacy2` e `split3` non contiene un effetto di layout. `iter_batches` resta invariato
+    e non è usato per lo scoring dei residui.
+  - **Limite dei controlli esistenti:** il golden T0 e la parità di F3 confrontano i valori, non i passi, quindi non
+    rilevano differenze di layout. La verifica del layout è affidata a `tests/test_f4_layout.py`: passi dei lotti di
+    `compute_residuals` contro le finestre di `main.prepare_machine_data`, e passi degli array scalati di F3 contro
+    quelli di `main.py` per tutti gli `scaler_type`.
 
 ### D-66 · Tipo numerico dei residui — APPROVATA · 2026-11-11
 - **Decisione:** `residuals()` restituisce il tipo nativo di `score_features` del modello, senza conversioni. Il formato

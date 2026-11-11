@@ -62,6 +62,61 @@ class FitInfo:
                    val_loss=tuple(float(v) for v in history.get("val_loss", ())), **kwargs)
 
 
+# ---------------------------------------------------------------------- checkpoint (D-67)
+CHECKPOINT_FORMAT = 1
+CHECKPOINT_JSON = "checkpoint.json"
+STATE_NPZ = "state.npz"
+
+
+def checkpoint_versions() -> Dict[str, str]:
+    """Versioni confrontate esattamente da ``load`` (lock D-55)."""
+    import platform
+    import sklearn
+    return {"python": platform.python_version(), "numpy": np.__version__, "torch": torch.__version__,
+            "scikit-learn": sklearn.__version__}
+
+
+def _registry_name(cls: type) -> Optional[str]:
+    """Nome del modello in ``schema.MODEL_SCHEMAS`` (unica fonte, D-68), oppure ``None``."""
+    from src.utils import schema as _schema
+    path = f"{cls.__module__}:{cls.__qualname__}"
+    names = [n for n, s in _schema.MODEL_SCHEMAS.items() if s.class_path == path]
+    return names[0] if names else None
+
+
+def sklearn_state(est: Any) -> Tuple[Dict[str, Any], Dict[str, np.ndarray]]:
+    """Stato di un estimatore scikit-learn fittato senza pickle (D-67): ``get_params()`` e attributi fittati.
+
+    Array e scalari numpy vanno nel ``.npz`` (tipo esatto conservato); int, float, str, bool e None in JSON.
+    Gli attributi privati (``_...``, per la PCA ``_fit_svd_solver``) sono elencati a parte.
+    """
+    params = est.get_params(deep=False)
+    attrs, arrays, private = {}, {}, []
+    for k, v in vars(est).items():
+        if k in params:
+            continue
+        if isinstance(v, (np.ndarray, np.generic)):
+            arrays[k] = np.asarray(v)
+        elif v is None or isinstance(v, (bool, int, float, str)):
+            attrs[k] = v
+        else:
+            raise TypeError(f"{type(est).__name__}.{k}: tipo {type(v).__name__} non salvabile senza pickle")
+        if k.startswith("_"):
+            private.append(k)
+    scalars = sorted(k for k, a in arrays.items() if a.ndim == 0 and isinstance(getattr(est, k), np.generic))
+    return {"params": params, "attrs": attrs, "scalar_arrays": scalars, "private_attrs": sorted(private)}, arrays
+
+
+def sklearn_restore(est_cls: type, state: Dict[str, Any], arrays: Dict[str, np.ndarray]) -> Any:
+    """Ricostruisce l'estimatore da ``sklearn_state`` (stessi attributi, stessi tipi)."""
+    est = est_cls(**state["params"])
+    for k, v in state["attrs"].items():
+        setattr(est, k, v)
+    for k, a in arrays.items():
+        setattr(est, k, a[()] if k in state["scalar_arrays"] else a)
+    return est
+
+
 class BaseAnomalyDetector(ABC):
     """
     Abstract Base Class ensuring a unified interface for both traditional
@@ -191,6 +246,78 @@ class BaseAnomalyDetector(ABC):
         """Ricarica un checkpoint scritto da ``save`` (D-67)."""
         raise NotImplementedError(f"{cls.__name__}.load: non disponibile, il modello è fuori dal nucleo "
                                   "della nuova pipeline (D-10, D-68)")
+
+    # ------------------------------------------------------------------ checkpoint (D-67): parti comuni
+    def _class_path(self) -> str:
+        return f"{type(self).__module__}:{type(self).__qualname__}"
+
+    def _write_checkpoint(self, path: Union[str, Path], state: Dict[str, Any],
+                          arrays: Optional[Dict[str, np.ndarray]] = None) -> Path:
+        """Scrive ``checkpoint.json`` (+ ``state.npz`` se ci sono array) in una cartella nuova o vuota."""
+        import json
+        import torch as _torch
+        from src.utils import schema as _schema
+        if not self.is_fitted:
+            raise RuntimeError(f"{self.name}: modello non addestrato, niente da salvare")
+        path = Path(path)
+        if path.exists() and (not path.is_dir() or any(path.iterdir())):
+            raise FileExistsError(f"{path}: la cartella del checkpoint esiste e non è vuota (D-67)")
+        path.mkdir(parents=True, exist_ok=True)
+        if arrays:
+            np.savez(path / STATE_NPZ, **arrays)
+        fit_info = getattr(self, "fit_info_", None)
+        meta = {
+            "checkpoint_format": CHECKPOINT_FORMAT,
+            "fit_code_version": _schema.FIT_CODE_VERSION,
+            "model": _registry_name(type(self)),
+            "class_path": self._class_path(),
+            "name": self.name,
+            "config": self.config,
+            "fit_info": None if fit_info is None else fit_info.to_dict(),
+            "versions": checkpoint_versions(),
+            "torch_num_threads": _torch.get_num_threads(),
+            "state": state,
+            "state_arrays": sorted(arrays) if arrays else [],
+        }
+        (path / CHECKPOINT_JSON).write_text(json.dumps(meta, indent=1, sort_keys=True, allow_nan=False) + "\n",
+                                            encoding="utf-8")
+        return path
+
+    @classmethod
+    def _read_checkpoint(cls, path: Union[str, Path], allow_version_mismatch: bool
+                         ) -> Tuple["BaseAnomalyDetector", Dict[str, Any], Dict[str, np.ndarray]]:
+        """Legge e controlla ``checkpoint.json``; restituisce (istanza non ancora fittata, meta, array)."""
+        import json
+        import warnings
+        from src.utils import schema as _schema
+        path = Path(path)
+        meta = json.loads((path / CHECKPOINT_JSON).read_text(encoding="utf-8"))
+        if meta.get("checkpoint_format") != CHECKPOINT_FORMAT:
+            raise ValueError(f"{path}: formato di checkpoint {meta.get('checkpoint_format')!r} sconosciuto, "
+                             f"atteso {CHECKPOINT_FORMAT} (D-67)")
+        if meta["fit_code_version"] != _schema.FIT_CODE_VERSION:
+            raise ValueError(f"{path}: fit_code_version {meta['fit_code_version']} diversa da quella corrente "
+                             f"{_schema.FIT_CODE_VERSION} (D-67)")
+        expected = f"{cls.__module__}:{cls.__qualname__}"
+        if meta["class_path"] != expected:
+            raise ValueError(f"{path}: checkpoint di {meta['class_path']}, non di {expected} (D-67)")
+        current = checkpoint_versions()
+        diff = {k: (meta["versions"].get(k), current[k]) for k in current if meta["versions"].get(k) != current[k]}
+        if diff and not allow_version_mismatch:
+            raise ValueError(f"{path}: versioni diverse da quelle del checkpoint {diff} (registrate, correnti); "
+                             "usare allow_version_mismatch=True solo consapevolmente (D-55, D-67)")
+        if diff:
+            warnings.warn(f"{path}: checkpoint caricato con versioni diverse {diff} (D-67)", RuntimeWarning)
+        model = cls(name=meta["name"], config=meta["config"])
+        model.loaded_with_version_mismatch = bool(diff)
+        model.fit_info_ = None if meta["fit_info"] is None else FitInfo.from_dict(meta["fit_info"])
+        arrays: Dict[str, np.ndarray] = {}
+        if meta["state_arrays"]:
+            with np.load(path / STATE_NPZ, allow_pickle=False) as z:
+                arrays = {k: z[k] for k in z.files}
+            if sorted(arrays) != meta["state_arrays"]:
+                raise ValueError(f"{path}: array di stato diversi da quelli dichiarati (D-67)")
+        return model, meta, arrays
 
     def _check_residual_aggs(self, aggs: Sequence[str]) -> Tuple[str, ...]:
         """Aggregazioni richieste: non vuote, senza duplicati, tra quelle del modello (D-33)."""

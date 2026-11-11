@@ -10,10 +10,11 @@ di decine o centinaia di volte nel test (vedi notebook, sezione 4) e dominano qu
 Il risultato dipende quindi dalla scalatura scelta e va letto insieme ad essa.
 """
 
-from typing import Any, Dict, Optional
+from pathlib import Path
+from typing import Any, Dict, Optional, Sequence, Union
 import numpy as np
 
-from src.models.base import BaseAnomalyDetector
+from src.models.base import BaseAnomalyDetector, FitInfo
 
 
 class InputNormDetector(BaseAnomalyDetector):
@@ -21,6 +22,7 @@ class InputNormDetector(BaseAnomalyDetector):
 
     deterministic = True        # nessun parametro, nessun seed
     has_feature_scores = True   # espone score_features: stesse varianti (raw / z, mean / max / top-k)
+    residual_aggs = ("last", "mean")   # F4 (D-33, D-68)
 
     def __init__(self, name: str = "InputNorm", config: Optional[Dict[str, Any]] = None):
         super().__init__(name=name, config=config or {})
@@ -30,6 +32,7 @@ class InputNormDetector(BaseAnomalyDetector):
         if X.ndim != 3:
             raise ValueError(f"InputNorm requires 3D windows (N, W, F), got shape {X.shape}")
         self.is_fitted = True
+        self.fit_info_ = FitInfo(n_fit_samples=len(X), fit_seconds=0.0)   # nessun parametro appreso
         return self
 
     def score_features(self, X: np.ndarray, time_agg: str = "mean") -> np.ndarray:
@@ -47,3 +50,21 @@ class InputNormDetector(BaseAnomalyDetector):
 
     def score_anomalies(self, X: np.ndarray) -> np.ndarray:
         return self.score_features(X, time_agg="mean").mean(axis=1)
+
+    # ------------------------------------------------------------------ F4: aggiunte (D-64, D-66, D-67)
+    def residuals(self, X: np.ndarray, aggs: Sequence[str]) -> Dict[str, np.ndarray]:
+        """Errori per sensore = ``score_features`` (stesso calcolo, tipo nativo, D-66)."""
+        return {agg: self.score_features(X, time_agg=agg) for agg in self._check_residual_aggs(aggs)}
+
+    @property
+    def legacy_score_block(self) -> Dict[str, Optional[int]]:
+        return {agg: None for agg in self.residual_aggs}   # un solo blocco (D-64)
+
+    def save(self, path: Union[str, Path]) -> None:
+        self._write_checkpoint(path, {})                     # nessuno stato oltre la config
+
+    @classmethod
+    def load(cls, path: Union[str, Path], allow_version_mismatch: bool = False) -> "InputNormDetector":
+        model, _, _ = cls._read_checkpoint(path, allow_version_mismatch)
+        model.is_fitted = True
+        return model

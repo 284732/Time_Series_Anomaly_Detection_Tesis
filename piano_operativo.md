@@ -215,7 +215,11 @@ D-53 approvata (2026-11-10): `.pyc` tolti dal tracciamento, `dataset/` resta tra
   - `meta.json` registra il tipo dei residui di ogni modello [D-66] e `loaded_with_version_mismatch` quando un
     checkpoint è stato caricato forzando le versioni [D-67]; i tempi non entrano in alcun hash [D-67];
   - dimensione del lotto di scoring: regola di D-64 applicata in entrambe le modalità da F4; F5 può allentarla solo
-    con una decisione esplicita (nota su D-64).
+    con una decisione esplicita (nota su D-64);
+  - layout di memoria: anche le finestre di fit (`fit_X` con `train_step`, `fit_X_val` con la regola di D-63) devono
+    avere lo stesso layout di `main.py` (`create_sliding_windows`, ordine dei passi conservato), non le copie
+    C-contigue di `WindowSet.materialize`, finché un test non dimostra che il layout non conta; test sui passi da
+    aggiungere in F5 (nota su D-64, passo 3 di F4).
 - **Impatto sui risultati:** nessuno.
 
 ### F6 — Stadio di analisi
