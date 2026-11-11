@@ -214,8 +214,8 @@ D-53 approvata (2026-11-10): `.pyc` tolti dal tracciamento, `dataset/` resta tra
     generatore casuale di torch [D-67];
   - `meta.json` registra il tipo dei residui di ogni modello [D-66] e `loaded_with_version_mismatch` quando un
     checkpoint è stato caricato forzando le versioni [D-67]; i tempi non entrano in alcun hash [D-67];
-  - dimensione del lotto di scoring: regola di D-64 obbligatoria in `legacy2`; da decidere se si applica anche in
-    `split3` (raccomandato, nota su D-64).
+  - dimensione del lotto di scoring: regola di D-64 applicata in entrambe le modalità da F4; F5 può allentarla solo
+    con una decisione esplicita (nota su D-64).
 - **Impatto sui risultati:** nessuno.
 
 ### F6 — Stadio di analisi

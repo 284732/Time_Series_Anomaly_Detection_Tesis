@@ -482,10 +482,12 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
     `_CHUNK` o `batch_size` senza copiarli;
   - un lotto è compatibile se `batch_size` è multiplo del blocco storico oppure se `batch_size` ≥ numero di finestre
     del segmento (un solo lotto, equivalente alla chiamata di `main.py`); con "un solo blocco" vale solo la seconda
-    condizione. In `legacy2` un lotto incompatibile è un errore;
-  - **estensione raccomandata, decisione definitiva in F5:** applicare la stessa regola anche in `split3`, perché la
-    dimensione del lotto di scoring è fuori dal `fit_key` e i residui non devono dipenderne;
-  - approvazione: utente, 2026-11-11, su raccomandazione di Claude Project (piano F4, C7).
+    condizione. Un lotto incompatibile è un errore;
+  - **regola applicata in entrambe le modalità da F4** (`legacy2` e `split3`): in `legacy2` per la parità, in `split3`
+    per prudenza, perché la dimensione del lotto di scoring è fuori dal `fit_key` e i residui non devono dipenderne.
+    F5 può allentarla solo con una decisione esplicita;
+  - approvazione: utente, 2026-11-11, su raccomandazione di Claude Project (piano F4, C7; estensione a `split3`
+    decisa dall'utente il 2026-11-11, passo 2).
 
 ### D-66 · Tipo numerico dei residui — APPROVATA · 2026-11-11
 - **Decisione:** `residuals()` restituisce il tipo nativo di `score_features` del modello, senza conversioni. Il formato
