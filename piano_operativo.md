@@ -194,6 +194,21 @@ D-53 approvata (2026-11-10): `.pyc` tolti dal tracciamento, `dataset/` resta tra
   `src/models/batching.py`. Perimetro: i 6 modelli del nucleo; AE non addestrati rimandati (D-69). Ordine dei passi:
   0 golden T0 (commit separato) → 0-bis registro e piano → 1 `base.py` e trainer → 2 `batching.py` → 3 modelli
   tradizionali → 4 AE → 5 `registry.py` → 6 golden R1.
+- **Stato: completata (2026-11-11).** Commit: passo 0 `79ea2cf` (golden T0), 0-bis `6a0a731` (registro e piano),
+  1 `40754c7` (`FitInfo`, `base.py`, alias), 2 `1800b55` (`batching.py`), 3 `7aff6ae` (PCA, PCA puntuale, `input_norm`,
+  rolling z-score, layout dei lotti), 4 `6dbf9e5` (Conv-AE, LSTM-AE), 5 `556ead1` (`registry.py`), 6 golden R1 e
+  chiusura (commit che contiene questa riga). Suite di chiusura: vedi il messaggio del commit del passo 6.
+  - **Verificato:** residui = `score_features` storico bit a bit per i 6 modelli (T1, anche contro gli hash di T0);
+    checkpoint salva → ricarica → residui identici, anche in un processo nuovo per gli AE e passando da
+    `load_checkpoint`; snapshot F1 e golden T0 invariati a ogni passo; golden R1 coerente con T0.
+  - **Non verificato in F4:** parità su dati reali (M1); layout delle finestre di fit nella nuova pipeline (F5).
+  - **Decisioni APERTE toccate e rimaste aperte:** D-57 (nessuna correzione del solver), D-69 (AE non addestrati),
+    D-39 (solo l'alias, nessun valore).
+  - **Passati a F5 (vedi Rischi di F5):** `load` mai tra `set_seed` e `fit`; tipo dei residui e
+    `loaded_with_version_mismatch` in `meta.json`; tempi fuori dagli hash (`checkpoint_hashable_meta`); regola dei
+    lotti in entrambe le modalità; lotti di scoring con `legacy_layout_batch`; layout delle finestre di fit;
+    `native_only` per la convenzione none/native in F5–F6 (nota su D-33); golden R1 da rigenerare solo con un cambio
+    motivato di `FIT_CODE_VERSION` o del lock.
 
 ### F5 — Stadio di fit
 - **Obiettivo:** il fit eseguito da riga di comando, con artefatti indirizzati per contenuto.
@@ -219,7 +234,19 @@ D-53 approvata (2026-11-10): `.pyc` tolti dal tracciamento, `dataset/` resta tra
   - layout di memoria: anche le finestre di fit (`fit_X` con `train_step`, `fit_X_val` con la regola di D-63) devono
     avere lo stesso layout di `main.py` (`create_sliding_windows`, ordine dei passi conservato), non le copie
     C-contigue di `WindowSet.materialize`, finché un test non dimostra che il layout non conta; test sui passi da
-    aggiungere in F5 (nota su D-64, passo 3 di F4).
+    aggiungere in F5 (nota su D-64, passo 3 di F4). Sonda di F4 (passo 4, non è un test): per Conv-AE e LSTM-AE fit e
+    scoring non dipendono dal layout (`torch.from_numpy` conserva i passi, ma il `DataLoader` impila lotti
+    C-contigui: pesi, history e score identici); la PCA a finestre copia in ordine C con `reshape`; la PCA puntuale
+    fitta su `train_scaled` (2D);
+  - lo scoring dei residui passa da `batching.compute_residuals` (lotti con `legacy_layout_batch`, regola di D-64),
+    mai da `iter_batches`;
+  - i confronti di `checkpoint.json` e di `meta.json` usano la forma senza tempi (`checkpoint_hashable_meta`) [D-67];
+  - `native_only` (rolling z-score) indica la convenzione none/native di `table_schema` per F5–F6: la chiave dei
+    residui in cache resta `last` (nota su D-33);
+  - `residuals` degli AE isola il generatore di torch (`fork_rng`); il `DataLoader` di `score_features` lo fa
+    avanzare, senza effetti sulla baseline random storica, che usa un generatore numpy proprio (nota su D-67);
+  - golden R1 (`tests/golden/residuals_r1.json`): si rigenera solo con un cambio motivato di `FIT_CODE_VERSION` o del
+    lock (D-55), mai per far passare un test.
 - **Impatto sui risultati:** nessuno.
 
 ### F6 — Stadio di analisi

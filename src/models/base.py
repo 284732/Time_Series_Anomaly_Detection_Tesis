@@ -77,6 +77,16 @@ def checkpoint_versions() -> Dict[str, str]:
             "scikit-learn": sklearn.__version__}
 
 
+def checkpoint_hashable_meta(meta: Dict[str, Any]) -> Dict[str, Any]:
+    """``checkpoint.json`` senza i campi di tempo di ``FitInfo``: l'unica forma ammessa in hash e confronti (D-67)."""
+    import copy
+    out = copy.deepcopy(meta)
+    if out.get("fit_info") is not None:
+        for k in FitInfo.TIMING_FIELDS:
+            out["fit_info"].pop(k, None)
+    return out
+
+
 def _registry_name(cls: type) -> Optional[str]:
     """Nome del modello in ``schema.MODEL_SCHEMAS`` (unica fonte, D-68), oppure ``None``."""
     from src.utils import schema as _schema
