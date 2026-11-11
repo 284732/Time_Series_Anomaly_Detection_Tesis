@@ -22,6 +22,10 @@ class RollingZScoreDetector(BaseAnomalyDetector):
     """
 
     deterministic = True
+    # F4: |z| per sensore esiste solo per l'ultimo punto della finestra; nessun residuo per sensore
+    # nel senso di D-33 (table_schema: sensor_agg native, window_time_agg none). Nota su D-33.
+    residual_aggs = ("last",)
+    native_only = True
 
     def __init__(self, name: str = "RollingZScore", config: Optional[Dict[str, Any]] = None):
         config = config or {}

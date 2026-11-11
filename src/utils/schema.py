@@ -184,8 +184,8 @@ def _validate_model(name: str, d: Any, path: str) -> ModelSpec:
     if name == "pca" and pca_svd_solver(params["n_components"]) == "auto" and spec.deterministic:
         raise ConfigError(
             f"{path}: PCA a finestre con n_components intero usa svd_solver='auto' (solver randomizzato con "
-            "molte feature) ma risulterebbe deterministica ai fini del fit_key: combinazione rifiutata (D-57). "
-            f"Usa n_components float oppure random_state: {FROM_SEED!r}; la correzione del modello è in F4.")
+            "molte feature) ma risulterebbe deterministica ai fini del fit_key: combinazione rifiutata (D-57, decisione aperta; "
+            f"scadenza prima di D-41). Usa n_components float oppure random_state: {FROM_SEED!r}.")
     return spec
 
 

@@ -10,7 +10,7 @@ Regole (docs/decisioni.md):
     ``split3`` implementati a parte: [W−1, T−W+1) nell'analisi primaria, [0, T−W+1) con contesto, sempre intersecati
     con i timestamp coperti. Le maschere non dipendono dal modello [D-20, D-22, D-23, D-64];
   * viste in sola lettura (``sliding_window_view``); ``iter_batches`` restituisce copie contigue e scrivibili in
-    float32, con ``batch_size`` obbligatorio [D-64]. La regola dei lotti per modello è in F4.
+    float32, con ``batch_size`` obbligatorio [D-64]. La regola dei lotti per modello è in ``src/models/batching.py`` (D-64, D-68).
 
 Coordinate: ``starts``/``ends`` sono indici locali del segmento (negativi per le righe di contesto).
 """

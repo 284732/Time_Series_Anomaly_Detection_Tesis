@@ -536,7 +536,8 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
     classi coincidano con `main.MODEL_REGISTRY`;
   - **perimetro:** nucleo = `pca`, `pca_pointwise`, `conv_autoencoder`, `lstm_autoencoder`, `rolling_zscore`,
     `input_norm`. VAE, OC-SVM e Isolation Forest (D-10) sollevano `NotImplementedError` su `residuals`, `save` e `load`;
-    AE non addestrati: D-69;
+    AE non addestrati: D-69. Il perimetro si legge dagli attributi: `residual_aggs` vale `()` in `base.py` e lo
+    dichiara solo chi implementa `residuals` (`("last", "mean")` nei modelli del nucleo, `("last",)` per `rolling_zscore`);
   - **residui:** `residuals(X, aggs)` lavora su un solo lotto in memoria; il ciclo sui lotti e la regola di D-64 sono in
     `src/models/batching.py`. Nessun corpo di `score_anomalies`, `score_features`, `get_error_matrix` o
     `get_reconstruction_errors` cambia;

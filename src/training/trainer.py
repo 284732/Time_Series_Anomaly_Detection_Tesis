@@ -32,7 +32,12 @@ class PyTorchTrainer:
         self.config = config
 
         self.lr = self.config.get("learning_rate", 1e-3)
-        self.epochs = self.config.get("epochs", 40)
+        # `max_epochs`: alias opzionale di `epochs` (D-39, D-68); se assente non cambia nulla.
+        if ("max_epochs" in self.config and "epochs" in self.config
+                and self.config["max_epochs"] != self.config["epochs"]):
+            raise ValueError(f"epochs ({self.config['epochs']!r}) e max_epochs ({self.config['max_epochs']!r}) "
+                             "presenti con valori diversi: usarne una sola (D-39)")
+        self.epochs = self.config.get("max_epochs", self.config.get("epochs", 40))
         self.weight_decay = self.config.get("weight_decay", 1e-5)
 
         self.optimizer = torch.optim.Adam(
