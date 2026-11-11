@@ -95,7 +95,8 @@ def test_native_only_matches_models_without_per_sensor_residuals_in_table_schema
 # Aggregazioni dichiarate dai modelli del nucleo che implementano ``residuals``; si completa ai passi 3-4.
 # Chi non le dichiara ha ``()`` (default di base.py, D-68).
 CORE_RESIDUAL_AGGS = {"rolling_zscore": ("last",), "pca": ("last", "mean"), "pca_pointwise": ("last", "mean"),
-                      "input_norm": ("last", "mean")}
+                      "input_norm": ("last", "mean"), "conv_autoencoder": ("last", "mean"),
+                      "lstm_autoencoder": ("last", "mean")}
 
 
 def test_residual_aggs_declared_only_by_models_that_implement_residuals():

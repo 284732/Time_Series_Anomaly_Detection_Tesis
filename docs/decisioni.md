@@ -545,7 +545,24 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
 - **Approvazione:** utente, 2026-11-11, su raccomandazione di Claude Project (piano F4, §5, C8, P3, P4).
 - **Collegamenti:** D-14, D-15, D-17, D-55, D-57, D-66. **Serve entro:** F4.
 - **Documenti:** proposta §5.4; piano F4, F5.
-
+- **Nota (2026-11-11, F4 passo 4, il testo sopra resta invariato):**
+  - **fatto verificato:** `score_features` degli AE (invariato) fa avanzare il generatore globale di torch, perché il
+    `DataLoader` ne estrae un seme a ogni iterazione anche con `shuffle=False` e `num_workers=0`; il seme non entra nel
+    calcolo. `residuals` degli AE esegue `score_features` dentro `torch.random.fork_rng`, che ripristina il generatore:
+    i residui non cambiano e la voce «non modifica lo stato del generatore di torch» è rispettata. Nella pipeline
+    storica l'avanzamento non ha effetti sui numeri, perché `set_seed` precede ogni fit;
+  - **pesi salvati:** con early stopping attivo il trainer ricarica i pesi dell'epoca migliore (`best_epoch`); il
+    checkpoint salva lo `state_dict` di `self.model`, che è la stessa rete del trainer usata da `score_features`
+    (verificato con uno scenario di early stopping forzato);
+  - **device** (utente, 2026-11-11): il checkpoint di un AE registra il device effettivo del fit (`trainer.device`);
+    `load` ricostruisce il trainer con la stessa regola di `fit` e rifiuta se il device scelto è diverso da quello
+    registrato (non disponibile o diverso), salvo `allow_version_mismatch=True` (warning e
+    `loaded_with_version_mismatch = True`);
+  - **baseline random (verificato in sola lettura, `main.run_machine`):** usa un generatore numpy proprio,
+    `np.random.default_rng(seed)`, creato all'inizio di ogni seed subito dopo `set_seed(seed)` e prima di qualunque
+    modello di quel seed. Non usa il generatore globale di torch né quello globale di numpy, quindi il suo valore
+    storico non dipende dai semi estratti dal `DataLoader` nello scoring degli AE. Tra lo scoring di un AE e il
+    `set_seed` successivo ci sono solo metriche e soglie deterministiche.
 ### D-68 · Interfaccia dei modelli in F4 — APPROVATA · 2026-11-11
 - **Decisione:**
   - **registro:** `src/models/registry.py` è uno strato sottile sopra `schema.MODEL_SCHEMAS`, che resta l'unica fonte;

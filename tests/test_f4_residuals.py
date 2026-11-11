@@ -19,7 +19,7 @@ from src.data.manifest import build_manifest, load_dataset_spec
 from src.data.segments import fit_scaler, segment_bounds, slice_segments
 from src.data.windows import score_test_windows, score_windows
 from src.evaluation.scoring import aggregate_scores
-from src.models.base import CHECKPOINT_JSON, STATE_NPZ, checkpoint_versions
+from src.models.base import CHECKPOINT_JSON, STATE_NPZ, TORCH_STATE, checkpoint_versions
 from src.models.batching import compute_residuals
 from src.utils import schema
 from src.utils.schema import PreprocConfig, SplitConfig
@@ -31,7 +31,8 @@ GOLDEN_T0 = Path(__file__).resolve().parent / "golden" / "models_pre_f4.json"
 DS = BASE_CONFIG["dataset"]
 W = DS["window_size"]
 SEGS = ("val", "test")                       # val di main.py = cal di legacy2
-FEATURE_MODELS = ("pca", "pca_pointwise", "input_norm")
+AE_MODELS = ("conv_autoencoder", "lstm_autoencoder")
+FEATURE_MODELS = ("pca", "pca_pointwise", "input_norm") + AE_MODELS
 MODELS = FEATURE_MODELS + ("rolling_zscore",)
 
 
@@ -89,12 +90,26 @@ def test_residuals_with_several_inner_blocks(env, monkeypatch, model_key, agg, c
     assert res.dtype == ref.dtype and np.array_equal(res, ref)
 
 
-@pytest.mark.parametrize("model_key,aggs", [("pca", ("last",)), ("pca_pointwise", ("last",)),
-                                            ("input_norm", ("mean",)), ("rolling_zscore", ("last",))])
-def test_incompatible_batch_is_rejected(env, model_key, aggs):
+@pytest.mark.parametrize("seg", SEGS)
+@pytest.mark.parametrize("model_key", AE_MODELS)
+@pytest.mark.parametrize("batch", [64, 128, 192])
+def test_ae_residuals_with_several_dataloader_batches(env, model_key, batch, seg):
+    """AE: lotti multipli di batch_size (64), ultimo lotto del DataLoader parziale; lotti di legacy_layout_batch."""
+    model, ws = env["models"][model_key], env["ws"][seg]
+    assert model.legacy_score_block == {"last": 64, "mean": 64} and len(ws) % 64 != 0
+    res = compute_residuals(model, ws, ("last", "mean"), batch, "legacy2")
+    for agg in ("last", "mean"):
+        ref = model.score_features(_main_windows(env, seg), time_agg=agg)
+        assert res[agg].dtype == ref.dtype == np.float32 and np.array_equal(res[agg], ref), agg
+
+
+@pytest.mark.parametrize("model_key,aggs,batch", [
+    ("pca", ("last",), 64), ("pca_pointwise", ("last",), 64), ("input_norm", ("mean",), 64),
+    ("rolling_zscore", ("last",), 64), ("conv_autoencoder", ("last",), 100), ("lstm_autoencoder", ("mean",), 96)])
+def test_incompatible_batch_is_rejected(env, model_key, aggs, batch):
     model, ws = env["models"][model_key], env["ws"]["test"]
     with pytest.raises(ValueError, match="D-64"):
-        compute_residuals(model, ws, aggs, 64, "legacy2")
+        compute_residuals(model, ws, aggs, batch, "legacy2")
 
 
 @pytest.mark.parametrize("seg", SEGS)
@@ -117,6 +132,8 @@ def test_legacy_score_blocks(env):
     assert m["pca_pointwise"].legacy_score_block == {"last": None, "mean": 2048}
     assert m["input_norm"].legacy_score_block == {"last": None, "mean": None}
     assert m["rolling_zscore"].legacy_score_block == {"last": None}
+    for key in AE_MODELS:
+        assert m[key].legacy_score_block == {"last": 64, "mean": 64}     # batch_size della config storica
 
 
 # --- T2: calcolo manuale indipendente (semantica); l'identità bit a bit con la pipeline storica è di T1 ---------------------------------------------------------------------------
@@ -154,6 +171,21 @@ def test_pca_pointwise_residuals_match_manual_projection(env):
     np.testing.assert_allclose(res["mean"], sq.mean(axis=1), rtol=1e-9, atol=1e-12)
 
 
+@pytest.mark.parametrize("model_key", AE_MODELS)
+def test_ae_residuals_match_explicit_forward(env, model_key):
+    model, x = env["models"][model_key], _main_windows(env, "test")
+    net = model.model
+    net.eval()
+    with torch.no_grad():
+        recon = net(torch.from_numpy(np.ascontiguousarray(x))).numpy()      # un solo forward su tutto il segmento
+    sq = (x - recon) ** 2
+    res = model.residuals(x, ("last", "mean"))
+    # Forward in float32 su tutto il segmento invece che a lotti da 64: i kernel di torch possono sommare in un
+    # altro ordine (errore relativo ~1e-6 in float32); rtol 1e-5, atol 1e-8 per gli errori vicini a zero.
+    np.testing.assert_allclose(res["last"], sq[:, -1, :], rtol=1e-5, atol=1e-8)
+    np.testing.assert_allclose(res["mean"], sq.mean(axis=1), rtol=1e-5, atol=1e-8)
+
+
 def test_rolling_zscore_residuals_match_manual_loop(env):
     model, x = env["models"]["rolling_zscore"], _main_windows(env, "val")
     res = model.residuals(x, ("last",))["last"]
@@ -170,7 +202,10 @@ def _state(model):
     """Copia profonda degli attributi numerici del modello (sklearn compreso)."""
     out = {}
     for k, v in vars(model).items():
-        if isinstance(v, np.ndarray):
+        if isinstance(v, torch.nn.Module):               # rete degli AE: state_dict con i buffer di BatchNorm
+            out.update({f"{k}.{a}": b.detach().clone().numpy() for a, b in v.state_dict().items()})
+            out[f"{k}.training"] = np.array(v.training)
+        elif isinstance(v, np.ndarray):
             out[k] = v.copy()
         elif hasattr(v, "get_params"):
             out.update({f"{k}.{a}": np.array(b, copy=True) for a, b in vars(v).items()
@@ -192,6 +227,16 @@ def test_residuals_twice_identical_and_side_effect_free(env, model_key):
     assert all(np.array_equal(p, q) for p, q in zip(np_rng[1:2], np.random.get_state()[1:2]))
 
 
+@pytest.mark.parametrize("model_key", AE_MODELS)
+def test_historical_ae_score_features_advances_torch_rng(env, model_key):
+    """Fatto che motiva fork_rng in residuals: il DataLoader di score_features (invariato) consuma il generatore
+    globale di torch anche con shuffle=False e num_workers=0."""
+    model, x = env["models"][model_key], _main_windows(env, "val")
+    before = torch.get_rng_state()
+    model.score_features(x, "last")
+    assert not torch.equal(before, torch.get_rng_state())
+
+
 # --- FitInfo ---------------------------------------------------------------------------------------
 def test_fit_info_of_traditional_models(env):
     m, d = env["models"], env["data"]
@@ -203,6 +248,28 @@ def test_fit_info_of_traditional_models(env):
         assert fi.best_epoch is None and fi.fit_seconds >= 0
     for key in ("rolling_zscore", "input_norm"):
         assert m[key].fit_info_.n_fit_samples == len(d["train_windows"])
+
+
+def _expected_best_epoch(val_loss, min_delta):
+    """Regola di PyTorchTrainer.fit: nuova migliore solo se val < migliore - min_delta (epoche da 1)."""
+    best, best_epoch = float("inf"), 0
+    for e, v in enumerate(val_loss, start=1):
+        if v < best - min_delta:
+            best, best_epoch = v, e
+    return best_epoch
+
+
+@pytest.mark.parametrize("model_key", AE_MODELS)
+def test_fit_info_of_autoencoders(env, model_key):
+    model, d = env["models"][model_key], env["data"]
+    fi, h = model.fit_info_, model.history
+    assert (fi.best_epoch, fi.stopped_epoch) == (h["best_epoch"], h["stopped_epoch"])
+    assert fi.train_loss == tuple(h["train_loss"]) and fi.val_loss == tuple(h["val_loss"])
+    assert 1 <= fi.best_epoch <= fi.stopped_epoch == len(fi.train_loss) == len(fi.val_loss)
+    assert fi.best_epoch == _expected_best_epoch(fi.val_loss, model.config.get("early_stopping_min_delta", 1e-6))
+    assert fi.val_loss[fi.best_epoch - 1] == min(fi.val_loss)
+    assert fi.n_fit_samples == len(d["train_windows"]) and fi.n_val_samples == len(d["val_for_early_stop"])
+    assert fi.n_components is None and fi.fit_seconds > 0
 
 
 # --- T4: checkpoint --------------------------------------------------------------------------------
@@ -257,6 +324,113 @@ def test_pca_with_integer_components_roundtrip(env, tmp_path):
     loaded = _cls(model).load(tmp_path / "ckpt")
     x = _main_windows(env, "test")
     assert np.array_equal(model.residuals(x, ("last",))["last"], loaded.residuals(x, ("last",))["last"])
+
+
+# --- AE: pesi dopo l'early stopping, state_dict, caricamento solo dal checkpoint ------------------
+@pytest.mark.parametrize("model_key", AE_MODELS)
+def test_early_stopping_restores_best_weights_and_checkpoint_saves_them(env, tmp_path, monkeypatch, model_key):
+    """Scenario forzato: val loss [1.0, 0.5, 0.6, 0.7, 0.8], patience 2 -> best 2, stop 4. Dopo fit restano i pesi
+    dell'epoca 2 (ricaricati), ed esattamente quelli finiscono nel checkpoint e in score_features."""
+    from src.training.trainer import PyTorchTrainer
+    seq = iter([1.0, 0.5, 0.6, 0.7, 0.8])
+    per_epoch = []
+    orig_train_epoch = PyTorchTrainer.train_epoch
+
+    def train_epoch(self, loader):
+        loss = orig_train_epoch(self, loader)
+        per_epoch.append({k: v.detach().clone() for k, v in self.model.state_dict().items()})
+        return loss
+
+    monkeypatch.setattr(PyTorchTrainer, "train_epoch", train_epoch)
+    monkeypatch.setattr(PyTorchTrainer, "evaluate", lambda self, loader: next(seq))
+    cfg = dict(model_config(model_key), epochs=5, early_stopping_patience=2)
+    model = fit_like_main(model_key, env["data"], config=cfg)
+    fi = model.fit_info_
+    assert (fi.best_epoch, fi.stopped_epoch, fi.val_loss) == (2, 4, (1.0, 0.5, 0.6, 0.7))
+    final = model.model.state_dict()
+    assert all(torch.equal(final[k], per_epoch[1][k]) for k in final)                  # epoca 2
+    assert not all(torch.equal(final[k], per_epoch[3][k]) for k in final)              # non l'ultima
+    model.save(tmp_path / "ckpt")
+    sd = torch.load(tmp_path / "ckpt" / TORCH_STATE, map_location="cpu", weights_only=True)
+    assert sd.keys() == final.keys() and all(torch.equal(sd[k], final[k]) for k in final)
+    monkeypatch.undo()
+    loaded = type(model).load(tmp_path / "ckpt")
+    x = _main_windows(env, "test")
+    assert np.array_equal(loaded.residuals(x, ("mean",))["mean"], model.score_features(x, "mean"))
+
+
+@pytest.mark.parametrize("model_key", AE_MODELS)
+def test_ae_state_dict_in_checkpoint_has_every_buffer(env, tmp_path, model_key):
+    model = env["models"][model_key]
+    model.save(tmp_path / "ckpt")
+    sd = torch.load(tmp_path / "ckpt" / TORCH_STATE, map_location="cpu", weights_only=True)
+    ref = model.model.state_dict()
+    assert list(sd) == list(ref)
+    for k in ref:
+        assert sd[k].dtype == ref[k].dtype and torch.equal(sd[k], ref[k]), k
+    if model_key == "conv_autoencoder":
+        bn = [k for k in ref if k.endswith(("running_mean", "running_var", "num_batches_tracked"))]
+        assert len(bn) == 3 * 3 and all(ref[k].dtype == torch.int64 for k in bn if "num_batches" in k)
+        assert all(int(ref[k]) > 0 for k in bn if "num_batches" in k)           # aggiornati dal training
+    meta = json.loads((tmp_path / "ckpt" / CHECKPOINT_JSON).read_text(encoding="utf-8"))
+    assert meta["state"]["arch"] == model.arch_ and meta["config"]["batch_size"] == 64
+    assert meta["config"]["device"] == "cpu" and meta["torch_num_threads"] == 1
+
+
+@pytest.mark.parametrize("model_key", AE_MODELS)
+def test_ae_load_refuses_a_different_device_unless_forced(env, tmp_path, model_key):
+    """Il checkpoint registra il device effettivo del fit; load lo confronta con quello scelto dalla regola di fit."""
+    model = env["models"][model_key]
+    model.save(tmp_path / "ckpt")
+    meta = json.loads((tmp_path / "ckpt" / CHECKPOINT_JSON).read_text(encoding="utf-8"))
+    assert meta["state"]["device"] == str(model.trainer.device) == "cpu"
+    _edit_meta(tmp_path / "ckpt", lambda m: m["state"].update(device="cuda:0"))
+    with pytest.raises(ValueError, match="device"):
+        type(model).load(tmp_path / "ckpt")
+    with pytest.warns(RuntimeWarning, match="device"):
+        loaded = type(model).load(tmp_path / "ckpt", allow_version_mismatch=True)
+    assert loaded.loaded_with_version_mismatch is True and str(loaded.trainer.device) == "cpu"
+    x = _main_windows(env, "val")
+    assert np.array_equal(loaded.residuals(x, ("last",))["last"], model.residuals(x, ("last",))["last"])
+
+
+LOAD_SCRIPT = """
+import sys, numpy as np, torch
+sys.path.insert(0, sys.argv[1])
+torch.set_num_threads(1)
+from threadpoolctl import threadpool_limits
+threadpool_limits(1)
+from src.models.deep.conv_ae import ConvAutoencoderDetector
+from src.models.deep.lstm_ae import LSTMAutoencoderDetector
+classes = {"conv_autoencoder": ConvAutoencoderDetector, "lstm_autoencoder": LSTMAutoencoderDetector}
+x = np.load(sys.argv[2])
+for key, ckpt, out in zip(sys.argv[3::3], sys.argv[4::3], sys.argv[5::3]):
+    r = classes[key].load(ckpt).residuals(x, ("last", "mean"))
+    np.savez(out, last=r["last"], mean=r["mean"])
+"""
+
+
+def test_ae_checkpoint_loads_in_a_fresh_process_from_the_checkpoint_only(env, tmp_path):
+    """Istanza costruita solo dal checkpoint (nessuna config, nessun dato di training), in un processo nuovo
+    (uno solo per entrambi gli AE: l'import di torch domina il tempo)."""
+    import subprocess
+    import sys
+    root = Path(__file__).resolve().parents[1]
+    x = _main_windows(env, "test")
+    np.save(tmp_path / "x.npy", x)
+    script = tmp_path / "load.py"
+    script.write_text(LOAD_SCRIPT, encoding="utf-8")
+    args = []
+    for key in AE_MODELS:
+        env["models"][key].save(tmp_path / key)
+        args += [key, str(tmp_path / key), str(tmp_path / f"{key}_res.npz")]
+    subprocess.run([sys.executable, "-I", str(script), str(root), str(tmp_path / "x.npy"), *args],
+                   check=True, capture_output=True, cwd=tmp_path)
+    for key in AE_MODELS:
+        with np.load(tmp_path / f"{key}_res.npz") as z:
+            for agg in ("last", "mean"):
+                ref = env["models"][key].score_features(x, agg)
+                assert z[agg].dtype == ref.dtype and np.array_equal(z[agg], ref), (key, agg)
 
 
 def _saved(env, tmp_path, key="pca"):

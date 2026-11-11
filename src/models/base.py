@@ -66,6 +66,7 @@ class FitInfo:
 CHECKPOINT_FORMAT = 1
 CHECKPOINT_JSON = "checkpoint.json"
 STATE_NPZ = "state.npz"
+TORCH_STATE = "model.pt"
 
 
 def checkpoint_versions() -> Dict[str, str]:
@@ -318,6 +319,47 @@ class BaseAnomalyDetector(ABC):
             if sorted(arrays) != meta["state_arrays"]:
                 raise ValueError(f"{path}: array di stato diversi da quelli dichiarati (D-67)")
         return model, meta, arrays
+
+    # ------------------------------------------------------------------ checkpoint degli AE (D-67)
+    def _save_torch_ae(self, path: Union[str, Path], arch: Dict[str, Any]) -> None:
+        """``checkpoint.json`` (architettura risolta) + ``model.pt`` (``state_dict`` della rete usata da
+        ``score_features``: ``trainer.model`` è ``self.model``; buffer di BatchNorm compresi)."""
+        if getattr(self, "trainer", None) is None or self.trainer.model is not self.model:
+            raise RuntimeError(f"{self.name}: la rete del trainer non è self.model, checkpoint ambiguo")
+        sd = self.model.state_dict()
+        self._write_checkpoint(path, {"arch": arch, "torch_file": TORCH_STATE, "state_dict_keys": list(sd),
+                                      "device": str(self.trainer.device)})     # device effettivo del fit
+        torch.save(sd, Path(path) / TORCH_STATE)
+
+    @classmethod
+    def _load_torch_ae(cls, path: Union[str, Path], allow_version_mismatch: bool) -> "BaseAnomalyDetector":
+        """Rete ricostruita solo dal checkpoint (architettura + ``state_dict``), trainer come in ``fit``.
+        Nota: costruire la rete consuma il generatore casuale di torch; non chiamare tra ``set_seed`` e ``fit``."""
+        from src.training.trainer import PyTorchTrainer
+        model, meta, _ = cls._read_checkpoint(path, allow_version_mismatch)
+        state = meta["state"]
+        net = model._build_net_from_arch(**state["arch"])
+        sd = torch.load(Path(path) / state["torch_file"], map_location="cpu", weights_only=True)
+        if list(sd) != state["state_dict_keys"]:
+            raise ValueError(f"{path}: chiavi dello state_dict diverse da quelle dichiarate (D-67)")
+        net.load_state_dict(sd, strict=True)
+        model.model = net
+        # stessa regola di fit per il device; deve coincidere con quello registrato (D-67)
+        model.trainer = PyTorchTrainer(net, model.config, device=model.config.get("device", "cuda"))
+        chosen = str(model.trainer.device)
+        if chosen != state["device"]:
+            msg = (f"{path}: device del fit {state['device']!r}, la regola di fit sceglierebbe ora {chosen!r} "
+                   "(non disponibile o diverso)")
+            if not allow_version_mismatch:
+                raise ValueError(msg + "; usare allow_version_mismatch=True solo consapevolmente (D-67)")
+            import warnings
+            warnings.warn(msg + " (D-67)", RuntimeWarning)
+            model.loaded_with_version_mismatch = True
+        fi = model.fit_info_
+        model.history = None if fi is None else {"train_loss": list(fi.train_loss), "val_loss": list(fi.val_loss),
+                                                 "best_epoch": fi.best_epoch, "stopped_epoch": fi.stopped_epoch}
+        model.is_fitted = True
+        return model
 
     def _check_residual_aggs(self, aggs: Sequence[str]) -> Tuple[str, ...]:
         """Aggregazioni richieste: non vuote, senza duplicati, tra quelle del modello (D-33)."""
