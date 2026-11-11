@@ -328,6 +328,17 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
   il 50% e, se servisse, si rigenera dai checkpoint con `residual_cache` senza nuovi fit.
 - **Collegamenti:** D-19, D-42. **Serve entro:** F2 (schema, `fit_key`), F4–F5.
 - **Documenti:** proposta §4.4, §5.4, §8; piano F2, F4, F5.
+- **Nota di rimando (2026-11-11, F4, il testo sopra resta invariato):**
+  - `rolling_zscore` non ha residui per sensore nel senso di D-33: il suo |z| per sensore esiste solo per l'ultimo
+    punto della finestra, e nella pipeline storica ignora `window_time_agg` (usa solo `score_anomalies`). Dichiara
+    `residual_aggs = ("last",)`; chiedere `mean` è un errore. Il payload del `fit_key` non cambia (registra le
+    aggregazioni richieste, `RESIDUAL_AGGS`).
+  - Coerenza con `table_schema.py` (invariato): `rolling_zscore` è un modello senza residui per sensore
+    (`sensor_agg = native`, `window_time_agg = none`, `normalizer = none`). Nella cache dei residui la chiave resta
+    `last`; l'attributo di classe `native_only` (`True` per `rolling_zscore`, `False` per gli altri modelli del
+    nucleo) dice a F5–F6 di applicare la convenzione none/native. Un test verifica che `native_only` sia vero
+    esattamente per i modelli che `table_schema` tratta come privi di residui per sensore. Nessun nuovo livello di fattore.
+  - Approvazione: utente, 2026-11-11, su raccomandazione di Claude Project (piano F4, C2).
 
 ### D-50 · Run storici di riferimento per M1 — APPROVATA · 2026-11-10
 - **Decisione:** il riferimento per M1 è la coppia `results/results_tests/results_repro_last_01` /
@@ -465,6 +476,77 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
 - **Fatto verificato (2026-11-10):** per PCA e PCA puntuale il blocco di scoring di `main.py` non è una chiave di
   config ma una costante di classe (`_CHUNK`).
 - **Collegamenti:** D-15, D-17, D-20, D-22, D-23. **Serve entro:** F3 (`eval_mask`, `iter_batches`), F4 (regola dei lotti).
+- **Nota di rimando (2026-11-11, F4, il testo sopra resta invariato):**
+  - la regola dei lotti è implementata in `src/models/batching.py` (file nuovo); il blocco storico di ogni modello è
+    esposto dalla proprietà `legacy_score_block` ({aggregazione: intero, oppure `None` = un solo blocco}), che legge
+    `_CHUNK` o `batch_size` senza copiarli;
+  - un lotto è compatibile se `batch_size` è multiplo del blocco storico oppure se `batch_size` ≥ numero di finestre
+    del segmento (un solo lotto, equivalente alla chiamata di `main.py`); con "un solo blocco" vale solo la seconda
+    condizione. In `legacy2` un lotto incompatibile è un errore;
+  - **estensione raccomandata, decisione definitiva in F5:** applicare la stessa regola anche in `split3`, perché la
+    dimensione del lotto di scoring è fuori dal `fit_key` e i residui non devono dipenderne;
+  - approvazione: utente, 2026-11-11, su raccomandazione di Claude Project (piano F4, C7).
+
+### D-66 · Tipo numerico dei residui — APPROVATA · 2026-11-11
+- **Decisione:** `residuals()` restituisce il tipo nativo di `score_features` del modello, senza conversioni. Il formato
+  dei residui di F5 deve conservare quel tipo, e `meta.json` lo registra per ogni modello.
+- **Fatto verificato (golden T0, `tests/golden/models_pre_f4.json`):** `score_features` restituisce float32 per Conv-AE
+  e LSTM-AE e float64 per PCA, PCA puntuale e `input_norm`; il |z| del rolling z-score è float32.
+- **Motivazione:** la proposta §5.4 prevedeva residui in float32; per i modelli in float64 la conversione cambierebbe gli
+  score e violerebbe la tolleranza zero su PCA e baseline in M1 (D-17). L'aumento di spazio riguarda solo modelli
+  deterministici, che girano una volta per macchina.
+- **Approvazione:** utente, 2026-11-11, su raccomandazione di Claude Project (piano F4, C3).
+- **Collegamenti:** D-17, D-19, D-33, D-56. **Serve entro:** F4 (interfaccia), F5 (formato e `meta.json`).
+- **Documenti:** proposta §5.4 (superata su questo punto); piano F4, F5.
+
+### D-67 · Checkpoint dei modelli — APPROVATA · 2026-11-11
+- **Decisione:**
+  - ogni checkpoint è una cartella con `checkpoint.json` (`checkpoint_format` 1, `fit_code_version`, nome nel registro,
+    `class_path`, config del modello, architettura per gli AE, `FitInfo`, versioni di python, numpy, torch e
+    scikit-learn, thread di torch) più lo stato:
+    - AE → `model.pt` (`state_dict`, buffer di BatchNorm compresi), letto con `torch.load(weights_only=True)`;
+    - PCA e PCA puntuale → `.npz` con tutti gli attributi fittati (`*_`), letto con `allow_pickle=False`, più
+      `get_params()` in JSON; l'oggetto `PCA` di scikit-learn viene ricostruito (la PCA puntuale aggiunge `mean_` e `std_`);
+    - rolling z-score e `input_norm` → solo la config.
+    Nessun pickle;
+  - il solver effettivo della PCA è letto da un attributo privato di scikit-learn: il checkpoint lo annota;
+  - `save` rifiuta una cartella non vuota; `load` rifiuta una `fit_code_version` diversa, un formato sconosciuto, una
+    classe diversa e versioni di python, numpy, torch o scikit-learn diverse da quelle registrate (confronto esatto,
+    coerente con il lock di D-55). `allow_version_mismatch=True` forza il caricamento: emette un warning e imposta
+    sull'istanza `loaded_with_version_mismatch = True`, che F5 riporta in `meta.json`;
+  - `FIT_CODE_VERSION` resta 1: nessun artefatto è stato prodotto prima di F4, e F4 completa il contratto descritto
+    dalla versione 1;
+  - **campi non deterministici:** `fit_seconds` e ogni misura di tempo non entrano in alcun hash (golden R1, confronti di
+    `checkpoint.json`, `fit_key`, futuro `meta.json`).
+- **Test richiesti:** salva → ricarica → residui identici bit a bit per ogni modello, segmento e aggregazione; rifiuto e
+  forzatura del controllo di versione; il golden R1 non cambia se cambia solo `fit_seconds`; `residuals` chiamato due
+  volte dà risultati identici e non modifica `state_dict` (buffer di BatchNorm compresi) né lo stato del generatore
+  di torch.
+- **Motivazione:** la proposta §5.4 prevedeva per la PCA solo componenti e media, insufficienti per ricostruire
+  `transform`/`inverse_transform` di scikit-learn 1.9 bit a bit; senza pickle il caricamento non esegue codice e non
+  dipende dalla struttura interna degli oggetti; il controllo di versione rende esplicita ogni deroga al lock.
+- **Approvazione:** utente, 2026-11-11, su raccomandazione di Claude Project (piano F4, §5, C8, P3, P4).
+- **Collegamenti:** D-14, D-15, D-17, D-55, D-57, D-66. **Serve entro:** F4.
+- **Documenti:** proposta §5.4; piano F4, F5.
+
+### D-68 · Interfaccia dei modelli in F4 — APPROVATA · 2026-11-11
+- **Decisione:**
+  - **registro:** `src/models/registry.py` è uno strato sottile sopra `schema.MODEL_SCHEMAS`, che resta l'unica fonte;
+    aggiunge `NUCLEUS`, `get(name)` e `load_checkpoint(dir)`. `main.py` non si tocca (D-13); un test verifica che le
+    classi coincidano con `main.MODEL_REGISTRY`;
+  - **perimetro:** nucleo = `pca`, `pca_pointwise`, `conv_autoencoder`, `lstm_autoencoder`, `rolling_zscore`,
+    `input_norm`. VAE, OC-SVM e Isolation Forest (D-10) sollevano `NotImplementedError` su `residuals`, `save` e `load`;
+    AE non addestrati: D-69;
+  - **residui:** `residuals(X, aggs)` lavora su un solo lotto in memoria; il ciclo sui lotti e la regola di D-64 sono in
+    `src/models/batching.py`. Nessun corpo di `score_anomalies`, `score_features`, `get_error_matrix` o
+    `get_reconstruction_errors` cambia;
+  - **`FitInfo`** nell'attributo `fit_info_`, firma di `fit` invariata (D-15); alias `max_epochs` (nota su D-39);
+  - **golden pre-F4 (T0):** hash di ingressi e uscite di `score_anomalies` e `score_features(last|mean)` dei 6 modelli,
+    generato su `d2d8478` prima di ogni modifica a `src/` (commit `79ea2cf`), perché lo snapshot F1 non copre
+    `score_anomalies` di PCA, PCA puntuale, AE e `input_norm`.
+- **Approvazione:** utente, 2026-11-11, su raccomandazione di Claude Project (piano F4, C1, C6, C7, C9).
+- **Collegamenti:** D-10, D-13, D-15, D-33, D-39, D-64, D-66, D-67, D-69. **Serve entro:** F4.
+- **Documenti:** proposta §5 (riga `models/registry.py`: «spostato da `main.py`» superato); piano F4.
 
 ### D-53 · File tracciati da git (`.pyc`, dataset) — APPROVATA · 2026-11-10
 - **Decisione:** i `.pyc` non sono tracciati: i 35 file già tracciati sono tolti dal tracciamento con
@@ -509,6 +591,11 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
 
 ### D-39 · `max_epochs` e patience — APERTA
 - **Proposta:** 100 e 10. **Serve entro:** F8.
+- **Nota (2026-11-11, F4, la voce resta APERTA):** il trainer accetta `max_epochs` come alias opzionale di `epochs`
+  (se assente non cambia nulla; entrambe presenti e diverse → `ValueError`). Fatto verificato: oggi nessun percorso
+  passa entrambe le chiavi (`main.py` passa `config["models"][key]`, che in `repro_*.yaml` e nello snapshot F1 contiene
+  solo `epochs`; la nuova pipeline traduce `training.max_epochs` in `epochs` in `schema.model_kwargs`). Il controllo
+  tutela D-39: il valore scelto non può essere contraddetto in silenzio da una seconda chiave. Nessun valore fissato.
 
 ### D-40 · Preprocessing canonico — APERTA
 - **Opzioni:** storico (minmax su fit, senza clip né pavimento; raccomandato) oppure con pavimento o clip.
@@ -563,9 +650,29 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
   riportare).
 - **Raccomandazione:** (a). La PCA è il riferimento di RQ2 (D-37): una varianza tra seed dovuta solo al solver
   aggiungerebbe rumore al confronto senza un significato metodologico.
-- **In F2:** `random_state` esplicito; il validatore rifiuta la combinazione incoerente. Correzione del modello in F4.
-- **Serve entro:** F4 (implementazione), D-41 (griglia).
+- **In F2:** `random_state` esplicito; il validatore rifiuta la combinazione incoerente.
+- **In F4 (rev. 2026-11-11):** F4 non corregge il solver; `PCADetector` resta invariato e il validatore F2 continua a
+  rifiutare la combinazione incoerente. Il checkpoint (D-67) salva le componenti fittate, quindi i residui dopo `load`
+  non dipendono dal solver; `FitInfo` registra il solver richiesto e quello effettivo. Nessun default nuovo per
+  `n_components` o `svd_solver`.
+- **Serve entro:** prima di D-41 (griglia di F9).
+- **Revisione (2026-11-11):** le righe «In F2» e «Serve entro» sono state corrette su decisione dell'utente (piano F4,
+  C4); prima dicevano «Correzione del modello in F4» e «F4 (implementazione), D-41 (griglia)». La voce resta APERTA.
 - **Collegamenti:** D-37, D-41, `CLAUDE.md` §5.
+
+### D-69 · AE non addestrati (baseline di sanità E0, `piano_tesi_v1.md` §5) — APERTA · 2026-11-11
+- **Fatti verificati (2026-11-11):** `UntrainedLSTMAEDetector` e `UntrainedConvAEDetector` sono nel registro di `main.py`
+  (`untrained_lstm_ae`, `untrained_conv_ae`) ma in nessuna config di `configs/` e in nessun run di D-50
+  (`results_repro_last_01` / `results_repro_mean_01` contengono solo `pca`, `pca_pointwise`, `conv_autoencoder`,
+  `lstm_autoencoder` e `random_baseline`). Non sono in `schema.MODEL_SCHEMAS`: la nuova pipeline oggi non li esegue.
+- **Rimandati da F4** (decisione dell'utente, 2026-11-11). Se una config li includesse prima della chiusura di questa
+  voce, quella config non avrebbe parità verificata con la pipeline storica.
+- **Da decidere:**
+  - chiavi di schema: `init_std`, `channels` / `hidden_dim`, `latent_dim`;
+  - seed nel `fit_key` (modelli non deterministici: i pesi dipendono dal seed);
+  - statistiche di BatchNorm del Conv-AE: in eval non vengono mai aggiornate (media 0, varianza 1); scelta da dichiarare.
+- **Serve entro:** F8.
+- **Collegamenti:** D-10, D-33, D-67, D-68.
 
 ---
 

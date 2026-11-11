@@ -188,6 +188,12 @@ D-53 approvata (2026-11-10): `.pyc` tolti dal tracciamento, `dataset/` resta tra
   - lo stato di BatchNorm nel Conv-AE va salvato insieme ai pesi (con `state_dict` è incluso);
   - la PCA puntuale ha uno standardizzatore interno, che va salvato.
 - **Impatto sui risultati:** nessuno.
+- **Nota (2026-11-11, piano F4 approvato):** decisioni D-66 (tipo nativo dei residui), D-67 (checkpoint), D-68
+  (interfaccia, registro, `batching.py`, golden T0) e note su D-33 (rolling z-score solo `last`, `native_only`),
+  D-39 (alias), D-57 (F4 non corregge il solver), D-64 (regola dei lotti). File in più rispetto all'elenco sopra:
+  `src/models/batching.py`. Perimetro: i 6 modelli del nucleo; AE non addestrati rimandati (D-69). Ordine dei passi:
+  0 golden T0 (commit separato) → 0-bis registro e piano → 1 `base.py` e trainer → 2 `batching.py` → 3 modelli
+  tradizionali → 4 AE → 5 `registry.py` → 6 golden R1.
 
 ### F5 — Stadio di fit
 - **Obiettivo:** il fit eseguito da riga di comando, con artefatti indirizzati per contenuto.
@@ -203,7 +209,13 @@ D-53 approvata (2026-11-10): `.pyc` tolti dal tracciamento, `dataset/` resta tra
 - **Completata quando:** test verdi; il fit sintetico completo dura meno di 1 minuto.
 - **Rischi:**
   - l'ordine di chiamata di `set_seed` deve replicare esattamente quello di `main.py` ([main.py:310](main.py#L310), [main.py:330](main.py#L330)), altrimenti la parità degli AE salta;
-  - il generatore casuale della baseline random va replicato nell'analisi.
+  - il generatore casuale della baseline random va replicato nell'analisi;
+  - `load` di un checkpoint non va mai chiamato tra `set_seed` e `fit`: ricostruire la rete di un AE consuma il
+    generatore casuale di torch [D-67];
+  - `meta.json` registra il tipo dei residui di ogni modello [D-66] e `loaded_with_version_mismatch` quando un
+    checkpoint è stato caricato forzando le versioni [D-67]; i tempi non entrano in alcun hash [D-67];
+  - dimensione del lotto di scoring: regola di D-64 obbligatoria in `legacy2`; da decidere se si applica anche in
+    `split3` (raccomandato, nota su D-64).
 - **Impatto sui risultati:** nessuno.
 
 ### F6 — Stadio di analisi
