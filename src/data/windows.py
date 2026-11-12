@@ -51,7 +51,14 @@ class WindowSet:
         return self.starts + self.window_size - 1
 
     def materialize(self) -> np.ndarray:
-        """Copia contigua float32, solo per le finestre passate a ``model.fit`` (fit ed es_loss)."""
+        """Copia C-contigua in float32 delle finestre di fit o di es_loss.
+
+        NON si usa per le finestre passate a ``model.fit`` nello stadio di fit: in F5 ``fit_X`` e ``fit_X_val`` si
+        costruiscono con ``batching.legacy_layout_batch``, così hanno lo stesso layout di memoria di
+        ``create_sliding_windows`` / ``main.py`` (D-70, C8; nota su D-64). Motivo: con valori identici il layout può
+        cambiare l'ultimo bit di una riduzione numpy (verificato in F4 su ``input_norm`` e rolling z-score); per Conv-AE
+        e LSTM-AE la sonda di F4 non ha trovato differenze, ma non è un test. La restrizione vale finché un test non
+        dimostra che il layout non conta."""
         if self.purpose not in ("train", "es_loss"):
             raise RuntimeError("le finestre di scoring non si copiano per intero: usare iter_batches (D-64)")
         return np.array(self.view, dtype=np.float32, order="C", copy=True)
