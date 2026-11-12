@@ -288,6 +288,21 @@ D-53 approvata (2026-11-10): `.pyc` tolti dal tracciamento, `dataset/` resta tra
   - **Passo 1 (2026-11-12):** `fit.py` contiene `prepare_machine` e `fit_one`; `fit_one` è anticipato rispetto al
     passo 3 perché i test sull'ordine di `set_seed` ne hanno bisogno (pianificazione, `run_fit`, meta e store restano
     al passo 3). Test: `tests/test_f5_layout.py`, `tests/test_f5_seed.py` (fixture `tests/fixtures/f5.py`).
+  - **Passo 2 (2026-11-12):** `residual_cache.py` (`compute_all`, `array_record`) e aggiunte a `store.py` (D-70).
+    Test: `tests/test_f5_residual_cache.py`, `tests/test_f5_store.py`.
+    - *Scostamento:* una chiamata di `compute_residuals` per segmento con tutte le aggregazioni (come il golden R1),
+      non una per aggregazione; il test sull'unica via (test 3) conta le chiamate di conseguenza.
+    - *Fatto:* calcolando test e `test_ctx_head` nella stessa chiamata, i residui `test__*` restano identici bit a bit a
+      un thread (condizioni della suite); non è garantito con BLAS a più thread o con kernel che dipendono dal numero
+      di righe. La chiamata separata resta la garanzia per costruzione e la protegge il test 3; il test 6 verifica la
+      proprietà.
+    - *Per il passo 6:* (a) `orphan_tmp` distingue per `status` il cestino di un fit `failed` da una scrittura
+      `complete` non installata; la pulizia elimina entrambi e non promuove mai un `tmp/` a `fits/<key>`; (b) un lock
+      illeggibile (per esempio un processo ucciso tra la creazione con `O_EXCL` e la scrittura) non è mai considerato
+      rimasto: `clean-tmp` deve dare un messaggio che spieghi come rimuoverlo a mano dopo aver verificato che nessun
+      processo sia attivo.
+    - *Funzioni di supporto aggiunte:* `residual_name`, `residual_aggs_for`, `npz_bytes`, `read_npz`, `ResidualSet`
+      (`residual_cache.py`); `StoreLocked`, `read_lock`, `lock_path` (`store.py`).
 
 ### F6 — Stadio di analisi
 - **Obiettivo:** prima riprodurre esattamente le metriche storiche dai residui, poi estendere.
