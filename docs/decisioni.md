@@ -751,6 +751,32 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
   i nomi, `run_id` e stage usati nei test e in `src/` rispettano la regola rafforzata; `new_run_id` produce nomi
   validi (test su 5.000 generazioni). Nessun effetto sui `fit_key` (il nome non entra nel payload).
   - Approvazione: utente, 2026-11-12 (piano F5, passo 4-bis).
+- **Nota (2026-11-12, F5 passo 5, il testo sopra resta invariato):** `get_residuals` e `regenerate` in
+  `src/pipeline/residual_cache.py`.
+  - **Regola: letture senza lock, scritture solo con il gettone del lock del run.** Il gettone è il dizionario
+    restituito da `store.lock(run_id)`; `regenerate` verifica che `store.read_lock()` e il gettone coincidano in tutti
+    i `LOCK_FIELDS` all'inizio e subito prima di scrivere, e rifiuta senza scrivere se non coincidono o se il gettone
+    manca. **Campi del lock** (estensione del contenuto fissato sopra: pid, host, ora di avvio, `run_id`): si aggiunge
+    `nonce` (uuid4 generato a ogni acquisizione), così due acquisizioni con lo stesso `run_id` danno gettoni diversi
+    anche con la stessa `started_utc`. Fatto misurato: `started_utc` ha formato a microsecondi e passo reale di 2–3 µs
+    su questa macchina (nessun valore ripetuto in 200.000 chiamate consecutive); il nonce non dipende dalla
+    risoluzione dell'orologio. `is_stale` e `clean-tmp` non usano il nonce. `get_residuals` con i file presenti legge senza lock; con un file mancante e senza lock dà l'errore
+    «residui mancanti: rigenerazione richiede il lock del run», senza acquisire nulla. `store.replace_fit_cache_file`
+    resta invariato (l'elenco chiuso di V4 non cambia). Alternative scartate: lock del processo corrente riconosciuto
+    dal solo pid (non distingue un lock rilasciato e ripreso); acquisizione implicita del lock in una funzione di
+    lettura.
+  - **Scostamento dalla firma del piano:** `get_residuals(store, key, segment, agg, allow_diagnostic=False, *, lock,
+    data_dir, datasets_dir)` e `regenerate(store, key, data_dir, datasets_dir, lock, allow_version_mismatch=False)`.
+    Oltre a `lock`, servono `data_dir` e `datasets_dir`: il `fit_payload` registra dataset, macchina e `data_version`
+    ma non la posizione dei dati (che non deve entrare nella chiave). Sono parametri di sola localizzazione, non una
+    config dell'esperimento: split, preprocessing e finestre vengono solo dal `fit_payload` di `meta.json`.
+  - **Verifiche di `regenerate`** (oltre a quelle del piano): `canonical_hash(fit_payload)` uguale alla chiave;
+    `checkpoint.json` uguale al record `checkpoint.hashable_sha256` di `meta.json`; `scaler.npz` uguale al record di
+    `meta.json` e allo scaler ricostruito; lotto di scoring = `scoring.score_batch_requested` registrato. «Mancante» =
+    `residuals.npz` o `residuals.json` assente. In lettura: `npz_sha256` del file, insieme degli array uguale a
+    `meta.json`, sha256 dell'array richiesto. I generatori globali sono salvati e ripristinati attorno a `load` e
+    `compute_all` (`load` ricostruisce la rete e consuma torch, D-67).
+  - Approvazione: utente, 2026-11-12, su raccomandazione di Claude Project (piano F5, passo 5, opzione C del lock).
 
 ### D-53 · File tracciati da git (`.pyc`, dataset) — APPROVATA · 2026-11-10
 - **Decisione:** i `.pyc` non sono tracciati: i 35 file già tracciati sono tolti dal tracciamento con

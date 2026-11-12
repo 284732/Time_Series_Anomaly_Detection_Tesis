@@ -113,3 +113,16 @@ def test_git_state_fails_closed(tmp_path, case):
         git(target, "init", "-q")
     s = provenance.git_state(target)
     assert s["ok"] is False and s["error"] and s["commit"] is None
+
+
+def test_file_sha256_normalizes_crlf_so_it_is_only_for_text(tmp_path):
+    """Documenta la normalizzazione CRLF → LF: due binari diversi (solo per un \r) hanno lo stesso hash, quindi
+    file_sha256 vale solo per file di testo; per i binari si usa lo sha256 dei byte grezzi."""
+    import hashlib
+    a, b = tmp_path / "a.bin", tmp_path / "b.bin"
+    a.write_bytes(b"\x00\x01\r\n\xff")
+    b.write_bytes(b"\x00\x01\n\xff")
+    assert a.read_bytes() != b.read_bytes()
+    assert provenance.file_sha256(a) == provenance.file_sha256(b)
+    assert provenance.file_sha256(a) == hashlib.sha256(b"\x00\x01\n\xff").hexdigest()
+    assert hashlib.sha256(a.read_bytes()).hexdigest() != hashlib.sha256(b.read_bytes()).hexdigest()

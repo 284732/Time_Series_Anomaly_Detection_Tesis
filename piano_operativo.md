@@ -328,6 +328,12 @@ D-53 approvata (2026-11-10): `.pyc` tolti dal tracciamento, `dataset/` resta tra
     niente nomi riservati di Windows; vale anche per `run_id` e `stage`. Il test `xfail` su `name="a/b"` diventa
     normale; caso limite valido `f5-run-2026-11-12`; test della regola e di `new_run_id` in
     `tests/test_config_schema.py` (nota su D-70).
+  - **Passo 5 (2026-11-12):** `get_residuals` e `regenerate` in `residual_cache.py`: lettura verificata (file e
+    array contro `meta.json`, mai rigenerazione silenziosa); rigenerazione dal `fit_payload` registrato con `load`,
+    senza `set_seed` né `fit`, hash sempre uguali a `meta.json`; lock con gettone esplicito («letture senza lock,
+    scritture solo con il gettone del run»; campo `nonce` nel lock); firma con `lock`, `data_dir`, `datasets_dir`
+    (scostamento registrato nella nota su D-70). `provenance.file_sha256` (CRLF → LF) è usato solo su file di testo:
+    docstring e test che lo documentano. Test: `tests/test_f5_regenerate.py`.
 
 ### F6 — Stadio di analisi
 - **Obiettivo:** prima riprodurre esattamente le metriche storiche dai residui, poi estendere.

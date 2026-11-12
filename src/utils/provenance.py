@@ -77,7 +77,10 @@ def _version(pkg: str) -> Optional[str]:
 
 
 def file_sha256(path: Union[str, Path]) -> Optional[str]:
-    """sha256 dei byte dopo CRLF → LF (indipendente da ``core.autocrlf``); None se il file manca."""
+    """sha256 dei byte dopo CRLF → LF (indipendente da ``core.autocrlf``); None se il file manca.
+
+    Solo per file di testo (oggi: file dei dati nel layout ``smd_txt`` del manifest e ``requirements-lock.txt``); per
+    i binari usare lo sha256 dei byte grezzi: la normalizzazione renderebbe uguali file binari diversi."""
     p = Path(path)
     if not p.exists():
         return None

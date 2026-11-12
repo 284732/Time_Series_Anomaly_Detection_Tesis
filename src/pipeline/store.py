@@ -49,7 +49,7 @@ RUN_STATUSES = ("started", "completed", "failed", "interrupted")   # interrupted
 FINISH_STATUSES = ("completed", "failed", "interrupted")
 CACHE_FILES = ("residuals.npz", "residuals.json")   # unici file riscrivibili in un fit completo (D-70)
 LOCK_NAME = ".lock"
-LOCK_FIELDS = ("pid", "host", "started_utc", "run_id")
+LOCK_FIELDS = ("pid", "host", "started_utc", "run_id", "nonce")   # nonce: uuid4 per acquisizione (F5 passo 5)
 REGISTRY_COLUMNS = ("timestamp_utc", "run_id", "experiment", "kind", "stage", "commit", "dirty",
                     "config_sha256", "plan_sha256", "status", "note")
 _KEY_RE = re.compile(r"^[0-9a-f]{20}$")
@@ -313,7 +313,7 @@ class Store:
         _check_name(run_id, "run_id")
         self.root.mkdir(parents=True, exist_ok=True)
         info = {"pid": os.getpid(), "host": socket.gethostname(), "started_utc": provenance.utc_now(),
-                "run_id": run_id}
+                "run_id": run_id, "nonce": uuid.uuid4().hex}     # gettone unico anche a parità di ora e run_id
         try:
             fd = os.open(self.lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
         except FileExistsError:
