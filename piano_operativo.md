@@ -303,6 +303,15 @@ D-53 approvata (2026-11-10): `.pyc` tolti dal tracciamento, `dataset/` resta tra
       processo sia attivo.
     - *Funzioni di supporto aggiunte:* `residual_name`, `residual_aggs_for`, `npz_bytes`, `read_npz`, `ResidualSet`
       (`residual_cache.py`); `StoreLocked`, `read_lock`, `lock_path` (`store.py`).
+  - **Passo 3 (2026-11-12):** `plan_fits`, `run_fit`, `meta.json`, `meta_hashable` in `fit.py`; `begin_run` con
+    `run_id` facoltativo e `new_run_id` in `store.py` (nota su D-70); controllo del device effettivo prima di
+    `write_fit` (nota su D-70). Test: `tests/test_f5_fit.py` (più tre test di `begin_run` in `tests/test_f5_store.py`).
+    **Misura:** fit sintetico completo (16 fit, solo `run_fit`, esclusi import e riferimento storico) = 4,6 s, sotto il
+    criterio di 1 minuto. `run_fit` rifiuta già `kind: official` (V6), oltre alla CLI del passo 6.
+    **Regola:** identità dei residui = sha256 per array in `meta.json`; `npz_sha256` in `residuals.json` serve solo
+    all'integrità del file sul disco e non si confronta tra scritture diverse. Verificato: con numpy 2.3.4 `npz_bytes`
+    è deterministico anche con orologio diverso (voci zip a data fissa), fissato da
+    `test_npz_bytes_deterministic_across_writes`; nessun punto del codice confronta `npz_sha256` tra due scritture.
 
 ### F6 — Stadio di analisi
 - **Obiettivo:** prima riprodurre esattamente le metriche storiche dai residui, poi estendere.

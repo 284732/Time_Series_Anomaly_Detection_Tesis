@@ -228,6 +228,23 @@ def test_npz_roundtrip_without_pickle(legacy, tmp_path):
                    {f: res[name].records[k][f] for f in ("shape", "dtype", "sha256")}, (name, k)
 
 
+def test_npz_bytes_deterministic_across_writes(legacy, monkeypatch):
+    """Stessi array → stessi byte, anche con orologio diverso (oggi numpy scrive le voci zip con data fissa).
+    La regola d'identità resta comunque lo sha256 per array in meta.json; npz_sha256 serve solo all'integrità."""
+    import io
+    import time
+    import zipfile
+    _, _, _, res = legacy
+    arrays = res["conv_autoencoder"].arrays
+    first = rc.npz_bytes(arrays)
+    shifted = time.time() + 86400 * 400 + 7
+    monkeypatch.setattr(time, "time", lambda: shifted)
+    monkeypatch.setattr(time, "localtime", lambda t=None: time.gmtime(shifted if t is None else t))
+    second = rc.npz_bytes(arrays)
+    assert first == second, "npz_bytes dipende dall'orologio: npz_sha256 non è confrontabile tra scritture"
+    assert {z.date_time for z in zipfile.ZipFile(io.BytesIO(second)).infolist()} == {(1980, 1, 1, 0, 0, 0)}
+
+
 # ------------------------------------------------------------------ 10. array_record
 def test_array_record_hash_depends_on_dtype_and_shape():
     a = np.arange(12, dtype=np.float32)

@@ -693,6 +693,22 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
 - **Approvazione:** utente, 2026-11-12, su raccomandazione di Claude Project (piano F5, V1–V6, C11 sostituita, A1–A3).
 - **Collegamenti:** D-04, D-20, D-33, D-44, D-56, D-58, D-60, D-64, D-66, D-67. **Serve entro:** F5.
 - **Documenti:** proposta §5.4, §5.5, §8 (superate sui punti sopra); piano F5.
+- **Nota (2026-11-12, F5 passo 3, il testo sopra resta invariato):**
+  - **Estensione dell'elenco chiuso di V4:** `begin_run` riceve un parametro facoltativo `run_id=None`; con `None` il
+    comportamento è invariato (id generato internamente, `store.py:349`). Un `run_id` passato si valida con
+    `_check_name` e, se la cartella del run o una riga di registro con quell'id esistono già, `begin_run` lo rifiuta
+    con un errore esplicito, senza scrivere nulla. Motivo: il lock va preso **prima** di `begin_run` (un secondo run
+    si rifiuta senza toccare lo store) e deve contenere il `run_id` del run; `run_fit` genera l'id, prende il lock con
+    quell'id, poi chiama `begin_run(..., run_id=id)`. Alternative scartate: `begin_run` prima del lock; lock con id
+    provvisorio riscritto dopo; id del lock distinto dal `run_id`.
+  - **Device nel `fit_key`:** il `fit_key` usa il device **richiesto** (`cfg.device`, `config.fit_payload`), non
+    quello effettivo, che sceglie il trainer (`trainer.py:30`, fallback storico usato da `main.py`, non si tocca) e
+    che il checkpoint registra (D-67). Oggi coincidono per costruzione (`schema.DEVICES = ("cpu",)`). **Vincolo:**
+    prima di ammettere `cuda` in `schema.DEVICES`, i controlli preliminari dovranno rifiutare un device richiesto e
+    non disponibile (nessun fallback silenzioso), così richiesto = effettivo. **Protezione già in F5:** prima di
+    `write_fit`, se il device effettivo del modello fittato differisce da `payload["device"]`, il compito è un errore
+    esplicito e non entra in cache.
+  - Approvazione: utente, 2026-11-12, su raccomandazione di Claude Project (piano F5, passo 3).
 
 ### D-53 · File tracciati da git (`.pyc`, dataset) — APPROVATA · 2026-11-10
 - **Decisione:** i `.pyc` non sono tracciati: i 35 file già tracciati sono tolti dal tracciamento con

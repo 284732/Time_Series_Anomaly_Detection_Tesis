@@ -179,3 +179,46 @@ def test_is_stale():
     assert is_stale({"pid": os.getpid(), "host": host}) is False         # processo attivo
     assert is_stale({"pid": _dead_pid(), "host": host + "-altro"}) is False   # host diverso: mai
     assert is_stale({"pid": None, "host": host}) is True                 # pid non valido = non attivo
+
+
+# ------------------------------------------------------------------ begin_run con run_id (nota su D-70, passo 3)
+def _repo(tmp_path):
+    from tests.fixtures.git_repo import make_repo
+    return make_repo(tmp_path / "repo")
+
+
+def _begin(store, repo, **kw):
+    return store.begin_run(kind="exploratory", experiment="e", stage="fit", config_sha256="c", repo_root=repo, **kw)
+
+
+def test_begin_run_without_run_id_unchanged(store, tmp_path):
+    repo = _repo(tmp_path)
+    run = _begin(store, repo)
+    assert storemod._NAME_RE.match(run.run_id) and len(run.run_id) == 24 and run.run_id[15] == "-"
+    assert run.run_dir == store.root / "runs" / "exploratory" / "e" / run.run_id and run.run_dir.is_dir()
+    assert [r["run_id"] for r in store.read_registry()] == [run.run_id]
+
+
+def test_begin_run_uses_given_run_id(store, tmp_path):
+    repo = _repo(tmp_path)
+    run = _begin(store, repo, run_id="20261112T120000-abcdef01")
+    assert run.run_id == "20261112T120000-abcdef01"
+    assert run.run_dir.name == run.run_id and run.run_dir.is_dir()
+    assert store.read_registry()[0]["run_id"] == run.run_id
+    with pytest.raises(ValueError):
+        _begin(store, repo, run_id="con spazi/e slash")
+
+
+def test_begin_run_refuses_duplicate_run_id_without_writing(store, tmp_path):
+    repo = _repo(tmp_path)
+    run = _begin(store, repo, run_id="dup-1")
+    store.finish_run(run, "completed")
+    snapshot = (store.registry_path.read_bytes(), sorted(p.as_posix() for p in store.root.rglob("*")))
+    with pytest.raises(StoreError, match="dup-1"):
+        _begin(store, repo, run_id="dup-1")
+    assert (store.registry_path.read_bytes(), sorted(p.as_posix() for p in store.root.rglob("*"))) == snapshot
+    # riga di registro con quell'id ma cartella assente (per esempio in un altro esperimento): rifiutato
+    with pytest.raises(StoreError, match="dup-1"):
+        store.begin_run(kind="exploratory", experiment="altro", stage="fit", config_sha256="c", repo_root=repo,
+                        run_id="dup-1")
+    assert not (store.root / "runs" / "exploratory" / "altro").exists()

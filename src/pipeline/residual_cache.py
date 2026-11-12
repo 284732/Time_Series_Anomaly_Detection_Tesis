@@ -11,6 +11,10 @@ Residui per sensore dello stadio di fit (F5, D-70). Passo 2: calcolo e record; l
   * tipo nativo (D-66), nessuna conversione; nessun effetto sui generatori globali (``residuals`` degli AE usa
     ``fork_rng``, D-67).
 Nomi: ``<segmento>__<agg>``. Formato: ``np.savez`` non compresso, lettura con ``allow_pickle=False``.
+
+Identità dei residui = sha256 per array in ``meta.json`` (``array_record``). ``npz_sha256`` in ``residuals.json`` serve
+solo all'integrità del file sul disco e non si confronta tra scritture diverse (oggi i byte sono deterministici, con
+numpy 2.3 le voci zip hanno data fissa, ma il formato del contenitore non è un contratto).
 """
 
 import hashlib

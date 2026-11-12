@@ -112,6 +112,11 @@ def _pid_alive(pid: Any) -> bool:
     return True
 
 
+def new_run_id() -> str:
+    """Id di un run: ora UTC compatta + 8 caratteri casuali (stessa regola storica di ``begin_run``)."""
+    return provenance.utc_now().replace(":", "").replace("-", "").replace(".", "")[:15] + "-" + uuid.uuid4().hex[:8]
+
+
 def is_stale(lock: Dict[str, Any], host: Optional[str] = None) -> bool:
     """Lock rimasto da un processo morto: stesso host di quello corrente e pid non attivo (host diverso: mai)."""
     host = socket.gethostname() if host is None else host
@@ -331,12 +336,21 @@ class Store:
 
     # ------------------------------------------------------------ run e registro
     def begin_run(self, *, kind: str, experiment: str, stage: str, config_sha256: str,
-                  repo_root: Union[str, Path], plan_sha256: str = "", note: str = "") -> RunHandle:
-        """Apre un run (``kind`` obbligatorio). Gli ufficiali richiedono un albero git pulito e verificabile."""
+                  repo_root: Union[str, Path], plan_sha256: str = "", note: str = "",
+                  run_id: Optional[str] = None) -> RunHandle:
+        """Apre un run (``kind`` obbligatorio). Gli ufficiali richiedono un albero git pulito e verificabile.
+
+        ``run_id`` (F5, nota su D-70): None = id generato qui (comportamento storico); un id passato si valida e si
+        rifiuta, senza scrivere nulla, se la cartella del run o una riga di registro con quell'id esistono già."""
         if kind not in EXPERIMENT_KINDS:
             raise ValueError(f"kind non valido: {kind!r}, ammessi {EXPERIMENT_KINDS}")
         _check_name(experiment, "experiment")
         _check_name(stage, "stage")
+        if run_id is not None:
+            _check_name(run_id, "run_id")
+            if (self.root / "runs" / kind / experiment / run_id).exists() or \
+                    any(r.get("run_id") == run_id for r in self.read_registry()):
+                raise StoreError(f"run_id {run_id!r} già usato in questo store: rifiutato (nota su D-70)")
         git = provenance.git_state(repo_root)
         if kind == "official":
             if not git["ok"]:
@@ -346,7 +360,8 @@ class Store:
                                          + "\n  ".join(git["changed_files"]))
         elif git["dirty"] or not git["ok"]:
             _log.warning("run esplorativo con albero git %s", "modificato" if git["dirty"] else "non verificabile")
-        run_id = provenance.utc_now().replace(":", "").replace("-", "").replace(".", "")[:15] + "-" + uuid.uuid4().hex[:8]
+        if run_id is None:
+            run_id = new_run_id()
         run_dir = self.root / "runs" / kind / experiment / run_id
         run_dir.mkdir(parents=True, exist_ok=False)
         handle = RunHandle(run_id, kind, experiment, stage, run_dir, config_sha256, plan_sha256, git)
