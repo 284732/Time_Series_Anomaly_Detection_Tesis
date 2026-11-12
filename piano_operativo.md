@@ -334,6 +334,9 @@ D-53 approvata (2026-11-10): `.pyc` tolti dal tracciamento, `dataset/` resta tra
     scritture solo con il gettone del run»; campo `nonce` nel lock); firma con `lock`, `data_dir`, `datasets_dir`
     (scostamento registrato nella nota su D-70). `provenance.file_sha256` (CRLF → LF) è usato solo su file di testo:
     docstring e test che lo documentano. Test: `tests/test_f5_regenerate.py`.
+  - **Passo 6 (2026-11-12):** `src/cli.py` con `fit`, `status` (sola lettura, `--verify`) e `clean-tmp`
+    (`--dry-run`, `--break-stale-lock` annotato nel registro con un run di stage `clean-tmp`); codici 0/1/2/3/130
+    (nota su D-70). Test: `tests/test_f5_cli.py`, con un test di fumo via `subprocess`.
 
 ### F6 — Stadio di analisi
 - **Obiettivo:** prima riprodurre esattamente le metriche storiche dai residui, poi estendere.

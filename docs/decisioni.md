@@ -777,6 +777,32 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
     `meta.json`, sha256 dell'array richiesto. I generatori globali sono salvati e ripristinati attorno a `load` e
     `compute_all` (`load` ricostruisce la rete e consuma torch, D-67).
   - Approvazione: utente, 2026-11-12, su raccomandazione di Claude Project (piano F5, passo 5, opzione C del lock).
+- **Nota (2026-11-12, F5 passo 6, il testo sopra resta invariato):** CLI `src/cli.py`
+  (`python -m src.cli {fit,status,clean-tmp} <esperimento.yaml> [--datasets-dir]`, `main(argv) -> int`).
+  - **Codici di uscita:** 0 tutto complete o skipped; 1 almeno un fit failed (fit) o un errore di integrità
+    (`status --verify`); 2 config o dati non validi (validazione, controlli preliminari, `kind: official`, file di
+    esperimento inesistente); 3 store occupato (lock attivo, rimasto senza `--break-stale-lock`, di un altro host,
+    illeggibile); 130 interruzione.
+  - **`status`** in sola lettura (nessuna cartella né file, nemmeno lo store se manca): per compito complete /
+    failed (fase) / missing, residui presenti o mancanti con origine, voci di `orphan_tmp`, stato del lock (libero,
+    occupato, rimasto secondo `is_stale`, illeggibile). `--verify` legge i residui presenti con `get_residuals` senza
+    lock (quindi senza mai rigenerare) e dà codice 1 con l'elenco delle chiavi in caso di errore di integrità.
+  - **`clean-tmp`** prende il lock con un `run_id` di `new_run_id`, rilegge `orphan_tmp` sotto lock e rimuove tutte
+    le voci (file, scritture parziali, cestini, scritture complete non installate); non promuove mai un `tmp/` a
+    `fits/<key>`; `--dry-run` elenca senza lock e senza cancellare; su uno store inesistente non crea nulla.
+  - **Annotazione della rottura del lock (forma minima, nessun nuovo valore di stato):** ogni `clean-tmp` effettivo
+    apre un run con il meccanismo esistente (`begin_run`/`finish_run`, `stage = "clean-tmp"`, `kind` ed esperimento
+    della config, commit e `dirty` come ogni riga): riga `started` con nota `break-stale-lock: <JSON del lock
+    rimosso>` (pid, host, `started_utc`, `run_id`, `nonce`) quando il lock è stato rotto, vuota altrimenti; riga
+    `completed` con nota «rimosse N voci di tmp/». Nella cartella del run (`runs/<kind>/<esperimento>/<run_id>/`)
+    `clean-tmp` scrive `clean_summary.csv` (colonne `kind`, `path` relativo allo store, `fit_key`, `status`,
+    `detail`): una riga per voce rimossa con la classificazione di `orphan_tmp`, più una riga `lock_broken` (`path` =
+    `.lock`, `detail` = JSON del lock rimosso) se il lock è stato rotto; con zero voci il file contiene solo
+    l'intestazione; il file si scrive anche se la pulizia si interrompe a metà (voci già rimosse). `--dry-run` non apre
+    alcun run e non scrive alcun file. `--break-stale-lock` rompe il lock solo se l'host coincide e `is_stale` è vero; host diverso, processo
+    attivo o lock illeggibile → rifiuto (codice 3); per il lock illeggibile il messaggio spiega la rimozione manuale
+    dopo aver verificato che nessun processo sia attivo.
+  - Approvazione: utente, 2026-11-12, su raccomandazione di Claude Project (piano F5, passo 6).
 
 ### D-53 · File tracciati da git (`.pyc`, dataset) — APPROVATA · 2026-11-10
 - **Decisione:** i `.pyc` non sono tracciati: i 35 file già tracciati sono tolti dal tracciamento con
