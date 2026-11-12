@@ -60,6 +60,10 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
   punti > `n_past` massimo previsto (2.880).
 - **Serve entro:** F6.
 - **Documenti:** `CLAUDE.md` §5; proposta §2, §3, §4.6, §5.4; piano F6.
+- **Nota di rimando (2026-11-12, F5, il testo sopra resta invariato):** in `legacy2` non esiste un array di residui
+  `es`: es e cal sono lo stesso segmento (`es_is_cal`, doppio uso P1 dichiarato, D-63) e lo stadio di fit salva solo
+  `cal` e `test`. I residui `es__<agg>`, marcati `diagnostic_only`, esistono solo in `split3`; `residual_cache` rifiuta
+  di leggerli senza un flag esplicito di diagnostica (D-70).
 
 ### D-05 · Split cronologico 60/20/20 — APPROVATA · 2026-11-09
 - **Decisione:** fit 60% / es 20% / cal 20% del train originale, in ordine cronologico; frazioni configurabili.
@@ -388,6 +392,10 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
   valori di uno spec, verificabili anche sul dataset sintetico di F1 e su un secondo dataset sintetico.
 - **Collegamenti:** D-26, D-32, D-44, D-45, D-51, D-59, D-61. **Serve entro:** F3.
 - **Documenti:** piano F3; `CLAUDE.md` §5 (al prossimo aggiornamento).
+- **Nota di rimando (2026-11-12, F5, il testo sopra resta invariato):** nello stadio di fit i controlli bloccanti
+  si eseguono **prima del primo fit**, per tutte le macchine selezionate: validazione della config, `manifest.load`
+  (hash e contenuto) e `segment_bounds`. Un errore lì ferma il run con codice di uscita 2 e l'elenco completo dei
+  fallimenti, prima che si scriva qualunque fit. Sono isolati per `fit_key` solo gli errori di modello (D-70).
 
 ### D-59 · `data_version` del fit e versione delle label — APPROVATA · 2026-11-10
 - **Decisione:**
@@ -503,6 +511,11 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
     rilevano differenze di layout. La verifica del layout è affidata a `tests/test_f4_layout.py`: passi dei lotti di
     `compute_residuals` contro le finestre di `main.prepare_machine_data`, e passi degli array scalati di F3 contro
     quelli di `main.py` per tutti gli `scaler_type`.
+- **Nota di rimando (2026-11-12, F5, il testo sopra resta invariato): lotti nello stadio di fit.** Nessun allentamento
+  della regola dei lotti in `split3`: lo stadio di fit la applica in entrambe le modalità tramite
+  `batching.compute_residuals`. Lotto predefinito: un solo lotto per segmento (stessa chiamata di `main.py`, sempre
+  compatibile); un lotto esplicito viene validato da `check_legacy_batch`. La dimensione del lotto resta fuori dal
+  `fit_key` e si registra in `meta.json` (D-70). Approvazione: utente, 2026-11-12 (piano F5, V8).
 
 ### D-66 · Tipo numerico dei residui — APPROVATA · 2026-11-11
 - **Decisione:** `residuals()` restituisce il tipo nativo di `score_features` del modello, senza conversioni. Il formato
@@ -563,6 +576,23 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
     modello di quel seed. Non usa il generatore globale di torch né quello globale di numpy, quindi il suo valore
     storico non dipende dai semi estratti dal `DataLoader` nello scoring degli AE. Tra lo scoring di un AE e il
     `set_seed` successivo ci sono solo metriche e soglie deterministiche.
+- **Nota di rimando (2026-11-12, F5, il testo sopra resta invariato):**
+  - **`loaded_with_version_mismatch` e `meta.json`:** `meta.json` si scrive una sola volta, al fit, con
+    `loaded_with_version_mismatch: false` (nello stadio di fit il modello non viene mai caricato). Il caricamento di un
+    checkpoint avviene solo nella rigenerazione dei residui, e il suo esito si registra in `residuals.json` (D-70).
+  - **Regola degli hash:** la verifica degli sha256 dei residui contro `meta.json` è sempre obbligatoria, anche con
+    `allow_version_mismatch=True`. La forzatura permette solo il `load`; hash diversi sono un errore, senza eccezioni.
+    Quindi `loaded_with_version_mismatch: true` significa «caricato con versioni diverse, residui identici bit a bit».
+  - **Ordine di `set_seed` (fatto verificato in sola lettura, `main.run_machine`):** `set_seed` reimposta i generatori
+    di `random`, numpy globale e torch; tra `main.py:330` e `model.fit` (`main.py:340`) nulla consuma un generatore; la
+    costruzione del modello (`main.py:328`) avviene prima e non lo usa (le reti si costruiscono in `fit`); la baseline
+    random usa un generatore proprio (`main.py:313`). La chiamata di `main.py:310` non ha quindi effetti sul fit: lo
+    stadio di fit replica solo quella di `main.py:330` (costruzione → finestre → `set_seed(seed)` → `fit`, nessun
+    `load` in mezzo). Va dimostrato con un test sullo stato dei generatori (torch, numpy globale, `random`) catturato
+    all'ingresso di `fit`, uguale a quello subito dopo un `set_seed(seed)` nuovo. Per i modelli deterministici il valore
+    passato è `seeds[0]`, come `main.py:321`, e un test verifica che i loro residui non cambino tra `set_seed(42)` e
+    `set_seed(7)` (giustifica il seed assente dal `fit_key`).
+  - Approvazione: utente, 2026-11-12, su raccomandazione di Claude Project (piano F5, C3, C7).
 ### D-68 · Interfaccia dei modelli in F4 — APPROVATA · 2026-11-11
 - **Decisione:**
   - **registro:** `src/models/registry.py` è uno strato sottile sopra `schema.MODEL_SCHEMAS`, che resta l'unica fonte;
@@ -582,6 +612,87 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
 - **Approvazione:** utente, 2026-11-11, su raccomandazione di Claude Project (piano F4, C1, C6, C7, C9).
 - **Collegamenti:** D-10, D-13, D-15, D-33, D-39, D-64, D-66, D-67, D-69. **Serve entro:** F4.
 - **Documenti:** proposta §5 (riga `models/registry.py`: «spostato da `main.py`» superato); piano F4.
+
+### D-70 · Stadio di fit: store, `meta.json`, residui — APPROVATA · 2026-11-12
+- **Decisione:**
+  - **Layout dello store** (modifica strutturale, `CLAUDE.md` §8; D-56 fissa solo posizione e budget):
+    - `store/fits/<fit_key>/`: `meta.json`, `checkpoint/` (cartella di D-67), `scaler.npz`, `residuals.npz`,
+      `residuals.json`;
+    - `store/runs/exploratory/<esperimento>/<run_id>/`: `run.log`, `fit_summary.csv`;
+    - `store/tmp/` (scritture in corso), `store/registry.csv`, `store/.lock`.
+    `proposta_architettura_target.md:252` (`model.pt` / `pca.npz` direttamente in `fits/<key>/`) è superata su
+    questo punto da D-67 (checkpoint come cartella, `save` rifiuta una cartella non vuota) e da questa voce.
+  - **Residui:**
+    - nomi `<segmento>__<agg>`; aggregazioni = `RESIDUAL_AGGS` ∩ `residual_aggs` del modello (per il rolling z-score
+      solo `last`, nota su D-33);
+    - `legacy2`: `cal` e `test` (nessun `es`: es = cal, nota su D-04);
+    - `split3`: anche `es` (`diagnostic_only`, D-04) e, solo con `step` = 1, `test_ctx_head` = le W−1 finestre del test
+      che iniziano in cal (D-20, D-60), calcolate con una **chiamata separata** di `compute_residuals`, così i residui
+      primari del test sono identici nei due scenari di RQ1a;
+    - formato `np.savez` non compresso, tipo nativo (D-66), lettura con `allow_pickle=False`;
+    - gli indici dei timestamp non si salvano come array: `meta.json` registra `n_timestamps`, W, `step`, `context` e
+      `n_windows`, da cui un test ricostruisce esattamente `WindowSet.starts` / `ends`.
+  - **`meta.json` e `residuals.json`:**
+    - `meta.json` si scrive una sola volta, al fit, con `loaded_with_version_mismatch: false` e il record di ogni
+      residuo (forma, dtype, sha256, `n_nonfinite`, parametri della finestra, `diagnostic_only`); confronti solo sulla
+      forma senza tempi, provenance e `created_by` (`meta_hashable`, coerente con D-67);
+    - `residuals.json` descrive il file presente sul disco: origine (`fit` / `regenerated`),
+      `loaded_with_version_mismatch`, firma d'ambiente;
+    - la verifica degli sha256 contro `meta.json` è **sempre** obbligatoria, anche con `allow_version_mismatch=True`:
+      la forzatura permette solo il `load`; hash diversi sono un errore, senza eccezioni (nota su D-67).
+  - **Aggiunte a `store.py` (V4 allargata in modo esplicito).** Elenco chiuso:
+    - `replace_fit_cache_file` (scrittura atomica, ammessa **solo** per `residuals.npz` e `residuals.json`);
+    - `orphan_tmp()` (cartelle temporanee e cestini orfani);
+    - acquisizione e rilascio del lock (vedi sotto);
+    - valore `interrupted` in `RUN_STATUSES` (`store.py:36`), accettato da `finish_run` (`store.py:200`) e da
+      `append_registry` (`store.py:217`).
+    Nessun metodo esistente cambia comportamento per i valori già ammessi. `replace_fit_cache_file` è un'eccezione
+    limitata alla regola «un fit completo non si sovrascrive mai» (`store.py:12`), ammessa perché riguarda solo file
+    derivati, rigenerabili dal checkpoint e verificati con hash contro `meta.json`; `meta.json`, `checkpoint/` e
+    `scaler.npz` non si riscrivono mai. **Per il passo 2:** se un test o lo schema di F2 fissa i valori ammessi per lo
+    stato nel registro, si aggiorna insieme a `RUN_STATUSES`, dichiarandolo.
+  - **Controlli preliminari e fallimenti isolati:** prima del primo fit, per tutte le macchine selezionate:
+    validazione della config, `manifest.load` e `segment_bounds`; un errore blocca il run (codice 2, nota su D-58).
+    Sono isolati per `fit_key` solo gli errori di modello (fit, `save`, residui, serializzazione): `meta.json` con
+    `status: failed`, tipo, messaggio, traceback e fase. Un fit `failed` si ripete al rilancio; la sostituzione avviene
+    con il meccanismo esistente di `store.write_fit` (`store.py:134-153`): il nuovo fit si scrive per intero in una
+    cartella temporanea nuova (quindi `save` vede sempre `tmp/<uuid>/checkpoint` vuota), poi la vecchia
+    `fits/<key>` si sposta nel cestino temporaneo, la nuova prende il suo posto con `os.replace` e il cestino si
+    cancella. Un fit `complete` non si ripete mai: `write_fit` continua a rifiutarne la sostituzione (`FitExists`,
+    `store.py:130`) e il meccanismo con il cestino vale solo per i fit `failed`. Un processo morto tra lo spostamento
+    nel cestino e `os.replace` lascia un cestino orfano e nessun `fits/<key>`: è accettabile (il compito si rifà al
+    rilancio), ma `orphan_tmp` e `status` elencano anche i cestini orfani.
+  - **Valori non finiti** (sostituisce la proposta C11 del piano F5): una loss non finita **non** rende il fit
+    `failed` (sarebbe una regola di esclusione implicita, D-44 aperta, e romperebbe la parità con `main.py`, che in quel
+    caso produce comunque residui). Il fit resta `complete` con `nonfinite_loss: true`; i valori non finiti si
+    serializzano in modo esplicito (`null` più il flag), così `json.dump(allow_nan=False)` non fallisce; per ogni
+    residuo si registra `n_nonfinite`. Nessuna esclusione (nota su D-44).
+  - **`kind: official`:** `cli fit` lo rifiuta («non disponibile prima di F10»); le protezioni dei run ufficiali
+    arrivano in F9–F10.
+  - **Interruzione distinta dal fallimento:** `KeyboardInterrupt` non è un fallimento isolato: si propaga, `tmp/`
+    viene ripulita, il registro riceve una riga `interrupted` (non `failed`) e il codice di uscita è 130. Serve a F11:
+    la regola di esclusione (D-44) dovrà distinguere un modello fallito da un run interrotto. **Richiede** di
+    aggiungere `interrupted` a `RUN_STATUSES` (`store.py:36`) e ai valori ammessi da `finish_run` (`store.py:200`):
+    estensione dei valori ammessi, nessun altro comportamento cambia.
+  - **`status` in sola lettura:** non crea cartelle né file; elenca anche cartelle temporanee e cestini orfani.
+  - **Lock di scrittura:** `store/.lock` creato con `O_EXCL` all'apertura del run e rimosso alla fine, anche su
+    eccezione. Contenuto: pid, host, ora di avvio, `run_id` (file locale e temporaneo, non entra nella provenance). Se
+    esiste, `fit` rifiuta di partire e ne mostra il contenuto.
+  - **Pulizia (`clean-tmp`):** prende il lock e poi pulisce; poiché un processo di fit tiene il lock per tutto il run,
+    non può cancellare il `tmp/` di un processo attivo. Se il lock è occupato rifiuta e ne mostra il contenuto.
+    `clean-tmp --break-stale-lock` rimuove il lock solo se l'host coincide con quello corrente e il pid non è attivo
+    (host diverso: rifiuta), poi prende il lock e pulisce; la rottura del lock si annota nel registro.
+  - **Test richiesti (lock e pulizia):** secondo run concorrente rifiutato; lock attivo → `clean-tmp` rifiuta; lock di un
+    pid morto → `clean-tmp` senza opzione rifiuta, con `--break-stale-lock` pulisce e annota la rottura nel registro;
+    lock di un host diverso → `--break-stale-lock` rifiuta.
+- **Motivazione:** artefatti indirizzati per contenuto, scritti in modo atomico e verificabili con hash; residui
+  rigenerabili senza nuovi fit e senza possibilità di sostituirli con valori diversi; `split3` si implementa già in F5
+  per completare il contratto della versione 1 di `FIT_CODE_VERSION`, che include le W−1 finestre del test con contesto
+  (D-20, D-60, `schema.py:23-24`), e per testare subito gli invarianti anti-leakage. I fallimenti di dati restano
+  bloccanti (D-58), quelli di modello isolati; interruzioni e fallimenti si distinguono per F11.
+- **Approvazione:** utente, 2026-11-12, su raccomandazione di Claude Project (piano F5, V1–V6, C11 sostituita, A1–A3).
+- **Collegamenti:** D-04, D-20, D-33, D-44, D-56, D-58, D-60, D-64, D-66, D-67. **Serve entro:** F5.
+- **Documenti:** proposta §5.4, §5.5, §8 (superate sui punti sopra); piano F5.
 
 ### D-53 · File tracciati da git (`.pyc`, dataset) — APPROVATA · 2026-11-10
 - **Decisione:** i `.pyc` non sono tracciati: i 35 file già tracciati sono tolti dal tracciamento con
@@ -664,6 +775,10 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
 
 ### D-43 · Descrittori per RQ3 (massimo 4) e ipotesi — APERTA · **Serve entro:** F10.
 ### D-44 · Regole di esclusione (fit fallito, macchina con un solo evento) — APERTA · **Serve entro:** F10.
+- **Nota (2026-11-12, F5, la voce resta APERTA):** lo stadio di fit registra senza escludere: un fit con loss non
+  finita resta `complete` con `nonfinite_loss: true`, e per ogni residuo si registra `n_nonfinite`; un errore di
+  modello dà `status: failed`; un run interrotto dà la riga di registro `interrupted`, distinta da `failed` (D-70).
+  Le tre situazioni restano distinguibili per la regola che si deciderà qui.
 
 ### D-45 · Secondo dataset — APERTA
 - **Vincolo:** deve avere più entità (PSM escluso; ASD candidato da verificare). Il piano congelato per SMD si riapplica

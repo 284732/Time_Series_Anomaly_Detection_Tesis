@@ -248,6 +248,43 @@ D-53 approvata (2026-11-10): `.pyc` tolti dal tracciamento, `dataset/` resta tra
   - golden R1 (`tests/golden/residuals_r1.json`): si rigenera solo con un cambio motivato di `FIT_CODE_VERSION` o del
     lock (D-55), mai per far passare un test.
 - **Impatto sui risultati:** nessuno.
+- **Nota (2026-11-12, piano F5 approvato):** decisione D-70 (layout dello store, nomi dei residui, `meta.json` /
+  `residuals.json` e regola degli hash, eccezione limitata per i file di cache, controlli preliminari, `official`
+  rifiutato, valori non finiti, `interrupted`, `status` in sola lettura, lock) e note su D-04, D-44, D-58, D-64 (nessun
+  allentamento dei lotti), D-67 (regola degli hash, ordine di `set_seed`).
+  - **Perimetro:** i 6 modelli del nucleo; `legacy2` (parità) e `split3` (invarianti, `test_ctx_head` solo con
+    `step` = 1); la baseline random resta a F6 (`default_rng(seed)`, poi `random(T_cal)` e `random(T_test)`, come
+    `main.py:313-314`, sulla maschera M_cal di D-23); le protezioni sulle macchine e sui run ufficiali restano a F9–F10.
+  - **File in più rispetto all'elenco sopra:** `src/pipeline/store.py`, elenco chiuso di aggiunte di D-70
+    (`replace_fit_cache_file`, `orphan_tmp`, acquisizione e rilascio del lock, valore `interrupted` in `RUN_STATUSES`
+    accettato da `finish_run` e `append_registry`; nessun metodo esistente cambia per i valori già ammessi); docstring di
+    `WindowSet.materialize` (`src/data/windows.py`) corretta in un **commit separato** (nessun numero cambia): in F5 le
+    finestre di fit non usano `materialize`.
+  - **Finestre di fit:** `fit_X` = `legacy_layout_batch(train_windows, 0, N)`; `fit_X_val` =
+    `legacy_layout_batch(score_windows(es), 0, N)[::max(1, train_step // step)]` (regola letterale di D-63, stessi passi
+    di `main.py:229-231`); la PCA puntuale riceve il segmento fit scalato.
+  - **Test aggiunti rispetto all'elenco sopra:** stato dei generatori all'ingresso di `fit` uguale a quello dopo un
+    `set_seed(seed)` nuovo (nota su D-67); residui dei modelli deterministici identici con `set_seed(42)` e
+    `set_seed(7)`; nessun modello diverso dalla PCA legge `random_state` dalla config (grep + test); passi di X e X_val
+    passati a `fit` uguali a quelli di `main.prepare_machine_data`, PCA comprese; loss NaN iniettata → fit `complete`,
+    `nonfinite_loss: true`, JSON valido; `KeyboardInterrupt` → riga `interrupted`, codice 130, `tmp/` vuota, nessun
+    `fits/<key>`; secondo run concorrente rifiutato dal lock; lock attivo → `clean-tmp` rifiuta; lock di un pid morto →
+    `clean-tmp` senza opzione rifiuta, con `--break-stale-lock` pulisce e annota la rottura nel registro; lock di un
+    host diverso → `--break-stale-lock` rifiuta; `orphan_tmp` e `status` elencano i cestini orfani; rigenerazione con versioni diverse e hash uguali → ok con
+    warning e `loaded_with_version_mismatch: true` in `residuals.json`, con hash diversi → errore anche forzando;
+    anti-leakage in `split3` (perturbare cal e test lascia invariati scaler, PCA, PCA puntuale e AE) e in `legacy2`
+    (perturbare il test lascia invariati scaler, checkpoint e residui di cal per tutti i modelli; perturbare cal = es
+    cambia gli AE: doppio uso P1 dichiarato, verificato come comportamento atteso); `status` non scrive nulla; la suite
+    non crea `<repo>/store`.
+  - **Passi:** 0 registro e piano → 0-bis docstring di `materialize` (commit separato) → 1 layout delle finestre di fit,
+    sequenza di `set_seed`, seed dei deterministici e `random_state` (prima i test), preparazione per macchina →
+    2 `residual_cache.compute_all`, formato dei residui, aggiunte a `store.py` (con `interrupted`: se un test o lo
+    schema di F2 fissa i valori ammessi per lo stato nel registro, si aggiorna insieme, dichiarandolo) → 3 `fit.py` (parità, rilancio, dtype,
+    `native_only`, es, tempi fuori dagli hash, loss NaN; misura della durata) → 4 fallimenti isolati, interruzione,
+    controlli preliminari, lock, anti-leakage `split3` e `legacy2`, `test_ctx_head` → 5 rigenerazione e regola degli
+    hash → 6 `cli.py` (`fit`, `status`, `clean-tmp`, rifiuto di `official`) → 7 chiusura. Dopo ogni passo: snapshot F1,
+    golden T0 e R1, poi `python -m pytest -q`.
+  - **Decisioni APERTE toccate, stato invariato:** D-38, D-39, D-40, D-41, D-44, D-57, D-69.
 
 ### F6 — Stadio di analisi
 - **Obiettivo:** prima riprodurre esattamente le metriche storiche dai residui, poi estendere.
