@@ -312,6 +312,17 @@ D-53 approvata (2026-11-10): `.pyc` tolti dal tracciamento, `dataset/` resta tra
     all'integrità del file sul disco e non si confronta tra scritture diverse. Verificato: con numpy 2.3.4 `npz_bytes`
     è deterministico anche con orologio diverso (voci zip a data fissa), fissato da
     `test_npz_bytes_deterministic_across_writes`; nessun punto del codice confronta `npz_sha256` tra due scritture.
+  - **Passo 4 (2026-11-12):** in `fit.py` errori di modello isolati per `fit_key` (fasi `fit`, `device_check`,
+    `residuals`, `save`, `serialize`; `meta.json` failed con tipo, messaggio, traceback e fase; `FitReport.counts`;
+    colonna `phase` in `fit_summary.csv`); `KeyboardInterrupt` si propaga con registro `interrupted`; loss non
+    finita → `complete` con `nonfinite_loss`. **Fuori da `fit.py`** (nota «F5 passo 4» su D-70, rimando su D-67):
+    `FitInfo.to_dict`/`from_dict` in `src/models/base.py` serializzano i non finiti come `null`, con
+    `nonfinite_fields` per i campi scalari (prima `save` falliva con `allow_nan=False`); invariato per valori finiti.
+    **`run_fit` cambia firma:** riceve la specifica grezza o un percorso YAML e chiama `validate_experiment` prima di
+    ogni scrittura (corpo privato `_run_fit`); i test dei passi 3 e 4 costruiscono le varianti sulla specifica grezza
+    (`synth_spec` in `tests/fixtures/f5.py`). Lacuna di F2 da decidere a parte: `experiment.name` con `/` passa lo
+    schema (test `xfail`). Test: `tests/test_f5_failures.py`, `tests/test_f5_leakage.py` (split3, legacy2 A4,
+    `test_ctx_head`); il test del passo 3 su `DeviceMismatch` ora verifica l'isolamento.
 
 ### F6 — Stadio di analisi
 - **Obiettivo:** prima riprodurre esattamente le metriche storiche dai residui, poi estendere.

@@ -593,6 +593,10 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
     passato è `seeds[0]`, come `main.py:321`, e un test verifica che i loro residui non cambino tra `set_seed(42)` e
     `set_seed(7)` (giustifica il seed assente dal `fit_key`).
   - Approvazione: utente, 2026-11-12, su raccomandazione di Claude Project (piano F5, C3, C7).
+- **Nota di rimando (2026-11-12, F5 passo 4, il testo sopra resta invariato):** il `fit_info` di `checkpoint.json` usa
+  la serializzazione dei non finiti di `FitInfo` descritta nella nota «F5 passo 4» di D-70 (`null`, più
+  `nonfinite_fields` per i campi scalari). Con valori finiti il `fit_info` di `checkpoint.json` è identico a prima
+  (stesse chiavi, stessi valori); `CHECKPOINT_FORMAT` non cambia.
 ### D-68 · Interfaccia dei modelli in F4 — APPROVATA · 2026-11-11
 - **Decisione:**
   - **registro:** `src/models/registry.py` è uno strato sottile sopra `schema.MODEL_SCHEMAS`, che resta l'unica fonte;
@@ -709,6 +713,31 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
     `write_fit`, se il device effettivo del modello fittato differisce da `payload["device"]`, il compito è un errore
     esplicito e non entra in cache.
   - Approvazione: utente, 2026-11-12, su raccomandazione di Claude Project (piano F5, passo 3).
+- **Nota (2026-11-12, F5 passo 4, il testo sopra resta invariato):**
+  - **Serializzazione dei non finiti in `FitInfo`** (modifica di `src/models/base.py`, fuori dal perimetro di
+    `fit.py`, necessaria: `_write_checkpoint` scrive con `allow_nan=False`, quindi senza questa modifica una loss non
+    finita avrebbe fatto fallire `save` e reso il fit `failed`, contro la regola sui valori non finiti sopra).
+    `to_dict`: elementi non finiti delle loss → `null`; campi scalari (`explained_variance`, `fit_seconds`) non finiti →
+    `null` più il loro nome in `nonfinite_fields`, chiave scritta solo se non vuota. `from_dict`: `null` nelle loss →
+    NaN; NaN solo nei campi scalari elencati; ogni altro `null` resta «assente» (`None`, per esempio
+    `explained_variance` di un AE). NaN e ±inf diventano tutti `null`: la distinzione non si conserva (campi solo
+    diagnostici). Il formato è invariato per i valori finiti (nessuna chiave in più, round-trip identico).
+    `meta.json` registra `nonfinite_loss` (flag sulle loss). Alternative scartate: `null` → NaN per ogni campo scalare
+    (avrebbe trasformato in NaN i campi assenti di tutti i modelli non-PCA); scalari non finiti riletti come `None`
+    (perdita d'informazione).
+  - **`run_fit` valida al proprio interno (firma cambiata rispetto al passo 3):** riceve la specifica grezza (mappa
+    già unita) o un percorso YAML (`config.load_experiment`), non una `ExperimentConfig`, e come primo passo chiama
+    `validate_experiment`, prima di lock, `begin_run` e di qualunque scrittura; un errore di validazione è bloccante
+    (codice 2, passo 6) e lo store non viene creato. Una `ExperimentConfig` passata direttamente è rifiutata. Il corpo
+    su config validata è privato (`_run_fit`) e i test non lo usano; le loro varianti modificano la specifica grezza.
+    Motivo: `ExperimentConfig` è una dataclass senza controlli propri e si costruisce anche a mano o con
+    `dataclasses.replace`; verificato che config costruite così (`device: tpu`, seed vuoti, `kind` errato) passavano
+    senza errori o lasciavano una cartella di store vuota.
+  - **Lacuna di F2 rilevata, da decidere a parte (schema non modificato):** `validate_experiment` accetta
+    `experiment.name` con caratteri non ammessi in un percorso (es. `a/b`): `schema._str` controlla solo la stringa non
+    vuota, e il nome è rifiutato più tardi da `begin_run`, dopo il lock (cartella di store creata vuota). Test relativo
+    marcato `xfail` (strict) con il motivo. `experiment.seeds` vuoto invece è già rifiutato dallo schema.
+  - Approvazione: utente, 2026-11-12, su raccomandazione di Claude Project (piano F5, passo 4).
 
 ### D-53 · File tracciati da git (`.pyc`, dataset) — APPROVATA · 2026-11-10
 - **Decisione:** i `.pyc` non sono tracciati: i 35 file già tracciati sono tolti dal tracciamento con

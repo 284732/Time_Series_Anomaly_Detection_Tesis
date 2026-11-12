@@ -8,7 +8,6 @@ nessuna scrittura nel repository (D-16).
 """
 
 import copy
-import dataclasses
 import json
 import time
 from pathlib import Path
@@ -22,8 +21,9 @@ from src.pipeline import fit as fitmod
 from src.pipeline import residual_cache as rc
 from src.pipeline.store import Store, StoreLocked
 from src.utils import config as cfgmod
+from src.utils.schema import validate_experiment
 from tests.fixtures.datasets import write_synth_dataset
-from tests.fixtures.f5 import CORE, synth_experiment
+from tests.fixtures.f5 import CORE, synth_spec
 from tests.fixtures.git_repo import make_repo
 from tests.fixtures.legacy_snapshot import array_summary
 
@@ -45,25 +45,30 @@ def env(tmp_path_factory):
             "manifest": build_manifest(load_dataset_spec(paths["spec"]), paths["data"])}
 
 
-def _cfg(env, store_name, **kw):
-    return synth_experiment(str(env["data"]), str(env["root"] / store_name), **kw)
+def _spec(env, store_name, **kw):
+    return synth_spec(str(env["data"]), str(env["root"] / store_name), **kw)
 
 
-def _run(env, cfg, **kw):
-    return fitmod.run_fit(cfg, datasets_dir=env["datasets_dir"], repo_root=env["repo"], **kw)
+def _root(spec):
+    """store_root della specifica grezza (run_fit riceve la specifica, non la config validata)."""
+    return spec["paths"]["store_root"]
+
+
+def _run(env, spec, **kw):
+    return fitmod.run_fit(spec, datasets_dir=env["datasets_dir"], repo_root=env["repo"], **kw)
 
 
 @pytest.fixture(scope="module")
 def run_a(env):
-    cfg = _cfg(env, "store_a")
+    spec = _spec(env, "store_a")
     t0 = time.perf_counter()
-    report = _run(env, cfg)
+    report = _run(env, spec)
     seconds = time.perf_counter() - t0
-    return cfg, report, seconds
+    return spec, report, seconds
 
 
-def _fits(cfg):
-    store = Store(cfg.store_root)
+def _fits(spec):
+    store = Store(_root(spec))
     out = {}
     for d in sorted((store.root / "fits").iterdir()):
         meta = json.loads((d / "meta.json").read_text(encoding="utf-8"))
@@ -100,8 +105,8 @@ def historical(env):
 
 def test_parity_with_historical_pipeline(run_a, historical):
     from src.evaluation.scoring import aggregate_scores
-    cfg, _, _ = run_a
-    fits = _fits(cfg)
+    spec, _, _ = run_a
+    fits = _fits(spec)
     assert len(fits) == 16
     seen = set()
     for key, f in fits.items():
@@ -119,10 +124,10 @@ def test_parity_with_historical_pipeline(run_a, historical):
 
 
 def test_parity_with_golden_r1(run_a):
-    cfg, _, _ = run_a
+    spec, _, _ = run_a
     golden = json.loads((ROOT / "tests" / "golden" / "residuals_r1.json").read_text(encoding="utf-8"))["residuals"]
     checked = 0
-    for f in _fits(cfg).values():
+    for f in _fits(spec).values():
         m = f["meta"]
         if m["machine"] != "machine-9-1" or m["seed"]["set_seed_value"] != 42:
             continue
@@ -135,7 +140,8 @@ def test_parity_with_golden_r1(run_a):
 
 # ------------------------------------------------------------------ 2. pianificazione
 def test_plan_fits(env):
-    cfg = _cfg(env, "store_plan")
+    spec = _spec(env, "store_plan")
+    cfg = validate_experiment(spec)
     tasks = fitmod.plan_fits(cfg, env["manifest"])
     assert len(tasks) == 16 and len({t.fit_key for t in tasks}) == 16
     for machine in MACHINES:
@@ -150,14 +156,14 @@ def test_plan_fits(env):
             for t in ts:
                 assert t.fit_key == cfgmod.fit_key(cfg, machine, name, 42 if t.seed is None else t.seed,
                                                    env["manifest"].data_version(machine))
-    assert not Path(cfg.store_root).exists()                       # pianificare non scrive nulla
+    assert not Path(_root(spec)).exists()                       # pianificare non scrive nulla
 
 
 # ------------------------------------------------------------------ 3. rilancio
 def test_rerun_does_not_refit(env, run_a, monkeypatch):
-    cfg, first, _ = run_a
+    spec, first, _ = run_a
     before = {k: ((f["dir"] / "meta.json").read_bytes(), (f["dir"] / "residuals.npz").read_bytes(),
-                  (f["dir"] / "residuals.json").read_bytes()) for k, f in _fits(cfg).items()}
+                  (f["dir"] / "residuals.json").read_bytes()) for k, f in _fits(spec).items()}
     calls = []
 
     def no_fit(self, *a, **k):
@@ -166,13 +172,13 @@ def test_rerun_does_not_refit(env, run_a, monkeypatch):
 
     for name in CORE:
         monkeypatch.setattr(registry.get(name), "fit", no_fit)
-    second = _run(env, cfg)
+    second = _run(env, spec)
     assert calls == []
     assert [r["outcome"] for r in second.rows] == ["skipped"] * 16
     after = {k: ((f["dir"] / "meta.json").read_bytes(), (f["dir"] / "residuals.npz").read_bytes(),
-                 (f["dir"] / "residuals.json").read_bytes()) for k, f in _fits(cfg).items()}
+                 (f["dir"] / "residuals.json").read_bytes()) for k, f in _fits(spec).items()}
     assert after == before
-    for f in _fits(cfg).values():
+    for f in _fits(spec).values():
         assert f["meta"]["created_by"]["run_id"] == first.run_id
     summary = (second.run_dir / "fit_summary.csv").read_text(encoding="utf-8").splitlines()
     assert len(summary) == 17 and all(",skipped," in line for line in summary[1:])
@@ -207,14 +213,14 @@ def run_reversed(env, tmp_path_factory):
         mp.setattr(cls, "load", classmethod(load))
     mp.setattr(registry, "load_checkpoint", lambda *a, **k: events.append(("load_checkpoint",)))
     try:
-        cfg = _cfg(env, "store_rev", run_models=tuple(reversed(CORE)))
-        report = _run(env, cfg)
+        spec = _spec(env, "store_rev", run_models=tuple(reversed(CORE)))
+        report = _run(env, spec)
         n_first = len(events)
-        report2 = _run(env, cfg)
+        report2 = _run(env, spec)
         rerun_events = events[n_first:]
     finally:
         mp.undo()
-    return cfg, report, events[:n_first], rerun_events, report2
+    return spec, report, events[:n_first], rerun_events, report2
 
 
 def test_sequence_init_set_seed_fit_and_no_load(run_reversed):
@@ -241,8 +247,8 @@ def test_model_order_does_not_change_artifacts(run_a, run_reversed):
 # ------------------------------------------------------------------ 6. tempi fuori dagli hash
 @pytest.fixture(scope="module")
 def run_c(env):
-    cfg = _cfg(env, "store_c")
-    return cfg, _run(env, cfg)
+    spec = _spec(env, "store_c")
+    return spec, _run(env, spec)
 
 
 def _diff_paths(a, b, prefix=""):
@@ -325,8 +331,8 @@ def test_meta_contents(run_a):
 
 # ------------------------------------------------------------------ 8. lock
 def test_lock_held_during_run_and_released(env, monkeypatch):
-    cfg = _cfg(env, "store_lock", run_models=("pca", "input_norm"), seeds=(42,))
-    store = Store(cfg.store_root)
+    spec = _spec(env, "store_lock", run_models=("pca", "input_norm"), seeds=(42,))
+    store = Store(_root(spec))
     seen = []
     real = fitmod.fit_one
 
@@ -335,19 +341,19 @@ def test_lock_held_during_run_and_released(env, monkeypatch):
         return real(*a, **k)
 
     monkeypatch.setattr(fitmod, "fit_one", spy)
-    report = _run(env, cfg)
+    report = _run(env, spec)
     assert seen and all(s is not None and s["run_id"] == report.run_id for s in seen)
     assert store.read_lock() is None and not store.lock_path.exists()
     assert {r["run_id"] for r in store.read_registry()} == {report.run_id}
 
 
 def test_run_refused_when_locked_without_touching_store(env):
-    cfg = _cfg(env, "store_locked", run_models=("pca",), seeds=(42,))
-    store = Store(cfg.store_root)
+    spec = _spec(env, "store_locked", run_models=("pca",), seeds=(42,))
+    store = Store(_root(spec))
     with store.lock("altro-run"):
         before = sorted(p.relative_to(store.root).as_posix() for p in store.root.rglob("*"))
         with pytest.raises(StoreLocked):
-            _run(env, cfg)
+            _run(env, spec)
         after = sorted(p.relative_to(store.root).as_posix() for p in store.root.rglob("*"))
         assert after == before == [".lock"]
         assert store.read_lock()["run_id"] == "altro-run"
@@ -358,7 +364,7 @@ def test_fit_key_uses_requested_device_not_effective(env):
     """Comportamento attuale documentato (nota su D-70): nel fit_key entra cfg.device (richiesto); il device
     effettivo, scelto dal trainer, non entra. Oggi coincidono: schema.DEVICES = ("cpu",)."""
     from src.utils import schema
-    cfg = _cfg(env, "store_dev")
+    cfg = validate_experiment(_spec(env, "store_dev"))
     assert schema.DEVICES == ("cpu",)
     for name in CORE:
         p = cfgmod.fit_payload(cfg, "machine-9-1", name, 42, "dv1-x")
@@ -371,12 +377,16 @@ def test_fit_key_uses_requested_device_not_effective(env):
 
 @pytest.mark.parametrize("name", ["conv_autoencoder", "pca"])
 def test_device_mismatch_is_refused_before_write(env, monkeypatch, name):
-    cfg = _cfg(env, f"store_devmis_{name}", run_models=(name,), seeds=(42,))
+    """Dal passo 4 DeviceMismatch è isolato (tests/test_f5_failures.py): nessun fit completo, solo il meta failed."""
+    spec = _spec(env, f"store_devmis_{name}", run_models=(name,), seeds=(42,))
     monkeypatch.setattr(fitmod, "effective_device", lambda model: "cuda")
-    with pytest.raises(fitmod.DeviceMismatch, match="cuda"):
-        _run(env, cfg)
-    fits = Path(cfg.store_root) / "fits"
-    assert not fits.exists() or not any(fits.iterdir())
+    report = _run(env, spec)
+    assert report.counts["failed"] == 2 and report.counts["fitted"] == 0
+    for d in (Path(_root(spec)) / "fits").iterdir():
+        assert sorted(p.name for p in d.iterdir()) == ["meta.json"]
+        meta = json.loads((d / "meta.json").read_text(encoding="utf-8"))
+        assert meta["status"] == "failed" and meta["error"]["type"] == "DeviceMismatch"
+        assert "cuda" in meta["error"]["message"]
 
 
 def test_effective_device_of_models(env, run_a):
@@ -389,10 +399,11 @@ def test_effective_device_of_models(env, run_a):
 
 # ------------------------------------------------------------------ varie
 def test_official_kind_refused(env):
-    cfg = dataclasses.replace(_cfg(env, "store_off", run_models=("pca",), seeds=(42,)), kind="official")
+    spec = _spec(env, "store_off", run_models=("pca",), seeds=(42,))
+    spec["experiment"]["kind"] = "official"
     with pytest.raises(fitmod.FitRefused, match="F10"):
-        _run(env, cfg)
-    assert not Path(cfg.store_root).exists()
+        _run(env, spec)
+    assert not Path(_root(spec)).exists()
 
 
 def test_fit_summary_and_report(run_a):

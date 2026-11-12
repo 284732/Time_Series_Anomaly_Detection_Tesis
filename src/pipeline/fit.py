@@ -1,12 +1,22 @@
 """
 Stadio di fit (F5, D-70): preparazione per macchina, fit di un modello, pianificazione dei ``fit_key``, esecuzione
-con lo store e ``meta.json``. Fallimenti isolati, interruzione e valori non finiti arrivano al passo 4.
+con lo store e ``meta.json``.
 
-``run_fit``: controlli preliminari bloccanti su tutte le macchine (config, ``manifest.load``, ``segment_bounds``;
-nota su D-58) → lock dello store con il ``run_id`` → ``begin_run`` → per macchina una sola ``prepare_machine`` e per
+``run_fit``: specifica grezza o percorso YAML → ``validate_experiment`` (prima di ogni scrittura) → controlli
+preliminari bloccanti su tutte le macchine (``manifest.load``, ``segment_bounds``; nota su D-58) → lock dello store con il ``run_id`` → ``begin_run`` → per macchina una sola ``prepare_machine`` e per
 compito: riuso (``store.reusable``) oppure ``fit_one`` → controllo del device → ``compute_all`` → ``write_fit``
 (checkpoint, ``scaler.npz``, ``residuals.npz``, ``residuals.json``; ``meta.json`` per ultimo, scritto dallo store) →
 ``finish_run`` e ``fit_summary.csv``.
+
+Fallimenti e interruzioni (D-70, passo 4):
+  * errori di modello isolati per ``fit_key`` (``Exception``, fasi ``PHASES``): ``meta.json`` con ``status: failed`` e
+    ``error`` {type, message, traceback, phase}, senza altri artefatti; gli altri compiti continuano; al rilancio il
+    compito si rifà e ``write_fit`` sostituisce il fit ``failed`` (cestino temporaneo cancellato);
+  * ``KeyboardInterrupt`` (e ogni altra ``BaseException``) non è mai isolata: si propaga; ``write_fit`` rimuove la
+    cartella temporanea del compito in corso; registro ``interrupted`` (altre ``BaseException``: ``failed``); lock
+    rilasciato; i compiti già scritti restano ``complete``;
+  * loss non finita: il fit resta ``complete`` con ``nonfinite_loss: true`` (valori ``null``, ``FitInfo.to_dict``);
+    ``n_nonfinite`` per ogni residuo; nessuna esclusione (nota su D-44).
 
 ``prepare_machine``: segmenti → scaler (solo su fit, D-63/D-65) → array di fit con il layout di ``main.py`` →
 viste di scoring per segmento. Nessun residuo, nessun generatore casuale, nessuna modifica ai dati di ingresso.
@@ -115,6 +125,7 @@ import hashlib  # noqa: E402
 import io  # noqa: E402
 import json  # noqa: E402
 import time  # noqa: E402
+import traceback  # noqa: E402
 from pathlib import Path  # noqa: E402
 from typing import List, Optional, Tuple, Union  # noqa: E402
 
@@ -124,7 +135,7 @@ from src.pipeline.store import Store, new_run_id  # noqa: E402
 from src.utils import config as cfgmod  # noqa: E402
 from src.utils import provenance  # noqa: E402
 from src.utils.log import close_run_logging, get_logger, setup_run_logging  # noqa: E402
-from src.utils.schema import ExperimentConfig, model_kwargs  # noqa: E402
+from src.utils.schema import ExperimentConfig, model_kwargs, validate_experiment  # noqa: E402
 
 META_FORMAT = 1
 CHECKPOINT_DIR = "checkpoint"
@@ -134,7 +145,10 @@ RESIDUALS_JSON = "residuals.json"
 META_EXCLUDED = ("timings", "created_by", "provenance")      # fuori da ogni hash (D-67, D-70)
 NATIVE_CONVENTION = {"window_time_agg": "none", "sensor_agg": "native"}   # table_schema, nota su D-33
 SUMMARY_COLUMNS = ("machine", "model", "seed", "set_seed_value", "fit_key", "outcome", "fit_seconds",
-                   "residual_seconds", "total_seconds", "error")
+                   "residual_seconds", "total_seconds", "phase", "error")
+OUTCOMES = ("fitted", "skipped", "failed")
+# fit: costruzione e fit; save: checkpoint; serialize: scaler.npz, residui, meta.json e spostamento atomico
+PHASES = ("fit", "device_check", "residuals", "save", "serialize")
 _log = get_logger("fit")
 
 
@@ -169,6 +183,11 @@ class FitReport:
     run_id: str
     run_dir: Path
     rows: List[Dict[str, Any]]
+
+    @property
+    def counts(self) -> Dict[str, int]:
+        """Compiti per esito (fitted / skipped / failed); il codice di uscita è del passo 6."""
+        return {o: sum(r["outcome"] == o for r in self.rows) for o in OUTCOMES}
 
 
 def plan_fits(cfg: ExperimentConfig, manifest) -> List[FitTask]:
@@ -245,18 +264,31 @@ def _preflight(cfg: ExperimentConfig, datasets_dir: Union[str, Path]):
     return manifest
 
 
+def _task_header(task: FitTask, cfg: ExperimentConfig, manifest) -> Dict[str, Any]:
+    """Campi comuni a ``meta.json`` complete e failed."""
+    return {"meta_format": META_FORMAT, "fit_payload": task.payload,
+            "fit_code_version": task.payload["fit_code_version"],
+            "machine": task.machine, "dataset": cfg.data.dataset, "group": manifest.group_of(task.machine),
+            "data_version": task.payload["data_version"]}
+
+
 def _fit_task(task: FitTask, cfg: ExperimentConfig, prepared: PreparedMachine, manifest, store: Store,
-              prov: Dict[str, Any], created_by: Dict[str, Any], score_batch: Optional[int]) -> Dict[str, Any]:
-    """Un compito: fit → controllo del device → residui → scrittura atomica. Restituisce i tempi."""
+              prov: Dict[str, Any], created_by: Dict[str, Any], score_batch: Optional[int],
+              phase: Dict[str, str]) -> Dict[str, Any]:
+    """Un compito: fit → controllo del device → residui → scrittura atomica. Restituisce i tempi.
+    ``phase["name"]`` tiene la fase corrente (``PHASES``), letta da ``run_fit`` in caso di errore."""
     from src.pipeline import residual_cache as rc   # import tardivo: residual_cache importa questo modulo
     t0 = time.perf_counter()
+    phase["name"] = "fit"
     kwargs = model_kwargs(cfg, task.model, task.set_seed_value if task.seed is None else task.seed)
     model = fit_one(task.model, kwargs, prepared, task.set_seed_value)
     t_fit = time.perf_counter() - t0
+    phase["name"] = "device_check"
     eff = effective_device(model)
     if eff != task.payload["device"]:
         raise DeviceMismatch(f"{task.machine}/{task.model}: device effettivo {eff!r} diverso da quello richiesto "
                              f"{task.payload['device']!r} nel fit_key; il compito non entra in cache (nota su D-70)")
+    phase["name"] = "residuals"
     t1 = time.perf_counter()
     res = rc.compute_all(model, prepared, prepared.mode, score_batch)
     t_res = time.perf_counter() - t1
@@ -264,7 +296,9 @@ def _fit_task(task: FitTask, cfg: ExperimentConfig, prepared: PreparedMachine, m
     signature = prov["environment_signature"]
 
     def writer(tmp: Path) -> Dict[str, Any]:
+        phase["name"] = "save"
         model.save(tmp / CHECKPOINT_DIR)
+        phase["name"] = "serialize"
         ck = json.loads((tmp / CHECKPOINT_DIR / CHECKPOINT_JSON).read_text(encoding="utf-8"))
         scaler_arrays = _scaler_arrays(prepared.scaler)
         np.savez(tmp / SCALER_NPZ, **scaler_arrays)
@@ -277,12 +311,8 @@ def _fit_task(task: FitTask, cfg: ExperimentConfig, prepared: PreparedMachine, m
         segs = prepared.segments
         fi = getattr(model, "fit_info_", None)
         return {
-            "meta_format": META_FORMAT,
+            **_task_header(task, cfg, manifest),
             "status": "complete",
-            "fit_payload": task.payload,
-            "fit_code_version": task.payload["fit_code_version"],
-            "machine": task.machine, "dataset": cfg.data.dataset, "group": manifest.group_of(task.machine),
-            "data_version": task.payload["data_version"],
             "model": {"name": task.model, "class_path": f"{type(model).__module__}:{type(model).__qualname__}",
                       "config_id": cfgmod.config_id(cfg.models[task.model]), "kwargs": kwargs,
                       "deterministic": bool(cfg.models[task.model].deterministic),
@@ -298,7 +328,8 @@ def _fit_task(task: FitTask, cfg: ExperimentConfig, prepared: PreparedMachine, m
                         "fit_inputs": {"X": array_layout(x), "X_val": array_layout(x_val)}},
             "scoring": {"score_batch_requested": score_batch},
             "device": {"requested": task.payload["device"], "effective": eff},
-            "fit_info": None if fi is None else fi.to_dict(),
+            "fit_info": None if fi is None else fi.to_dict(),          # non finiti → null (D-70)
+            "nonfinite_loss": bool(fi is not None and fi.has_nonfinite_loss()),
             "checkpoint": {"dir": CHECKPOINT_DIR,
                            "hashable_sha256": cfgmod.canonical_hash(checkpoint_hashable_meta(ck))},
             "scaler": {"file": SCALER_NPZ, "scaler_type": prepared.scaler.scaler_type,
@@ -316,6 +347,22 @@ def _fit_task(task: FitTask, cfg: ExperimentConfig, prepared: PreparedMachine, m
     return {"fit_seconds": t_fit, "residual_seconds": t_res, "total_seconds": time.perf_counter() - t0}
 
 
+def _write_failure(task: FitTask, cfg: ExperimentConfig, manifest, store: Store, prov: Dict[str, Any],
+                   created_by: Dict[str, Any], phase: str, exc: Exception, seconds: float) -> None:
+    """``meta.json`` con ``status: failed`` e nessun altro artefatto (D-70). Un errore qui (store) si propaga."""
+    meta = {
+        **_task_header(task, cfg, manifest),
+        "status": "failed",
+        "model": {"name": task.model, "deterministic": bool(cfg.models[task.model].deterministic)},
+        "seed": {"key_seed": task.seed, "set_seed_value": task.set_seed_value},
+        "error": {"type": type(exc).__name__, "message": str(exc), "phase": phase,
+                  "traceback": "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))},
+        "timings": {"total_seconds": seconds},
+        "created_by": dict(created_by),
+    }
+    store.write_fit(task.fit_key, lambda tmp: meta, dict(prov, data_version=task.payload["data_version"]))
+
+
 def _summary_csv(rows: List[Dict[str, Any]]) -> str:
     buf = io.StringIO()
     w = csv.DictWriter(buf, fieldnames=SUMMARY_COLUMNS, lineterminator="\n")
@@ -325,9 +372,30 @@ def _summary_csv(rows: List[Dict[str, Any]]) -> str:
     return buf.getvalue()
 
 
-def run_fit(cfg: ExperimentConfig, datasets_dir: Union[str, Path], repo_root: Union[str, Path],
+def validated_config(spec: Union[Mapping[str, Any], str, Path]) -> ExperimentConfig:
+    """Specifica grezza (mappa già unita) → ``validate_experiment``; percorso YAML → ``config.load_experiment``
+    (base + modelli + esperimento, poi validazione). Una ``ExperimentConfig`` già costruita è rifiutata: la
+    validazione non si salta (nota su D-70, passo 4). Errore di validazione: ``ConfigError``."""
+    if isinstance(spec, ExperimentConfig):
+        raise TypeError("run_fit riceve la specifica grezza (mappa) o il percorso YAML, non una ExperimentConfig: "
+                        "la validazione avviene dentro run_fit (nota su D-70)")
+    if isinstance(spec, (str, Path)):
+        return cfgmod.load_experiment(spec)
+    if isinstance(spec, Mapping):
+        return validate_experiment(copy.deepcopy(dict(spec)))
+    raise TypeError(f"specifica non valida: {type(spec).__name__} (attesa una mappa o un percorso YAML)")
+
+
+def run_fit(spec: Union[Mapping[str, Any], str, Path], datasets_dir: Union[str, Path], repo_root: Union[str, Path],
             score_batch: Optional[int] = None) -> FitReport:
-    """Esegue (o riusa) tutti i fit del run. Gli errori dei dati bloccano prima di qualunque scrittura."""
+    """Valida la specifica (primo passo, prima di lock, ``begin_run`` e di qualunque scrittura), poi esegue o riusa
+    tutti i fit del run. Errori di validazione e dei dati bloccano prima di qualunque scrittura (codice 2, passo 6)."""
+    return _run_fit(validated_config(spec), datasets_dir, repo_root, score_batch)
+
+
+def _run_fit(cfg: ExperimentConfig, datasets_dir: Union[str, Path], repo_root: Union[str, Path],
+             score_batch: Optional[int]) -> FitReport:
+    """Corpo di ``run_fit`` su una config già validata da ``validated_config``. Privata: i test non la usano."""
     manifest = _preflight(cfg, datasets_dir)
     tasks = plan_fits(cfg, manifest)
     store = Store(cfg.store_root)
@@ -352,14 +420,25 @@ def run_fit(cfg: ExperimentConfig, datasets_dir: Union[str, Path], repo_root: Un
                     if prepared is None:
                         train, test, labels = manifest.load(machine)
                         prepared = prepare_machine(train, test, labels, cfg.split, cfg.preprocessing, cfg.windows)
-                    # Punto di innesto del passo 4: isolamento degli errori di modello per fit_key.
-                    times = _fit_task(task, cfg, prepared, manifest, store, prov, created_by, score_batch)
+                    phase = {"name": "fit"}
+                    t0 = time.perf_counter()
+                    try:
+                        times = _fit_task(task, cfg, prepared, manifest, store, prov, created_by, score_batch,
+                                          phase)
+                    except Exception as exc:     # solo errori di modello; KeyboardInterrupt si propaga (A1)
+                        seconds = time.perf_counter() - t0
+                        _write_failure(task, cfg, manifest, store, prov, created_by, phase["name"], exc, seconds)
+                        rows.append(dict(row, outcome="failed", phase=phase["name"], total_seconds=seconds,
+                                         error=f"{type(exc).__name__}: {exc}"))
+                        _log.error("%s %s seed %s: fit fallito (fase %s): %s: %s", task.machine, task.model,
+                                   task.seed, phase["name"], type(exc).__name__, exc)
+                        continue
                     rows.append(dict(row, outcome="fitted", **times))
                     _log.info("%s %s seed %s: fit completato (%.2f s)", task.machine, task.model, task.seed,
                               times["total_seconds"])
             (run.run_dir / "fit_summary.csv").write_text(_summary_csv(rows), encoding="utf-8")
-        except BaseException:
-            store.finish_run(run, "failed")          # il passo 4 distinguerà interrupted (D-70)
+        except BaseException as exc:
+            store.finish_run(run, "interrupted" if isinstance(exc, KeyboardInterrupt) else "failed")   # D-70, A1
             raise
         finally:
             close_run_logging(run.run_dir)

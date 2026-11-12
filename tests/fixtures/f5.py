@@ -15,10 +15,16 @@ from tests.fixtures.legacy_snapshot import BASE_CONFIG
 CORE = ("pca", "pca_pointwise", "conv_autoencoder", "lstm_autoencoder", "rolling_zscore", "input_norm")
 
 
-def synth_experiment(data_dir: str, store_root: str, *, mode: str = "legacy2", step=None, train_step=None,
-                     seeds=None, run_models=CORE) -> ExperimentConfig:
-    """Config esplicita del nuovo schema con i valori dello snapshot F1 (BASE_CONFIG); ``seeds``, ``step`` e
-    ``train_step`` None = quelli dello snapshot. I valori che lo snapshot lascia ai default del codice (min_range, clip,
+def synth_experiment(data_dir: str, store_root: str, **kw) -> ExperimentConfig:
+    """``synth_spec`` validata (stessi argomenti)."""
+    return validate_experiment(synth_spec(data_dir, store_root, **kw))
+
+
+def synth_spec(data_dir: str, store_root: str, *, mode: str = "legacy2", step=None, train_step=None,
+               seeds=None, run_models=CORE) -> Dict[str, Any]:
+    """Specifica grezza (quella che riceve ``run_fit``) del nuovo schema con i valori dello snapshot F1 (BASE_CONFIG);
+    ``seeds``, ``step`` e ``train_step`` None = quelli dello snapshot. Le varianti dei test si costruiscono modificando
+    questa specifica, mai la config validata. I valori che lo snapshot lascia ai default del codice (min_range, clip,
     lr, weight_decay, min_delta, rolling z-score, random_state della PCA) sono confrontati con la config effettiva di
     ``main.py`` in ``test_f5_layout::test_fixture_config_matches_f1_snapshot``."""
     ds, m = BASE_CONFIG["dataset"], BASE_CONFIG["models"]
@@ -49,7 +55,7 @@ def synth_experiment(data_dir: str, store_root: str, *, mode: str = "legacy2", s
         },
         "run_models": list(run_models),
     }
-    return validate_experiment(raw)
+    return raw
 
 
 def rng_state() -> Tuple[Any, Any, Any]:

@@ -2,6 +2,7 @@
 Abstract Base Class for all anomaly detection models in the framework.
 """
 
+import math
 from abc import ABC, abstractmethod
 from dataclasses import asdict, dataclass, fields
 from pathlib import Path
@@ -9,6 +10,11 @@ from typing import Any, ClassVar, Dict, Optional, Sequence, Tuple, Union
 import numpy as np
 import torch
 from torch.utils.data import DataLoader
+
+
+def _finite_list(values: Sequence[float]) -> list:
+    """Valori invariati se finiti, ``None`` altrimenti (FitInfo.to_dict)."""
+    return [v if math.isfinite(v) else None for v in values]
 
 
 @dataclass(frozen=True)
@@ -30,11 +36,27 @@ class FitInfo:
     fit_seconds: Optional[float] = None
 
     TIMING_FIELDS: ClassVar[Tuple[str, ...]] = ("fit_seconds",)
+    FLOAT_FIELDS: ClassVar[Tuple[str, ...]] = ("explained_variance", "fit_seconds")
+    NONFINITE_KEY: ClassVar[str] = "nonfinite_fields"
 
     def to_dict(self) -> Dict[str, Any]:
+        """Serializzabile con ``json.dump(allow_nan=False)`` (D-70, passo 4):
+          * loss: un elemento non finito → ``null`` (in una lista ``null`` significa solo «non finito»);
+          * campi scalari (``FLOAT_FIELDS``): non finito → ``null`` + nome in ``nonfinite_fields``; un ``null`` senza
+            la chiave resta «campo assente» (per esempio ``explained_variance`` di un AE).
+        ``null`` rappresenta qualunque non finito: la distinzione NaN/±inf non si conserva (campi solo diagnostici).
+        Con valori finiti il risultato è identico a quello precedente (nessuna chiave in più)."""
         d = asdict(self)
-        d["train_loss"], d["val_loss"] = list(self.train_loss), list(self.val_loss)
+        d["train_loss"], d["val_loss"] = _finite_list(self.train_loss), _finite_list(self.val_loss)
+        bad = [k for k in self.FLOAT_FIELDS if d[k] is not None and not math.isfinite(d[k])]
+        for k in bad:
+            d[k] = None
+        if bad:
+            d[self.NONFINITE_KEY] = bad
         return d
+
+    def has_nonfinite_loss(self) -> bool:
+        return any(not math.isfinite(v) for v in self.train_loss + self.val_loss)
 
     def hashable_dict(self) -> Dict[str, Any]:
         """``to_dict`` senza i campi di tempo: l'unica forma ammessa negli hash (D-67)."""
@@ -42,14 +64,22 @@ class FitInfo:
 
     @classmethod
     def from_dict(cls, d: Dict[str, Any]) -> "FitInfo":
+        """Inverso di ``to_dict``: ``null`` nelle loss → NaN; NaN nei campi scalari elencati in ``nonfinite_fields``;
+        ogni altro ``null`` resta ``None`` (campo assente)."""
         names = {f.name for f in fields(cls)}
+        d = dict(d)
+        nonfinite = d.pop(cls.NONFINITE_KEY, [])
         unknown = set(d) - names
         if unknown:
             raise ValueError(f"FitInfo: campi sconosciuti {sorted(unknown)}")
-        d = dict(d)
+        if not isinstance(nonfinite, list) or not set(nonfinite) <= set(cls.FLOAT_FIELDS) or \
+                any(d.get(k) is not None for k in nonfinite):
+            raise ValueError(f"FitInfo: {cls.NONFINITE_KEY} non valido: {nonfinite!r}")
         for k in ("train_loss", "val_loss"):
             if k in d:
-                d[k] = tuple(float(v) for v in d[k])
+                d[k] = tuple(math.nan if v is None else float(v) for v in d[k])   # null = non finito (D-70)
+        for k in nonfinite:
+            d[k] = math.nan
         return cls(**d)
 
     @classmethod
