@@ -285,6 +285,9 @@ D-53 approvata (2026-11-10): `.pyc` tolti dal tracciamento, `dataset/` resta tra
     hash → 6 `cli.py` (`fit`, `status`, `clean-tmp`, rifiuto di `official`) → 7 chiusura. Dopo ogni passo: snapshot F1,
     golden T0 e R1, poi `python -m pytest -q`.
   - **Decisioni APERTE toccate, stato invariato:** D-38, D-39, D-40, D-41, D-44, D-57, D-69.
+  - **Passo 1 (2026-11-12):** `fit.py` contiene `prepare_machine` e `fit_one`; `fit_one` è anticipato rispetto al
+    passo 3 perché i test sull'ordine di `set_seed` ne hanno bisogno (pianificazione, `run_fit`, meta e store restano
+    al passo 3). Test: `tests/test_f5_layout.py`, `tests/test_f5_seed.py` (fixture `tests/fixtures/f5.py`).
 
 ### F6 — Stadio di analisi
 - **Obiettivo:** prima riprodurre esattamente le metriche storiche dai residui, poi estendere.
