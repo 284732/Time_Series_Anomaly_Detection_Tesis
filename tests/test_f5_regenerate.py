@@ -407,5 +407,51 @@ def test_failed_or_missing_fit_is_an_explicit_error(env, monkeypatch, tmp_path):
             _get(env, store, "0" * 20, "cal", "last", lock=token)
 
 
+# ------------------------------------------------------------------ 12. finestre ricostruite da meta.json (D-70, C9)
+def _windowsets_like_fit(env, mode, machine):
+    """WindowSet di scoring costruiti in modo indipendente da meta.json: config validata → manifest → prepare_machine."""
+    from src.data.manifest import build_manifest, load_dataset_spec
+    from src.utils.schema import validate_experiment
+    cfg = validate_experiment(synth_spec(str(env["data"]), "non_usato", mode=mode, step=1, seeds=(42,)))
+    manifest = build_manifest(load_dataset_spec(env["datasets_dir"] / "synth.yaml"), env["data"])
+    train, test, labels = manifest.load(machine)
+    return cfg, fitmod.prepare_machine(train, test, labels, cfg.split, cfg.preprocessing, cfg.windows)
+
+
+@pytest.mark.parametrize("mode", ["legacy2", "split3"])
+def test_meta_records_rebuild_window_starts_and_ends(env, stores, mode):
+    """I parametri di finestra registrati per ogni residuo (n_timestamps, W, step, context, n_windows) ricostruiscono
+    starts ed ends identici a quelli del WindowSet usato da compute_all; n_windows = prima dimensione del residuo."""
+    store = Store(stores[mode])
+    prepared = {}
+    checked, heads = 0, 0
+    for key, meta in _metas(store).items():
+        if meta["status"] != "complete":
+            continue
+        machine = meta["machine"]
+        if machine not in prepared:
+            cfg, prepared[machine] = _windowsets_like_fit(env, mode, machine)
+            assert meta["fit_payload"]["split"] == cfg.split.fit_payload()
+            assert meta["fit_payload"]["windows"] == {"window_size": cfg.windows.window_size,
+                                                      "step": cfg.windows.step, "train_step": cfg.windows.train_step}
+        arrays = rc.read_npz(store.fit_dir(key) / "residuals.npz")
+        for name, rec in meta["residuals"].items():
+            ws = prepared[machine].score[rec["segment"]]
+            n, w, step, ctx = rec["n_windows"], rec["window_size"], rec["step"], rec["context"]
+            starts = np.arange(n) * step - ctx
+            ends = starts + w - 1
+            assert np.array_equal(starts, ws.starts) and np.array_equal(ends, ws.ends), (key, name)
+            assert rec["n_timestamps"] == ws.n_timestamps and ends[-1] <= rec["n_timestamps"] - 1, (key, name)
+            if rec["segment"] == fitmod.TEST_CTX_HEAD:          # solo le W−1 finestre che iniziano in cal
+                assert n == ctx == w - 1 and ends[-1] == w - 2, (key, name)
+            else:
+                assert n == (rec["n_timestamps"] + ctx - w) // step + 1, (key, name)
+            assert arrays[name].shape[0] == n, (key, name)
+            checked += 1
+            heads += rec["segment"] == fitmod.TEST_CTX_HEAD
+    assert checked > 0
+    assert (heads > 0) == (mode == "split3")
+
+
 def test_no_store_in_repository():
     assert not (Path(__file__).resolve().parents[1] / "store").exists()

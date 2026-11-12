@@ -156,6 +156,7 @@ def test_exit_130_on_keyboard_interrupt(env, tmp_path, monkeypatch):
 
 
 # ------------------------------------------------------------------ 3. fumo con subprocess
+@pytest.mark.slow          # circa 11 s (due subprocess che reimportano torch); incluso nella suite predefinita
 def test_smoke_subprocess_fit_and_status(env, tmp_path):
     path, store = _yaml(env, tmp_path, run_models=("pca", "input_norm"))
     for cmd in ("fit", "status"):

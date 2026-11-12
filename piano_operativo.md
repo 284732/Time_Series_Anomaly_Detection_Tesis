@@ -337,6 +337,57 @@ D-53 approvata (2026-11-10): `.pyc` tolti dal tracciamento, `dataset/` resta tra
   - **Passo 6 (2026-11-12):** `src/cli.py` con `fit`, `status` (sola lettura, `--verify`) e `clean-tmp`
     (`--dry-run`, `--break-stale-lock` annotato nel registro con un run di stage `clean-tmp`); codici 0/1/2/3/130
     (nota su D-70). Test: `tests/test_f5_cli.py`, con un test di fumo via `subprocess`.
+- **Stato: completata (2026-11-12).** Commit: passo 0 `844f590` (registro D-70 e piano), 0-bis `3380c3d` (docstring
+  di `materialize`), 1 `76c95d5` (`prepare_machine`, `fit_one`), 2 `b26cfda` (`compute_all`, aggiunte allo store),
+  3 `37658d9` (`plan_fits`, `run_fit`, `meta.json`), 4 `38eca68` (fallimenti, interruzione, controlli bloccanti,
+  anti-leakage, `test_ctx_head`), 4-bis `2d9138b` (regola dei nomi di percorso), 5 `a0c8a07` (`get_residuals`,
+  `regenerate`, nonce del lock), 6 `aed44f2` (CLI), 7 chiusura (commit che contiene questa riga). Suite di chiusura:
+  vedi il messaggio del commit del passo 7.
+  - **Verificato (dati sintetici):**
+    - parità `legacy2`: residui bit a bit uguali a quelli della pipeline storica calcolata dal vivo su tutte le 16
+      chiavi (2 macchine × 6 modelli, seed 42 e 43) e al golden R1; stati fittati bit a bit uguali a quelli ottenuti
+      con gli ingressi di `main.prepare_machine_data` per i 6 modelli con `train_step` 1 e 5 (machine-9-1, seed 42);
+      stati identici tra run della nuova pipeline con ordine dei modelli invertito e tra rilanci;
+    - ingressi di fit con lo stesso layout (passi, contiguità) di `main.py`, PCA comprese; stato dei generatori
+      all'ingresso di `fit` uguale a un `set_seed` nuovo;
+    - rilancio senza alcun fit, `set_seed` o `load`; fallimenti isolati per `fit_key` in ogni fase, rifatti al
+      rilancio senza cestini; interruzione (durante il fit e dentro il writer) senza `fits/<key>` parziali, `tmp/` vuota,
+      registro `interrupted`, lock rilasciato, e rilancio con gli stessi sha256 di un run mai interrotto;
+    - rigenerazione dei residui identica a `meta.json` senza `set_seed` né `fit`, con un solo `load` per chiave e
+      generatori invariati; integrità verificata in lettura, mai rigenerazione silenziosa;
+    - anti-leakage `split3` (cal e test non raggiungono scaler, PCA, PCA puntuale, AE e residui di es; il test non
+      raggiunge i residui di cal; es cambia solo la loss di early stopping) e `legacy2` (A4);
+    - `test_ctx_head` solo in `split3` con `step` = 1, contesto = ultime W−1 righe di cal scalate, residui `test__*`
+      identici a un run senza testa;
+    - CLI: codici 0/1/2/3/130, `status` in sola lettura, `clean-tmp` sotto lock senza promozioni;
+    - parametri di finestra dei record di `meta.json` (`n_timestamps`, W, `step`, `context`, `n_windows`): ricostruiscono
+      `starts` ed `ends` identici ai `WindowSet` di scoring, `test_ctx_head` compreso, e `n_windows` coincide con la
+      prima dimensione del residuo (C9, aggiunto alla chiusura);
+    - durata del fit sintetico completo (16 fit, solo `run_fit`): 4,6 s, sotto il criterio di 1 minuto.
+  - **Non verificato in F5:**
+    - parità su dati reali (M1, la lancia l'utente);
+    - `test_ctx_head` calcolato nella stessa chiamata del test con BLAS a più thread (la chiamata separata resta la
+      garanzia per costruzione);
+    - lock su POSIX: provato solo su Windows 10 (`O_EXCL`, run concorrente rifiutato, rilascio anche su eccezione,
+      `is_stale` con un pid morto tramite `OpenProcess`/`GetExitCodeProcess`); il ramo POSIX di `_pid_alive`
+      (`os.kill(pid, 0)`) non è mai stato eseguito;
+    - `cuda`: non ammesso da `schema.DEVICES`; vincolo prima di ammetterlo nella nota «F5 passo 3» su D-70;
+    - `clean_summary.csv` scritto parzialmente se `clean-tmp` si interrompe a metà: comportamento implementato, senza
+      test.
+  - **Suite:** durata osservata 72–128 s nella stessa giornata, per variabilità della macchina (nessuna modifica ai
+    test tra le misure). `test_smoke_subprocess_fit_and_status` è marcato `slow`: la suite predefinita lo include;
+    `python -m pytest -q -m "not slow"` fa risparmiare circa 11 s.
+  - **Decisioni APERTE toccate e rimaste aperte:** D-57 (nessuna correzione del solver), D-69 (AE non addestrati),
+    D-38, D-39, D-40, D-41 (valori storici o provvisori, nessuna scelta), D-44 (registrazione senza esclusioni).
+  - **Passati a F6:**
+    - `get_residuals` con il gettone del lock del run di analisi (letture senza lock, scritture solo con il gettone);
+    - es solo con `allow_diagnostic=True`, mai in normalizer, soglie o metriche (D-04);
+    - nomi `<segmento>__<agg>` e `table_convention` (none/native) del rolling z-score (nota su D-33);
+    - `test_ctx_head` per la variante con contesto di RQ1a (D-20, D-32);
+    - baseline random: `np.random.default_rng(seed)`, poi `random(T_cal)` e `random(T_test)` come `main.py:313-314`,
+      soglia sulla maschera di cal (D-23);
+    - `nonfinite_loss` e `n_nonfinite` da trattare senza esclusioni finché D-44 è aperta;
+    - identità dei residui = sha256 per array in `meta.json` (`npz_sha256` solo per l'integrità del file).
 
 ### F6 — Stadio di analisi
 - **Obiettivo:** prima riprodurre esattamente le metriche storiche dai residui, poi estendere.

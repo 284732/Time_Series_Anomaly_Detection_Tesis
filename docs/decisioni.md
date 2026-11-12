@@ -803,6 +803,15 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
     attivo o lock illeggibile → rifiuto (codice 3); per il lock illeggibile il messaggio spiega la rimozione manuale
     dopo aver verificato che nessun processo sia attivo.
   - Approvazione: utente, 2026-11-12, su raccomandazione di Claude Project (piano F5, passo 6).
+- **Nota (2026-11-12, F5 passo 7, il testo sopra resta invariato):** precisazioni emerse alla chiusura di F5.
+  - **(a) Interruzione:** con `KeyboardInterrupt` si rimuove solo la cartella temporanea del compito in corso
+    (`write_fit` la cancella su qualunque eccezione); le voci orfane preesistenti in `tmp/` restano fino a `clean-tmp`.
+    Il testo sopra («`tmp/` viene ripulita») va letto in questo senso.
+  - **(b) Fasi isolate:** oltre a fit, `save`, residui e serializzazione, è isolata anche la fase `device_check`
+    (`DeviceMismatch`, passo 4): `meta.json` failed con `phase: device_check`, gli altri compiti proseguono.
+  - Il test sulla ricostruzione di `WindowSet.starts` / `ends` dai record di `meta.json` (C9) è stato aggiunto alla
+    chiusura (`tests/test_f5_regenerate.py`).
+  - Approvazione: utente, 2026-11-12 (piano F5, passo 7).
 
 ### D-53 · File tracciati da git (`.pyc`, dataset) — APPROVATA · 2026-11-10
 - **Decisione:** i `.pyc` non sono tracciati: i 35 file già tracciati sono tolti dal tracciamento con
