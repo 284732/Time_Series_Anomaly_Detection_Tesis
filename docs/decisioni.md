@@ -738,6 +738,19 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
     vuota, e il nome è rifiutato più tardi da `begin_run`, dopo il lock (cartella di store creata vuota). Test relativo
     marcato `xfail` (strict) con il motivo. `experiment.seeds` vuoto invece è già rifiutato dallo schema.
   - Approvazione: utente, 2026-11-12, su raccomandazione di Claude Project (piano F5, passo 4).
+- **Nota (2026-11-12, F5 passo 4-bis, il testo sopra resta invariato):** lacuna di F2 su `experiment.name` chiusa.
+  `validate_experiment` applica a `experiment.name` la stessa regola dei nomi di percorso dello store; la regola sta
+  in un solo punto, `schema.is_path_name`, e `store._check_name` la riusa (prima la regex era in `store.py`; lo schema
+  non può importare lo store, che importa lo schema). **Regola rafforzata** rispetto a quella storica dello store
+  (`re.match` con `^[A-Za-z0-9_.-]+$`, che accettava un a capo finale, `.` e `..`): `re.fullmatch` su
+  `[A-Za-z0-9_.-]+`; nessun punto finale (copre `.`, `..`, `abc.`; Windows toglie il punto finale); nessun nome
+  riservato di Windows (CON, PRN, AUX, NUL, COM1–COM9, LPT1–LPT9), senza distinzione di maiuscole e anche con
+  estensione (`com1.txt`); il punto iniziale resta ammesso (`.hidden`). Vale per `experiment.name`, `run_id` e
+  `stage`. Un nome non valido è ora un `ConfigError` della validazione, prima di qualunque scrittura; il test `xfail`
+  del passo 4 è diventato un test normale. Verificato: nessuna config in `configs/` definisce `experiment.name`; tutti
+  i nomi, `run_id` e stage usati nei test e in `src/` rispettano la regola rafforzata; `new_run_id` produce nomi
+  validi (test su 5.000 generazioni). Nessun effetto sui `fit_key` (il nome non entra nel payload).
+  - Approvazione: utente, 2026-11-12 (piano F5, passo 4-bis).
 
 ### D-53 · File tracciati da git (`.pyc`, dataset) — APPROVATA · 2026-11-10
 - **Decisione:** i `.pyc` non sono tracciati: i 35 file già tracciati sono tolti dal tracciamento con

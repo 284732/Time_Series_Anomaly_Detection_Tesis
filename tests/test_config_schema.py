@@ -270,3 +270,74 @@ def test_base_config_gives_a_single_pca_fit_key_across_seeds(tmp_path):
     assert len(keys) == 1
     # gli AE invece hanno un fit per seed
     assert len({fit_key(cfg, "machine-9-1", "conv_autoencoder", s, "dv-x") for s in cfg.seeds}) == 2
+
+
+# --- experiment.name: stessa regola dei nomi di percorso dello store (F5 passo 4-bis, nota su D-70) -----------
+NAME_CASES_OK = ["e", "test_exp", "f5-run-2026-11-12", "v1.2", "A_b-3"]
+NAME_CASES_BAD = ["a/b", "a\b", "con spazio", "", "à", "x:y"]
+
+
+@pytest.mark.parametrize("name", NAME_CASES_OK)
+def test_experiment_name_valid(name):
+    raw = raw_config()
+    raw["experiment"]["name"] = name
+    assert validate_experiment(raw).name == name
+
+
+@pytest.mark.parametrize("name", NAME_CASES_BAD)
+def test_experiment_name_refused(name):
+    raw = raw_config()
+    raw["experiment"]["name"] = name
+    with pytest.raises(ConfigError, match="experiment.name"):
+        validate_experiment(raw)
+
+
+def test_experiment_name_rule_is_the_store_rule():
+    """Un solo punto: lo store usa la regola dello schema (nessuna regex duplicata)."""
+    from src.pipeline import store
+    for name in NAME_CASES_OK + NAME_CASES_BAD:
+        if schema.is_path_name(name):
+            assert store._check_name(name, "x") == name
+        else:
+            with pytest.raises(ValueError):
+                store._check_name(name, "x")
+    assert schema.is_path_name("f5-run-2026-11-12") and not schema.is_path_name("a/b")
+    assert not hasattr(store, "_NAME_RE")
+
+
+# --- regola rafforzata (passo 4-bis): fullmatch, punto finale, nomi riservati di Windows -------------------
+STRICT_BAD = ["..", ".", "abc.", "abc\n", "con", "NUL", "com1.txt", "lpt9", "Aux", "prn.tar.gz", "COM9", "LPT1.x"]
+STRICT_OK = ["con_x", "console", "a.b", ".hidden", "f5-run-2026-11-12", "com10", "lpt", "nul-1", "auxiliary"]
+
+
+@pytest.mark.parametrize("name", STRICT_BAD)
+def test_path_name_strict_refused(name):
+    from src.pipeline import store
+    assert not schema.is_path_name(name)
+    raw = raw_config()
+    raw["experiment"]["name"] = name
+    with pytest.raises(ConfigError, match="experiment.name"):
+        validate_experiment(raw)
+    for what in ("run_id", "stage"):                     # stessa regola nello store
+        with pytest.raises(ValueError):
+            store._check_name(name, what)
+
+
+@pytest.mark.parametrize("name", STRICT_OK)
+def test_path_name_strict_accepted(name):
+    from src.pipeline import store
+    assert schema.is_path_name(name)
+    raw = raw_config()
+    raw["experiment"]["name"] = name
+    assert validate_experiment(raw).name == name
+    assert store._check_name(name, "run_id") == name
+
+
+def test_new_run_id_always_valid_and_stages_in_use():
+    from src.pipeline import store
+    ids = {store.new_run_id() for _ in range(5000)}
+    assert len(ids) > 4000
+    bad = [i for i in ids if not schema.is_path_name(i)]
+    assert bad == []
+    for stage in ("fit", "analyze"):                     # stage usati da src/pipeline e dai test
+        assert schema.is_path_name(stage)

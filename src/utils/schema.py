@@ -16,6 +16,7 @@ Le config storiche (``configs/config_tests/``) non passano da qui: le legge ``lo
 from dataclasses import dataclass, field
 import importlib
 import math
+import re
 from typing import Any, Callable, Dict, Mapping, Optional, Tuple, Union
 
 from src.preprocessing.scaler import SCALER_TYPES
@@ -80,6 +81,27 @@ def _choice(options: Tuple[str, ...]) -> Callable[[Any, str], str]:
 def _str(v: Any, path: str) -> str:
     if not isinstance(v, str) or not v:
         raise ConfigError(f"{path}: attesa una stringa non vuota, trovato {v!r}")
+    return v
+
+
+# Nomi usati come componenti di percorso dello store (esperimento, stage, run_id). Unico punto della regola:
+# ``store._check_name`` la riusa (F5 passo 4-bis, nota su D-70).
+PATH_NAME_RE = re.compile(r"[A-Za-z0-9_.-]+")             # con fullmatch: niente a capo finale
+WINDOWS_RESERVED = frozenset({"con", "prn", "aux", "nul"} | {f"com{i}" for i in range(1, 10)}
+                             | {f"lpt{i}" for i in range(1, 10)})
+
+
+def is_path_name(v: Any) -> bool:
+    """Caratteri ``[A-Za-z0-9_.-]`` (intera stringa); nessun punto finale (copre ``.``, ``..``; Windows lo toglie);
+    nessun nome riservato di Windows, senza distinzione di maiuscole, anche con estensione (``com1.txt``)."""
+    return (isinstance(v, str) and PATH_NAME_RE.fullmatch(v) is not None and not v.endswith(".")
+            and v.split(".")[0].lower() not in WINDOWS_RESERVED)
+
+
+def _path_name(v: Any, path: str) -> str:
+    if not is_path_name(v):
+        raise ConfigError(f"{path}: nome non valido per un percorso dello store (ammessi lettere ASCII, cifre, '_', "
+                          f"'.', '-'; niente punto finale né nomi riservati di Windows); trovato {v!r}")
     return v
 
 
@@ -333,7 +355,7 @@ def validate_experiment(raw: Any) -> ExperimentConfig:
                            _int(1)(win["step"], "windows.step"),
                            _int(1)(win["train_step"], "windows.train_step"))
     return ExperimentConfig(
-        name=_str(exp["name"], "experiment.name"),
+        name=_path_name(exp["name"], "experiment.name"),
         kind=_choice(EXPERIMENT_KINDS)(exp["kind"], "experiment.kind"),
         seeds=seeds,
         notes=notes,

@@ -205,13 +205,7 @@ INVALID_SPECS = {
     "run_model_missing": lambda s: s.__setitem__("run_models", ["pca", "modello_assente"]),
     "name_with_slash": lambda s: s["experiment"].__setitem__("name", "a/b"),
 }
-NAME_GAP = pytest.mark.xfail(strict=True, reason="lacuna di F2: validate_experiment accetta experiment.name con '/' "
-                             "(schema._str controlla solo stringa non vuota); begin_run lo rifiuta dopo il lock. "
-                             "Da decidere a parte, lo schema non si cambia al passo 4")
-
-
-@pytest.mark.parametrize("case", [pytest.param(c, marks=NAME_GAP) if c == "name_with_slash" else c
-                                  for c in INVALID_SPECS])
+@pytest.mark.parametrize("case", list(INVALID_SPECS))
 def test_invalid_spec_is_refused_before_store(env, monkeypatch, case):
     from src.utils.schema import ConfigError
     spec = _spec(env, f"s_inv_{case}", run_models=("pca", "input_norm"))
@@ -222,6 +216,15 @@ def test_invalid_spec_is_refused_before_store(env, monkeypatch, case):
         _run(env, spec)
     assert calls == []
     assert not Path(_root(spec)).exists()               # nessun lock, registro, run, fit, tmp
+
+
+def test_boundary_valid_name_is_accepted(env):
+    """Caso limite valido: trattini e cifre (stessa regola dello store, passo 4-bis)."""
+    spec = _spec(env, "s_name_ok", run_models=("input_norm",))
+    spec["experiment"]["name"] = "f5-run-2026-11-12"
+    report = _run(env, spec)
+    assert report.counts["fitted"] == 2
+    assert report.run_dir.parent.name == "f5-run-2026-11-12"
 
 
 def test_validated_config_is_not_accepted(env):

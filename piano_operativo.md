@@ -323,6 +323,11 @@ D-53 approvata (2026-11-10): `.pyc` tolti dal tracciamento, `dataset/` resta tra
     (`synth_spec` in `tests/fixtures/f5.py`). Lacuna di F2 da decidere a parte: `experiment.name` con `/` passa lo
     schema (test `xfail`). Test: `tests/test_f5_failures.py`, `tests/test_f5_leakage.py` (split3, legacy2 A4,
     `test_ctx_head`); il test del passo 3 su `DeviceMismatch` ora verifica l'isolamento.
+  - **Passo 4-bis (2026-11-12):** `experiment.name` validato con la regola dei nomi di percorso dello store, in un
+    solo punto (`schema.is_path_name`, riusata da `store._check_name`), rafforzata: `fullmatch`, niente punto finale,
+    niente nomi riservati di Windows; vale anche per `run_id` e `stage`. Il test `xfail` su `name="a/b"` diventa
+    normale; caso limite valido `f5-run-2026-11-12`; test della regola e di `new_run_id` in
+    `tests/test_config_schema.py` (nota su D-70).
 
 ### F6 — Stadio di analisi
 - **Obiettivo:** prima riprodurre esattamente le metriche storiche dai residui, poi estendere.

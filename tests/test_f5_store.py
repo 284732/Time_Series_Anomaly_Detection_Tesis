@@ -194,7 +194,8 @@ def _begin(store, repo, **kw):
 def test_begin_run_without_run_id_unchanged(store, tmp_path):
     repo = _repo(tmp_path)
     run = _begin(store, repo)
-    assert storemod._NAME_RE.match(run.run_id) and len(run.run_id) == 24 and run.run_id[15] == "-"
+    from src.utils.schema import is_path_name
+    assert is_path_name(run.run_id) and len(run.run_id) == 24 and run.run_id[15] == "-"
     assert run.run_dir == store.root / "runs" / "exploratory" / "e" / run.run_id and run.run_dir.is_dir()
     assert [r["run_id"] for r in store.read_registry()] == [run.run_id]
 

@@ -42,7 +42,7 @@ from typing import Any, Callable, Dict, Iterator, List, Optional, Union
 
 from src.utils import provenance
 from src.utils.log import get_logger
-from src.utils.schema import EXPERIMENT_KINDS
+from src.utils.schema import EXPERIMENT_KINDS, is_path_name
 
 FIT_STATUSES = ("complete", "failed")
 RUN_STATUSES = ("started", "completed", "failed", "interrupted")   # interrupted: F5 (D-70)
@@ -53,7 +53,6 @@ LOCK_FIELDS = ("pid", "host", "started_utc", "run_id")
 REGISTRY_COLUMNS = ("timestamp_utc", "run_id", "experiment", "kind", "stage", "commit", "dirty",
                     "config_sha256", "plan_sha256", "status", "note")
 _KEY_RE = re.compile(r"^[0-9a-f]{20}$")
-_NAME_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
 _log = get_logger("store")
 
 
@@ -136,7 +135,8 @@ class RunHandle:
 
 
 def _check_name(value: str, what: str) -> str:
-    if not isinstance(value, str) or not _NAME_RE.match(value):
+    """Regola unica dei nomi di percorso: ``schema.is_path_name`` (anche per ``experiment.name``, passo 4-bis)."""
+    if not is_path_name(value):
         raise ValueError(f"{what} non valido per un percorso: {value!r}")
     return value
 
