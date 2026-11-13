@@ -434,8 +434,8 @@ D-53 approvata (2026-11-10): `.pyc` tolti dal tracciamento, `dataset/` resta tra
     provvisorio senza lock con rifiuto anticipato, id definitivo ricalcolato sotto lock, ogni array letto verificato da
     `get_residuals` contro lo stesso sha256. Id già presente e completo: codice 2, messaggio con la cartella esistente.
   - **Rinomina su Windows [D-72 B11, rev. passo 0]:** `os.rename` solo se la destinazione non esiste; su
-    `PermissionError` al massimo `PUBLISH_RENAME_ATTEMPTS` tentativi distanziati di `PUBLISH_RENAME_WAIT_S` (valori
-    proposti; al passo 2 si valuta un'attesa crescente), poi errore esplicito con codice di uscita 4 «pubblicazione non
+    `PermissionError` al massimo `PUBLISH_RENAME_ATTEMPTS` = 5 tentativi con attese crescenti `PUBLISH_RENAME_WAITS_S`
+    = (0,2, 0,4, 0,8, 1,6) s (fissate al passo 2), poi errore esplicito con codice di uscita 4 «pubblicazione non
     riuscita, nessun risultato» (run chiuso `failed`, cartella temporanea lasciata per `clean-tmp`; la CLI e i suoi
     test lo coprono al passo 7); mai copia di ripiego, mai risultati parziali nella cartella definitiva; test con rinomina che fallisce in
     modo simulato sempre e solo al primo tentativo.
@@ -453,6 +453,22 @@ D-53 approvata (2026-11-10): `.pyc` tolti dal tracciamento, `dataset/` resta tra
     rigenerazione, causalità e leakage end-to-end, tabella lunga = summary legacy sulle metriche in comune, misura
     della durata → 7 CLI `analyze` (codici di uscita 0/1/2/3/4/130 di D-72) ed estensione di `clean-tmp` → 8 chiusura. Dopo ogni passo: snapshot F1, golden T0 e
     R1, poi `python -m pytest -q`.
+  - **Completezza dell'analisi [D-72 V13, rev. passo 2]:** un'analisi è completa se e solo se esiste la cartella
+    pubblicata `analyses/<analysis_id>/` con `analysis.json`; F7 legge solo quelle, qualunque sia lo stato del run. Se
+    dopo la pubblicazione `run.json` o il registro non si aggiornano: avviso nel log, `status` segnala l'incongruenza
+    (passo 7), codice di uscita 0. `analyses` è un `run_id` riservato.
+  - **Identità per elenco esplicito [D-72 B12, rev. passo 2]:** `meta_sha256` usa solo `META_ID_FIELDS`; i tempi
+    (`META_MEASURED_FIELDS`, colonne dei tempi di `fits`) sono misure non riproducibili, fuori dal significato dell'id; un
+    campo di `meta.json` non classificato è un errore (codice 2).
+  - **Annotazioni per i passi successivi (approvate al passo 2):**
+    - passo 6: il test B10 «`split3` senza esportazione legacy» deve dimostrare di aver letto i residui (numero di
+      chiamate a `get_residuals` > 0), non solo che `main.py` non è importato (al passo 2 il piano senza
+      `legacy_export` è rifiutato e il test è banale);
+    - passo 6: il controllo incrociato tabella lunga = summary legacy gestisce in modo esplicito un deterministico
+      riusato con `seeds[0]` diverso (seed legacy = seed del ciclo di `main.py`, colonna `seed` = `set_seed_value`):
+      confronto per chiave, nessuna tolleranza;
+    - passo 8: prova golden (sha256 delle uscite di un'analisi sintetica) legata ad `ANALYSIS_CODE_VERSION`, che
+      fallisce se le uscite cambiano senza aumentare la versione.
   - **Precisazioni approvate al passo 1 [D-72 C8]:** al passo 6 `analysis.json` registra quali modelli producono
     righe native (convenzione none/native applicata dall'analisi, non dichiarata nel piano); al passo 4 il test
     «storia vuota = `rules.py`» copre la conversione percentile → quantile, anche con livelli non interi (es. 99,5).

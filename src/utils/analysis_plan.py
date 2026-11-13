@@ -30,6 +30,7 @@ risultato; l'id garantisce «stessi ingressi e stesso codice, quindi stessi nume
 calcolarlo: tutto viene da ``meta.json``, manifest, piano e config.
 """
 
+import copy
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -228,9 +229,19 @@ def check_plan_for_experiment(plan: AnalysisPlan, cfg: "_schema.ExperimentConfig
 
 
 # ---------------------------------------------------------------- identità dell'analisi
-# Campi di meta.json fuori da meta_sha256: chi e quando l'ha scritto (non proprietà del fit). I tempi restano dentro:
-# fit_sec entra nella tabella ``fits``.
-META_ID_EXCLUDED = ("provenance", "created_by")
+# Campi di meta.json, per elenco esplicito (D-72 B12, rev. passo 2). Un campo in nessuno dei due elenchi è un errore.
+# META_ID_FIELDS: determinano le righe dell'analisi o identificano il fit (entrano in meta_sha256):
+#   identità e dati: meta_format, fit_payload, fit_code_version, fit_key, machine, dataset, group, data_version;
+#   esito: status, error (tipo, messaggio, fase), nonfinite_loss, loaded_with_version_mismatch;
+#   modello e seed: model (nome, config_id, kwargs, deterministic, native_only, convenzione), seed (key_seed,
+#     set_seed_value: colonna seed, V12);
+#   segmenti, finestre, scoring, device, fit_info (epoche, componenti, loss, campioni), checkpoint, scaler, residuals.
+META_ID_FIELDS = ("meta_format", "fit_payload", "fit_code_version", "fit_key", "machine", "dataset", "group",
+                  "data_version", "status", "error", "nonfinite_loss", "loaded_with_version_mismatch", "model", "seed",
+                  "segments", "windows", "scoring", "device", "fit_info", "checkpoint", "scaler", "residuals")
+# META_MEASURED_FIELDS: misure non riproducibili e dati di chi/quando/dove ha scritto (fuori da meta_sha256);
+# «a.b» = sottocampo b del campo a. ``error.traceback`` contiene percorsi locali e numeri di riga: diagnostica.
+META_MEASURED_FIELDS = ("timings", "provenance", "created_by", "fit_info.fit_seconds", "error.traceback")
 ENV_PACKAGES = ("numpy", "scipy", "pandas", "sklearn")       # librerie che calcolano score, soglie e metriche
 
 
@@ -238,7 +249,7 @@ ENV_PACKAGES = ("numpy", "scipy", "pandas", "sklearn")       # librerie che calc
 class FitIdentity:
     fit_key: str
     status: str
-    meta_sha256: str                                   # meta.json senza META_ID_EXCLUDED
+    meta_sha256: str                                   # META_ID_FIELDS di meta.json
     residual_sha256: Mapping[str, str]                 # nome del residuo letto → sha256 dell'array (meta.json)
 
 
@@ -255,6 +266,21 @@ def _check_sha(v: Any, where: str) -> str:
     return v
 
 
+def _meta_id_part(meta: Mapping[str, Any], key: Any) -> Dict[str, Any]:
+    """Parte di meta.json che entra in ``meta_sha256``: solo META_ID_FIELDS, senza i sottocampi misurati."""
+    top_measured = {f for f in META_MEASURED_FIELDS if "." not in f}
+    unknown = sorted(set(meta) - set(META_ID_FIELDS) - top_measured)
+    if unknown:
+        raise ValueError(f"fit {key}: campi di meta.json non classificati {unknown} (né META_ID_FIELDS né "
+                         "META_MEASURED_FIELDS): l'id non può garantire «stessi ingressi, stessi numeri» (D-72 B12)")
+    out = {k: copy.deepcopy(v) for k, v in meta.items() if k in META_ID_FIELDS}
+    for f in META_MEASURED_FIELDS:
+        top, _, sub = f.partition(".")
+        if sub and isinstance(out.get(top), dict):
+            out[top].pop(sub, None)
+    return out
+
+
 def fit_identity_from_meta(meta: Mapping[str, Any], residual_names: Sequence[str]) -> FitIdentity:
     """Identità di un fit dal suo ``meta.json`` (letto senza lock, regola di F5):
       * ``fit_key`` verificato contro l'hash del ``fit_payload`` registrato (finestre, split e quindi confini dei
@@ -268,7 +294,7 @@ def fit_identity_from_meta(meta: Mapping[str, Any], residual_names: Sequence[str
         raise ValueError(f"fit {key}: status {status!r} non ammesso, ammessi {FIT_STATUSES}")
     if not isinstance(meta.get("fit_payload"), Mapping) or canonical_hash(meta["fit_payload"])[:FIT_KEY_LEN] != key:
         raise ValueError(f"fit {key}: il fit_key non è l'hash del fit_payload registrato in meta.json")
-    meta_sha = canonical_hash({k: v for k, v in meta.items() if k not in META_ID_EXCLUDED})
+    meta_sha = canonical_hash(_meta_id_part(meta, key))
     if status == "failed":
         return FitIdentity(key, status, meta_sha, {})
     recs = meta.get("residuals") or {}

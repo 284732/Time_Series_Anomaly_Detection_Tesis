@@ -24,6 +24,17 @@ Aggiunte di F5 (D-70, V4 allargata in modo esplicito; nessun metodo esistente ca
   * stato ``interrupted`` del registro (run interrotto, distinto da ``failed``);
   * lock di scrittura ``.lock`` (``O_EXCL``; pid, host, ora di avvio, ``run_id``, ``nonce``) e ``is_stale``; il
     ``nonce`` (uuid4 per acquisizione, F5 passo 5) distingue due acquisizioni con lo stesso ``run_id`` e la stessa ora.
+
+Aggiunte di F6 (D-72 V13, B11, elenco chiuso; nessun metodo esistente cambia per i valori già ammessi):
+  * cartella temporanea dell'analisi ``runs/<kind>/<esperimento>/<run_id>/analysis_tmp`` (``new_analysis_tmp``,
+    ``write_analysis_file``, ``write_table(..., dest_dir=...)``);
+  * ``publish_analysis``: rinomina atomica in ``runs/<kind>/<esperimento>/analyses/<analysis_id>/`` solo con il gettone
+    del lock, solo se ``analysis.json`` (marcatore di completamento) c'è e la destinazione non esiste; su
+    ``PermissionError`` (Windows: antivirus, indicizzatore) al più ``PUBLISH_RENAME_ATTEMPTS`` tentativi con attese
+    crescenti ``PUBLISH_RENAME_WAITS_S``, poi ``AnalysisPublishError``; mai una copia di ripiego, mai un risultato
+    parziale nella destinazione; la cartella temporanea resta per ``clean-tmp``;
+  * ``orphan_analysis_tmp``: elenco in sola lettura delle cartelle temporanee rimaste (``status`` e ``clean-tmp`` le
+    useranno al passo 7).
 """
 
 import csv
@@ -34,6 +45,7 @@ import re
 import shutil
 import socket
 import sys
+import time
 import uuid
 import warnings
 from contextlib import contextmanager
@@ -56,6 +68,18 @@ REGISTRY_COLUMNS = ("timestamp_utc", "run_id", "experiment", "kind", "stage", "c
 _KEY_RE = re.compile(r"^[0-9a-f]{20}$")
 _log = get_logger("store")
 
+# Analisi (F6, D-72 V13 e B11)
+ANALYSES_DIR = "analyses"                  # runs/<kind>/<esperimento>/analyses/<analysis_id>/
+ANALYSIS_TMP = "analysis_tmp"              # dentro la cartella del run
+ANALYSIS_JSON = "analysis.json"            # marcatore di completamento, scritto per ultimo
+_ANALYSIS_ID_RE = re.compile(r"^[0-9a-f]{12}$")
+# Attese crescenti tra i tentativi di rinomina (circa 3 s in tutto): i blocchi temporanei di antivirus e
+# indicizzatore su Windows durano di solito meno di un secondo; il raddoppio copre quelli più lunghi senza
+# aumentare i tentativi (D-72 B11, scelta motivata al passo 2).
+PUBLISH_RENAME_WAITS_S = (0.2, 0.4, 0.8, 1.6)
+PUBLISH_RENAME_ATTEMPTS = len(PUBLISH_RENAME_WAITS_S) + 1
+_sleep = time.sleep                        # sostituibile nei test
+
 
 class StoreError(RuntimeError):
     pass
@@ -71,6 +95,14 @@ class EnvironmentMismatch(StoreError):
 
 class FitExists(StoreError):
     """Fit già completo: non si sovrascrive."""
+
+
+class AnalysisExists(StoreError):
+    """Analisi con lo stesso ``analysis_id`` già presente: mai sovrascritta (D-72 B11, codice di uscita 2)."""
+
+
+class AnalysisPublishError(StoreError):
+    """Rinomina della cartella temporanea fallita dopo tutti i tentativi (D-72 B11, codice di uscita 4)."""
 
 
 class StoreLocked(StoreError):
@@ -140,6 +172,17 @@ def _check_name(value: str, what: str) -> str:
     if not is_path_name(value):
         raise ValueError(f"{what} non valido per un percorso: {value!r}")
     return value
+
+
+RESERVED_RUN_IDS = (ANALYSES_DIR,)          # nomi accanto ai run in runs/<kind>/<esperimento>/ (F6, D-72)
+
+
+def _check_run_id(run_id: str) -> str:
+    """Nome di percorso valido e non riservato, senza distinzione di maiuscole (Windows non le distingue)."""
+    _check_name(run_id, "run_id")
+    if run_id.lower() in RESERVED_RUN_IDS:
+        raise ValueError(f"run_id {run_id!r} riservato (cartella delle analisi, D-72): rifiutato")
+    return run_id
 
 
 def signature_diff(stored: Optional[Dict[str, Any]], current: Dict[str, Any]) -> List[str]:
@@ -311,7 +354,7 @@ class Store:
     @contextmanager
     def lock(self, run_id: str) -> Iterator[Dict[str, Any]]:
         """Lock esclusivo (``O_EXCL``) per tutta la durata del blocco; rilasciato anche su eccezione."""
-        _check_name(run_id, "run_id")
+        _check_run_id(run_id)
         self.root.mkdir(parents=True, exist_ok=True)
         info = {"pid": os.getpid(), "host": socket.gethostname(), "started_utc": provenance.utc_now(),
                 "run_id": run_id, "nonce": uuid.uuid4().hex}     # gettone unico anche a parità di ora e run_id
@@ -348,7 +391,7 @@ class Store:
         _check_name(experiment, "experiment")
         _check_name(stage, "stage")
         if run_id is not None:
-            _check_name(run_id, "run_id")
+            _check_run_id(run_id)
             if (self.root / "runs" / kind / experiment / run_id).exists() or \
                     any(r.get("run_id") == run_id for r in self.read_registry()):
                 raise StoreError(f"run_id {run_id!r} già usato in questo store: rifiutato (nota su D-70)")
@@ -415,10 +458,16 @@ class Store:
             return list(csv.DictReader(fh))
 
     # ------------------------------------------------------------ tabelle
-    def write_table(self, run: RunHandle, table: str, df) -> Path:
-        """Valida (``table_schema``) e scrive ``tables/<table>.csv.gz`` nel run, in modo atomico."""
+    def write_table(self, run: RunHandle, table: str, df, dest_dir: Optional[Union[str, Path]] = None) -> Path:
+        """Valida (``table_schema``) e scrive ``tables/<table>.csv.gz`` nel run, in modo atomico. ``dest_dir`` (F6):
+        la cartella temporanea dell'analisi del run (``new_analysis_tmp``) al posto della cartella del run."""
         from src.pipeline import table_schema
-        path = run.run_dir / "tables" / f"{table}.csv.gz"
+        base = run.run_dir
+        if dest_dir is not None:
+            base = Path(dest_dir)
+            if base != run.run_dir / ANALYSIS_TMP:
+                raise StoreError(f"dest_dir {base} non è la cartella temporanea dell'analisi del run")
+        path = base / "tables" / f"{table}.csv.gz"
         if path.exists():
             raise StoreError(f"tabella già scritta: {path}")
         data = table_schema.to_csv_gz_bytes(df, table)
@@ -439,3 +488,93 @@ class Store:
     def read_table(self, run_dir: Union[str, Path], table: str):
         from src.pipeline import table_schema
         return table_schema.read_csv_gz(Path(run_dir) / "tables" / f"{table}.csv.gz", table)
+
+    # ------------------------------------------------------------ analisi (F6, D-72 V13, B11)
+    def analysis_dir(self, kind: str, experiment: str, analysis_id: str) -> Path:
+        if kind not in EXPERIMENT_KINDS:
+            raise ValueError(f"kind non valido: {kind!r}, ammessi {EXPERIMENT_KINDS}")
+        _check_name(experiment, "experiment")
+        if not isinstance(analysis_id, str) or not _ANALYSIS_ID_RE.match(analysis_id):
+            raise ValueError(f"analysis_id non valido: {analysis_id!r} (attesi 12 caratteri esadecimali)")
+        return self.root / "runs" / kind / experiment / ANALYSES_DIR / analysis_id
+
+    def analysis_complete(self, kind: str, experiment: str, analysis_id: str) -> bool:
+        return (self.analysis_dir(kind, experiment, analysis_id) / ANALYSIS_JSON).is_file()
+
+    def new_analysis_tmp(self, run: RunHandle) -> Path:
+        """Cartella temporanea dell'analisi nel run (una per run; ``FileExistsError`` se c'è già)."""
+        tmp = run.run_dir / ANALYSIS_TMP
+        tmp.mkdir(exist_ok=False)
+        return tmp
+
+    def write_analysis_file(self, tmp_dir: Union[str, Path], relpath: str, data: bytes) -> Path:
+        """Scrive un file nella cartella temporanea dell'analisi: percorso relativo che resta dentro, mai una
+        sovrascrittura, file temporaneo nella stessa cartella e ``os.replace``."""
+        tmp_dir = Path(tmp_dir)
+        if tmp_dir.name != ANALYSIS_TMP:
+            raise StoreError(f"{tmp_dir} non è una cartella temporanea dell'analisi")
+        rel = Path(relpath)
+        if rel.is_absolute() or rel.anchor or not rel.parts or ".." in rel.parts:
+            raise StoreError(f"percorso non ammesso nella cartella dell'analisi: {relpath!r}")
+        dest = tmp_dir / rel
+        if dest.exists():
+            raise StoreError(f"file già scritto: {dest}")
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        part = dest.with_name(f".{dest.name}.{uuid.uuid4().hex}.part")
+        try:
+            with open(part, "wb") as fh:
+                fh.write(data)
+                fh.flush()
+                os.fsync(fh.fileno())
+            os.replace(part, dest)
+        except BaseException:
+            if part.exists():
+                part.unlink()
+            raise
+        return dest
+
+    def _check_token(self, lock: Optional[Dict[str, Any]]) -> None:
+        held = self.read_lock()
+        if lock is None or held is None or any(f not in lock or held.get(f) != lock[f] for f in LOCK_FIELDS):
+            raise StoreError(f"pubblicazione dell'analisi senza il gettone del lock attivo ({held}): rifiutata")
+
+    def publish_analysis(self, run: RunHandle, tmp_dir: Union[str, Path], analysis_id: str,
+                         lock: Optional[Dict[str, Any]]) -> Path:
+        """Rinomina atomica della cartella temporanea del run in ``analysis_dir`` (D-72 B11)."""
+        self._check_token(lock)
+        tmp_dir = Path(tmp_dir)
+        if tmp_dir != run.run_dir / ANALYSIS_TMP or not tmp_dir.is_dir():
+            raise StoreError(f"{tmp_dir} non è la cartella temporanea dell'analisi del run {run.run_id}")
+        if not (tmp_dir / ANALYSIS_JSON).is_file():
+            raise StoreError(f"{tmp_dir}: manca {ANALYSIS_JSON} (marcatore di completamento): pubblicazione rifiutata")
+        dest = self.analysis_dir(run.kind, run.experiment, analysis_id)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        last: Optional[BaseException] = None
+        for attempt in range(PUBLISH_RENAME_ATTEMPTS):
+            if dest.exists():                     # su POSIX os.rename sostituirebbe in silenzio una cartella vuota
+                state = "completa" if (dest / ANALYSIS_JSON).is_file() else "incompleta"
+                raise AnalysisExists(f"analisi {analysis_id} già presente ({state}) in {dest}: mai sovrascritta")
+            try:
+                os.rename(tmp_dir, dest)
+                _log.info("analisi %s pubblicata in %s", analysis_id, dest)
+                return dest
+            except PermissionError as exc:
+                last = exc
+                if attempt < len(PUBLISH_RENAME_WAITS_S):
+                    _log.warning("rinomina di %s rifiutata (%s): nuovo tentativo tra %.1f s", tmp_dir, exc,
+                                 PUBLISH_RENAME_WAITS_S[attempt])
+                    _sleep(PUBLISH_RENAME_WAITS_S[attempt])
+        raise AnalysisPublishError(f"rinomina di {tmp_dir} in {dest} fallita dopo {PUBLISH_RENAME_ATTEMPTS} tentativi "
+                                   f"({last}): nessun risultato pubblicato, cartella temporanea lasciata per clean-tmp")
+
+    def orphan_analysis_tmp(self) -> List[Dict[str, Any]]:
+        """Cartelle temporanee dell'analisi rimaste nei run (sola lettura, non crea cartelle)."""
+        base = self.root / "runs"
+        if not base.is_dir():
+            return []
+        out = []
+        for p in sorted(base.glob(f"*/*/*/{ANALYSIS_TMP}")):
+            if p.is_dir() and p.parent.name != ANALYSES_DIR:
+                out.append({"path": p, "name": p.name, "kind": "analysis_tmp", "run_id": p.parent.name,
+                            "has_marker": (p / ANALYSIS_JSON).is_file()})
+        return out

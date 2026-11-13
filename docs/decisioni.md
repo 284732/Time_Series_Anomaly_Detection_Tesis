@@ -934,18 +934,25 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
     in una cartella temporanea dentro il run, poi rinominata in modo atomico in quella definitiva
     `runs/<kind>/<esperimento>/analyses/<analysis_id>/` (rev. passo 0: la cartella definitiva è indicizzata da
     `analysis_id`, non dal `run_id`, che è unico per run; `analyses` non può coincidere con un `run_id`, che ha la forma
-    ora UTC + 8 caratteri casuali). Il run conserva log e `run.json`, con l'`analysis_id` prodotto. `analysis.json` è il
-    marcatore di completamento, scritto per ultimo. Una cartella temporanea rimasta dopo un'interruzione non blocca il
-    nuovo lancio; la elencano `status` e `orphan_tmp` e la rimuove `clean-tmp` (estensione della nota «F5 passo 6» su
-    D-70), con test. Una cartella definitiva esistente e completa con lo stesso `analysis_id` causa un rifiuto
-    esplicito (codice 2) con un messaggio che indica la cartella esistente, mai una sovrascrittura. F7 legge solo
-    analisi complete.
+    ora UTC + 8 caratteri casuali; rev. passo 2: `analyses` è anche un `run_id` riservato, rifiutato da `lock` e
+    `begin_run` senza distinzione di maiuscole). Il run conserva log e `run.json`, con l'`analysis_id` prodotto.
+    `analysis.json` è il marcatore di completamento, scritto per ultimo. Una cartella temporanea rimasta dopo
+    un'interruzione non blocca il nuovo lancio; la elencano `status` e `orphan_analysis_tmp` e la rimuove `clean-tmp`
+    (estensione della nota «F5 passo 6» su D-70, passo 7), con test. Una cartella definitiva esistente e completa con
+    lo stesso `analysis_id` causa un rifiuto esplicito (codice 2) con un messaggio che indica la cartella esistente,
+    mai una sovrascrittura.
+    - **Completezza (rev. passo 2, approvata dall'utente il 2026-11-13):** un'analisi è completa se e solo se esiste la
+      cartella pubblicata `analyses/<analysis_id>/` con `analysis.json`; F7 legge solo quelle, indipendentemente dallo
+      stato del run. Se dopo la pubblicazione `run.json` o il registro non si aggiornano: avviso nel log, `status`
+      segnala l'incongruenza (passo 7), codice di uscita 0 (l'analisi è completa).
   - **B11 — rinomina atomica su Windows (rev. passo 0):** `os.rename` della cartella temporanea solo se la
     destinazione non esiste (controllo esplicito prima della rinomina, sotto lock: su POSIX `os.rename` sostituirebbe
     in silenzio una cartella vuota). Su `PermissionError` (antivirus o indicizzatore che tengono aperto un file) al
-    massimo `PUBLISH_RENAME_ATTEMPTS` tentativi distanziati di `PUBLISH_RENAME_WAIT_S` secondi (costanti con nome in
-    `store.py`; valori proposti 5 e 0,2 s, da fissare al passo 2, dove si valuta anche un'attesa crescente, per
-    esempio 0,2 → 0,4 → 0,8 → 1,6 s), poi errore esplicito: codice di uscita 4, run chiuso `failed`, cartella
+    massimo `PUBLISH_RENAME_ATTEMPTS` = 5 tentativi, con attese crescenti `PUBLISH_RENAME_WAITS_S` = (0,2, 0,4, 0,8,
+    1,6) s tra un tentativo e il successivo, circa 3 s in tutto (costanti con nome in `store.py`; fissate al passo 2,
+    approvate dall'utente il 2026-11-13). Motivo: i blocchi temporanei di antivirus e indicizzatore su Windows durano
+    di solito meno di un secondo, ma non sempre; con 5 × 0,2 s fissi la finestra coperta è di 1 s, con il raddoppio
+    di 3 s a parità di tentativi, con un costo trascurabile rispetto alla durata di un'analisi. Poi errore esplicito: codice di uscita 4, run chiuso `failed`, cartella
     temporanea lasciata per `clean-tmp`. Mai una copia come ripiego, mai un risultato parziale nella cartella
     definitiva. Test: rinomina che fallisce in modo simulato sempre (errore esplicito, nessuna cartella definitiva,
     temporanea intatta) e solo al primo tentativo (analisi pubblicata, contenuto identico).
@@ -960,10 +967,17 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
     - (passo 1, approvato dall'utente il 2026-11-13) le pseudo-chiavi `random_baseline_key` di ogni (macchina, seed)
       della baseline random, ordinate: la baseline non ha fit nello store, e senza di esse un esperimento di soli
       modelli deterministici con seed diversi avrebbe lo stesso id con righe della baseline diverse;
-    - (passo 1, dal controllo sistematico di copertura) per ogni fit `meta_sha256` = hash di `meta.json` senza
-      `provenance` e `created_by`: copre ciò che l'analisi legge da `meta.json` oltre ai residui (`set_seed_value`,
-      colonna `seed` dei deterministici per V12; `fit_info`, tempi e `error` della tabella `fits`; segmenti);
-      `fit_key` verificato contro l'hash del `fit_payload` registrato;
+    - (passo 1, dal controllo sistematico di copertura; rev. passo 2) per ogni fit `meta_sha256` = hash dei soli campi
+      di `meta.json` elencati in `META_ID_FIELDS` (elenco esplicito, non per esclusione): `meta_format`, `fit_payload`,
+      `fit_code_version`, `fit_key`, `machine`, `dataset`, `group`, `data_version`, `status`, `error` (tipo, messaggio,
+      fase), `nonfinite_loss`, `loaded_with_version_mismatch`, `model`, `seed` (`set_seed_value`: colonna `seed` dei
+      deterministici per V12), `segments`, `windows`, `scoring`, `device`, `fit_info` (epoche, componenti, loss,
+      campioni), `checkpoint`, `scaler`, `residuals`. Fuori dall'id, in `META_MEASURED_FIELDS`: `timings`,
+      `fit_info.fit_seconds`, `provenance`, `created_by` e `error.traceback` (percorsi locali e numeri di riga:
+      diagnostica). Un campo di `meta.json` in nessuno dei due elenchi è un errore esplicito (codice 2). **Le colonne dei
+      tempi della tabella `fits` (`fit_sec`) sono misure non riproducibili, escluse dal significato dell'id:** due
+      analisi con lo stesso id hanno gli stessi numeri salvo i tempi. `fit_key` verificato contro l'hash del
+      `fit_payload` registrato;
     - (passo 1, dal controllo sistematico di copertura) ambiente dell'analisi: versione di Python, versioni di numpy,
       scipy, pandas e scikit-learn, sha256 del lock delle dipendenze (le metriche dipendono dalle librerie);
 
@@ -987,10 +1001,12 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
     pubblicazione non riuscita, nessun risultato (rinomina fallita dopo tutti i tentativi di B11; run chiuso `failed`,
     cartella temporanea lasciata per `clean-tmp`; aggiunto con la revisione del passo 0, 2026-11-13); 130 interruzione.
   - **Aggiunte fuori dai file nuovi (elenco chiuso):** `scoring.py` (`RobustFeatureErrorNormalizer`); `table_schema.py`
-    (tre colonne di `fits`, C6); `store.py` (cartella temporanea dell'analisi nel run, rinomina atomica in
-    `analyses/<analysis_id>/` con i tentativi di B11, `write_table` nella cartella temporanea, elenco per
-    `status` / `orphan_tmp` / `clean-tmp`); `cli.py` (`analyze`, estensione di `clean-tmp`). Nessun metodo esistente
-    cambia comportamento per i casi già ammessi.
+    (tre colonne di `fits`, C6); `store.py` (rev. passo 2, funzioni reali: `analysis_dir`, `analysis_complete`,
+    `new_analysis_tmp`, `write_analysis_file`, `write_table(..., dest_dir=...)`, `publish_analysis` con i tentativi di
+    B11, `orphan_analysis_tmp` per `status` e `clean-tmp`; eccezioni `AnalysisExists`, `AnalysisPublishError`);
+    `cli.py` (`analyze`, estensione di `clean-tmp`). Nessun metodo esistente cambia comportamento per i casi già
+    ammessi, con un'eccezione approvata (passo 2): `lock` e `begin_run` rifiutano i `run_id` riservati
+    (`RESERVED_RUN_IDS` = `analyses`, senza distinzione di maiuscole).
 - **Motivazione:** metriche storiche invariate per costruzione (stesse funzioni e stessa formula), nuove metriche
   definite prima di vederne i valori, nessuna esclusione implicita mentre D-44 è aperta, analisi ripetibile e
   identificata dai suoi ingressi effettivi (piano, residui, label, manifest) e dalla versione del codice.

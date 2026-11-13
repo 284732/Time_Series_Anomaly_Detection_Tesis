@@ -469,21 +469,83 @@ def test_fit_identity_from_meta_uses_the_array_sha256_of_meta_json():
         ap.fit_identity_from_meta(_meta(status="running"), [])
 
 
-def test_fit_identity_meta_sha256_covers_what_analyze_reads_from_meta():
-    """``meta_sha256`` = hash di ``meta.json`` senza ``provenance`` e ``created_by``: copre set_seed_value, fit_info,
-    tempi (``fit_sec`` della tabella ``fits``), errore, segmenti; non dipende da chi o quando l'ha scritto."""
+def _full_meta(status="complete"):
+    """meta.json con tutti i campi di META_ID_FIELDS (complete) o quelli di un fit failed, più i campi misurati."""
+    m = _meta(status=status, meta_format=1, fit_code_version=1, machine="machine-9-1", dataset="synth", group="9",
+              data_version="dv1-x", model={"name": "pca", "native_only": False},
+              timings={"fit_seconds": 1.5, "residual_seconds": 0.5, "total_seconds": 2.0})
+    if status == "complete":
+        m.update(segments={"mode": "legacy2", "cal": [1600, 2000], "n_test": 2000}, windows={"window_size": 20},
+                 scoring={"score_batch_requested": None}, device={"requested": "cpu", "effective": "cpu"},
+                 fit_info={"best_epoch": 2, "stopped_epoch": 2, "n_components": 3, "fit_seconds": 0.7},
+                 nonfinite_loss=False, checkpoint={"hashable_sha256": SHA_A}, scaler={"arrays": {}},
+                 loaded_with_version_mismatch=False)
+    else:
+        del m["residuals"], m["fit_info"]
+        m["error"] = {"type": "RuntimeError", "message": "x", "phase": "fit", "traceback": "File C:\\a.py, line 1"}
+    return m
+
+
+@pytest.mark.parametrize("status", ["complete", "failed"])
+def test_every_meta_field_is_classified(status):
+    """Ogni campo di meta.json è in META_ID_FIELDS o in META_MEASURED_FIELDS (elenchi espliciti, disgiunti)."""
+    meta = _full_meta(status)
+    assert not set(ap.META_ID_FIELDS) & set(ap.META_MEASURED_FIELDS)
+    top_measured = {f for f in ap.META_MEASURED_FIELDS if "." not in f}
+    assert set(meta) <= set(ap.META_ID_FIELDS) | top_measured
+    ap.fit_identity_from_meta(meta, ["cal__last"])
+
+
+def test_timing_subfields_of_fitinfo_are_measured():
+    """I campi di tempo di FitInfo (D-67) sono misure: un nuovo campo di tempo va aggiunto all'elenco."""
+    from src.models.base import FitInfo
+    assert {f"fit_info.{f}" for f in FitInfo.TIMING_FIELDS} <= set(ap.META_MEASURED_FIELDS)
+
+
+@pytest.mark.parametrize("status", ["complete", "failed"])
+def test_measured_fields_do_not_change_the_identity(status):
     names = ["cal__last"]
-    ref = ap.fit_identity_from_meta(_meta(), names).meta_sha256
+    ref = ap.fit_identity_from_meta(_full_meta(status), names).meta_sha256
     assert re.fullmatch(r"[0-9a-f]{64}", ref)
-    assert ref == canonical_hash({k: v for k, v in _meta().items() if k not in ("provenance", "created_by")})
-    for over in ({"seed": {"key_seed": 42, "set_seed_value": 43}},
-                 {"fit_info": {"best_epoch": 7, "n_components": 3}},
-                 {"timings": {"fit_seconds": 2.5}},
-                 {"nonfinite_loss": True},
-                 {"error": {"message": "y"}}):
-        assert ap.fit_identity_from_meta(_meta(**over), names).meta_sha256 != ref, over
-    for over in ({"provenance": {"timestamp_utc": "altro"}}, {"created_by": {"run_id": "r2"}}):
-        assert ap.fit_identity_from_meta(_meta(**over), names).meta_sha256 == ref, over
+    for field in ap.META_MEASURED_FIELDS:
+        meta = _full_meta(status)
+        top, _, sub = field.partition(".")
+        if top not in meta or (sub and sub not in meta[top]):
+            continue
+        if sub:
+            meta[top][sub] = "valore misurato diverso"
+        else:
+            meta[top] = {"diverso": 1}
+        assert ap.fit_identity_from_meta(meta, names).meta_sha256 == ref, field
+
+
+@pytest.mark.parametrize("status", ["complete", "failed"])
+def test_every_identity_field_changes_the_identity(status):
+    names = ["cal__last"]
+    base = _full_meta(status)
+    ref = ap.fit_identity_from_meta(base, names).meta_sha256
+    changed = 0
+    for field in ap.META_ID_FIELDS:
+        if field not in base or field in ("fit_key", "fit_payload", "status"):
+            continue                       # fit_key/fit_payload verificati a parte; status cambia la forma
+        meta = _full_meta(status)
+        meta[field] = dict(meta[field], test__mean={"sha256": SHA_A}) if field == "residuals" else {"diverso": field}
+        assert ap.fit_identity_from_meta(meta, names).meta_sha256 != ref, field
+        changed += 1
+    assert changed >= (8 if status == "failed" else 18)
+    for sub_change in ({"seed": {"key_seed": 42, "set_seed_value": 43}},
+                       {"error": dict(base.get("error") or {}, message="y")} if status == "failed" else
+                       {"fit_info": dict(base["fit_info"], stopped_epoch=3)}):
+        meta = _full_meta(status)
+        meta.update(sub_change)
+        assert ap.fit_identity_from_meta(meta, names).meta_sha256 != ref, sub_change
+
+
+def test_unknown_meta_field_is_an_explicit_error():
+    meta = _full_meta()
+    meta["campo_nuovo"] = 1
+    with pytest.raises(ValueError, match="campo_nuovo"):
+        ap.fit_identity_from_meta(meta, ["cal__last"])
 
 
 def test_fit_identity_rejects_fit_key_not_matching_payload():
