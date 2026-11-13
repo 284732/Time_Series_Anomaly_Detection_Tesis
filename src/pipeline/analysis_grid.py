@@ -384,9 +384,50 @@ def _free_cal_points(combo: Combo, fs: FitScores) -> int:
     return int(fs.cal_windows.get(combo.window_time_agg, 0))
 
 
+# ---------------------------------------------------------------- 6.4: tabella fits (C6, V12, D-44)
+def _nonfinite(residuals: Mapping[str, Any], segments: Tuple[str, ...]) -> int:
+    return int(sum(r["n_nonfinite"] for n, r in residuals.items() if n.split(SEP)[0] in segments))
+
+
+def fits_row(meta: Mapping[str, Any]) -> Dict[str, Any]:
+    """Riga della tabella ``fits`` da ``meta.json``. ``config_id`` dal ``fit_payload`` (stessa formula di
+    ``config.config_id``; i meta dei fit failed non lo registrano); ``seed`` = ``set_seed_value`` (V12); non finiti
+    sommati sui record (C6: indicatore, null per i failed); ``fit_sec`` = tempo misurato (fuori dall'id)."""
+    from src.utils.config import canonical_hash
+    payload = meta["fit_payload"]
+    model = payload["model"]
+    row = {"fit_key": meta["fit_key"], "dataset": meta["dataset"], "machine": meta["machine"], "model": model["name"],
+           "config_id": canonical_hash({"model": model["name"], "params": model["params"]})[:12],
+           "seed": int(meta["seed"]["set_seed_value"]), "deterministic": bool(meta["model"]["deterministic"]),
+           "split_mode": payload["split"]["mode"], "status": meta["status"]}
+    empty = dict.fromkeys(("best_epoch", "stopped_epoch", "n_components", "fit_sec", "n_fit_windows", "n_es_windows",
+                           "n_cal_windows", "error", "nonfinite_loss", "n_nonfinite_cal", "n_nonfinite_test"))
+    row.update(empty)
+    if meta["status"] == "failed":
+        err = meta.get("error") or {}
+        row["error"] = f"{err.get('type')}: {err.get('message')}"
+        return row
+    fi = meta.get("fit_info") or {}
+    res = meta["residuals"]
+    row.update(best_epoch=fi.get("best_epoch"), stopped_epoch=fi.get("stopped_epoch"),
+               n_components=fi.get("n_components"), fit_sec=(meta.get("timings") or {}).get("fit_seconds"),
+               n_fit_windows=fi.get("n_fit_samples"), n_es_windows=fi.get("n_val_samples"),
+               n_cal_windows=int(res[_name("cal", NATIVE_AGG)]["shape"][0]),
+               nonfinite_loss=bool(meta["nonfinite_loss"]),
+               n_nonfinite_cal=_nonfinite(res, ("cal",)), n_nonfinite_test=_nonfinite(res, ("test", TEST_CTX_HEAD)))
+    return row
+
+
+_FITS_DTYPES = {"best_epoch": "Int64", "stopped_epoch": "Int64", "n_components": "Int64", "n_fit_windows": "Int64",
+                "n_es_windows": "Int64", "n_cal_windows": "Int64", "fit_sec": "float64", "nonfinite_loss": "boolean",
+                "n_nonfinite_cal": "Int64", "n_nonfinite_test": "Int64"}
+
+
 def to_frame(rows: List[Dict[str, Any]], table: str) -> pd.DataFrame:
     """Righe → DataFrame validato dallo schema di F2 (colonne nell'ordine dello schema, tipi canonici)."""
     df = pd.DataFrame(rows, columns=list(ts.columns(table)))
+    if table == "fits":
+        return ts.validate(df.astype(_FITS_DTYPES), table)
     if table == "thr":
         df["n_past"] = df["n_past"].astype("Int64")
         df["threshold_level"] = df["threshold_level"].astype("float64")
