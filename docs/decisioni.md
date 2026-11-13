@@ -874,6 +874,10 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
     stesso pavimento del normalizer storico (`min_scale_ratio` · media delle scale + 1e−12). `analysis.json` registra,
     per ogni fit e ogni normalizer, quanti sensori hanno la scala sul pavimento e quanti la scala grezza esattamente 0
     (serve a interpretare il fattore normalizer di RQ1b).
+    - **Costante (passo 5, 2026-11-13):** 1,349 resta fissa e con nome (`IQR_TO_SIGMA`, C14). L'invarianza di metriche
+      senza soglia e decisioni rispetto a un fattore c > 0 sulla costante è verificata empiricamente (bit a bit nei
+      casi provati, c ∈ {2; 0,5; 3,7; 1.000}, aggregazioni mean, max e top-k) ma non garantita in generale: il termine
+      1e−12 del pavimento non scala con c, quindi le scale sono proporzionali solo entro 1e−12·(c + 1).
   - **C6 — non finiti nella tabella `fits`** (modifica dello schema di F2): tre colonne `nonfinite_loss` (bool),
     `n_nonfinite_cal` (int), `n_nonfinite_test` (int, residui del test comprese le finestre di `test_ctx_head`,
     dichiarato nella docstring dello schema). Motivo: D-44 deve distinguere un non finito in cal (normalizer e soglia
@@ -1124,6 +1128,10 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
   - una metrica non calcolabile (score non finiti nella maschera, regione senza positivi o senza negativi) dà una riga
     con `value` NaN, contata in `analysis.json`; la pipeline storica in quel caso saltava la variante, e solo
     l'esportazione legacy replica il salto (D-72 C12).
+- **Nota (2026-11-13, F6 passo 5, la voce resta APERTA):** con un solo `inf` nei residui di cal il normalizer robusto
+  dà centro e scala finiti (mediana e quartili lo assorbono), lo storico no (media e deviazione standard non finite).
+  Un confronto tra normalizer su fit con `n_nonfinite_cal` > 0 mescolerebbe la robustezza dello stimatore con il
+  trattamento dei non finiti: **D-44 va decisa prima della lettura di RQ1b.**
 
 ### D-45 · Secondo dataset — APERTA
 - **Vincolo:** deve avere più entità (PSM escluso; ASD candidato da verificare). Il piano congelato per SMD si riapplica

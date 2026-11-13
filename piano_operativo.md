@@ -469,6 +469,9 @@ D-53 approvata (2026-11-10): `.pyc` tolti dal tracciamento, `dataset/` resta tra
       confronto per chiave, nessuna tolleranza;
     - passo 6 (annotazione del passo 4): un test dimostra che `analyze` non passa mai `require_history=False` alle
       funzioni di `thresholds.py` (ammesso solo nei test di identità con `rules.py` e per lo z di cal);
+    - passo 6 (annotazione del passo 5): test end-to-end con un `inf` nei residui di cal e uno nei residui del test,
+      per soglia statica, soglie mobili e metriche senza soglia di scikit-learn, con il comportamento atteso esplicito
+      (riga NaN contata, oppure errore): mai numeri finiti in silenzio (D-44);
     - passo 8: prova golden (sha256 delle uscite di un'analisi sintetica) legata ad `ANALYSIS_CODE_VERSION`, che
       fallisce se le uscite cambiano senza aumentare la versione;
     - passo 8, riepilogo di chiusura di F6: annotare che i test di integrazione dei punti 1 (`meta_sha256` per
