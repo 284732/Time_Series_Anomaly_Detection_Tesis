@@ -921,6 +921,9 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
     del piano solo se lo richiede D-42.
   - **C15 — storia di cal:** errore bloccante nei controlli preliminari se cal ha meno di `n_past` score validi, o se
     il supporto di calibrazione di `roll_robust_z` (D-23) è vuoto. Mai soglie NaN in silenzio.
+    - **`roll_robust_z` (passo 4, 2026-11-13):** la decisione è z_t ≥ τ, con τ calibrata sullo z di cal; la soglia non
+      si riporta sullo score grezzo (la conversione inversa non è esatta in virgola mobile). Le metriche con soglia di
+      questa politica si calcolano sulle decisioni in z; le metriche senza soglia restano sullo score grezzo.
   - **V10 — righe per politica di soglia:**
     - `pa` falso: per ogni politica del piano (`static_pct`, `roll_quantile`, `roll_robust_z`) tutte le metriche con
       soglia e per evento; per l'oracolo solo `f1`;
