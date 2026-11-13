@@ -326,3 +326,31 @@ def test_invalid_regions_raise_like_evaluate_timestamps(y, s, mask, msg):
                lambda: mt.cells(y, s, mask, 0.2)):
         with pytest.raises(ValueError, match=msg):
             fn()
+
+
+# ------------------------------------------------------------------ non finiti (passo 6.0, D-44, D-72 C2)
+@pytest.mark.parametrize("bad", [np.inf, -np.inf, np.nan])
+def test_nonfinite_score_in_the_region_is_an_error(bad):
+    """Uno score non finito (NaN, +inf, −inf) dentro la regione valutata → ValueError (→ riga NaN contata, C12), mai
+    metriche finite in silenzio. Fuori dalla regione è ammesso (non viene valutato)."""
+    y, s = Y8.copy(), S8.copy()
+    s[2] = bad
+    for fn in (lambda: mt.free_metrics(y, s, ALL(8)), lambda: mt.thr_metrics(y, s, 0.6, ALL(8), pa=False),
+               lambda: mt.thr_metrics(y, s, 0.6, ALL(8), pa=True), lambda: mt.cells(y, s, ALL(8), 0.6),
+               lambda: mt.oracle_f1(y, s, ALL(8), pa=True)):
+        with pytest.raises(ValueError, match="non finit"):
+            fn()
+    outside = np.ones(8, dtype=bool)
+    outside[:3] = False                                         # il punto 2 è fuori dalla regione
+    s2 = S8.copy()
+    s2[2] = bad
+    assert mt.thr_metrics(Y8, s2, 0.6, outside, pa=False)["f1"] == mt.thr_metrics(Y8, S8, 0.6, outside, pa=False)["f1"]
+
+
+def test_historical_pipeline_already_failed_on_infinite_scores():
+    """Parità: evaluate_timestamps fallisce già con un inf nella regione (scikit-learn rifiuta gli infiniti) e
+    main.py salta la variante; qui l'errore arriva prima, con lo stesso effetto (nessuna metrica finita)."""
+    s = S8.copy()
+    s[2] = np.inf
+    with pytest.raises(ValueError):
+        evaluate_timestamps(Y8, s, threshold=0.6, mask=ALL(8))

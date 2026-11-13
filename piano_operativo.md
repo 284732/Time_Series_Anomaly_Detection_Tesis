@@ -472,11 +472,27 @@ D-53 approvata (2026-11-10): `.pyc` tolti dal tracciamento, `dataset/` resta tra
     - passo 6 (annotazione del passo 5): test end-to-end con un `inf` nei residui di cal e uno nei residui del test,
       per soglia statica, soglie mobili e metriche senza soglia di scikit-learn, con il comportamento atteso esplicito
       (riga NaN contata, oppure errore): mai numeri finiti in silenzio (D-44);
+    - **sotto-piano del passo 6 (approvato il 2026-11-13):** 6.0 non finiti rifiutati in `metrics.py` e
+      `thresholds.py` (commit a sé) → 6.1 colonne di `fits` (C6) → 6.2 nucleo di scoring per fit in
+      `src/pipeline/analysis_grid.py` (normalizer, aggregazione, proiezione, `test_context`, baseline random) → 6.3
+      righe `free` / `thr` (V10–V12, C12) → 6.4 tabella `fits` → 6.5 integrazione in `analyze` (C13, C15,
+      `analysis.json`, B10) → 6.6 controlli incrociati, causalità, leakage, C9 → 6.7 durata. Riepilogo e stop prima
+      di ogni commit;
+    - passo 6.6 (aggiunta approvata): con `ts_agg` `last`, perturbare dopo t lascia invariati score, soglie e
+      decisioni fino a t, per ogni politica e scenario; con `mean` e `max` un test dimostra la dipendenza offline
+      (perturbare dopo t cambia lo score solo da t − W + 1 in poi, mai prima), così l'etichetta «offline» di D-24 è
+      verificata e non data per scontata;
     - passo 8: prova golden (sha256 delle uscite di un'analisi sintetica) legata ad `ANALYSIS_CODE_VERSION`, che
       fallisce se le uscite cambiano senza aumentare la versione;
     - passo 8, riepilogo di chiusura di F6: annotare che i test di integrazione dei punti 1 (`meta_sha256` per
       elenco esplicito) e 2 (V13, errore del registro dopo la pubblicazione) della revisione del passo 2 sono stati
-      scritti dopo il codice e convalidati solo con le prove di difetto (mai visti rossi prima dell'implementazione).
+      scritti dopo il codice e convalidati solo con le prove di difetto (mai visti rossi prima dell'implementazione);
+      lo stesso vale per il test «NaN nel supporto statico» del passo 6.0 (convalidato solo con la mutazione);
+    - passo 6.2 (requisito approvato al passo 6.0): `analysis_grid` verifica che gli score NaN di cal e del test
+      stiano solo dove la geometria delle finestre non dà score (primi W − 1 punti senza contesto, coda); un NaN
+      altrove (da residuo non finito) è un errore → riga NaN contata, mai un punto saltato nella storia delle soglie
+      mobili. Test: residuo NaN in cal con `roll_quantile` e `roll_robust_z`, e nel test, con l'esito atteso
+      esplicito; prova di difetto «NaN da residuo trattato come punto senza score».
   - **Precisazioni approvate al passo 1 [D-72 C8]:** al passo 6 `analysis.json` registra quali modelli producono
     righe native (convenzione none/native applicata dall'analisi, non dichiarata nel piano); al passo 4 il test
     «storia vuota = `rules.py`» copre la conversione percentile → quantile, anche con livelli non interi (es. 99,5).
@@ -502,6 +518,9 @@ D-53 approvata (2026-11-10): `.pyc` tolti dal tracciamento, `dataset/` resta tra
 - **Obiettivo:** dimostrare che la nuova pipeline in modalità `legacy2` riproduce i run storici di riferimento identificati in D-50.
 - **File (nuovi):** `configs/experiments/parity_repro_{last,mean}.yaml`, `scripts/parity_report.py` (confronta `store/` con `results/` in sola lettura).
 - **Vincolo sui seed (nota 2026-11-10, da F3):** le config `parity_repro_*.yaml` hanno i seed nell'ordine storico, con 42 per primo, e un'asserzione (test o controllo all'avvio di M1) lo verifica. Motivo: in `main.py` la PCA gira solo al primo seed con `random_state` = `seeds[0]`, mentre il nuovo schema fissa `random_state: 42` con un fit condiviso tra i seed. L'equivalenza vale solo se il primo seed è 42; altrimenti, con D-57, una PCA diversa sembrerebbe una divergenza di thread. Test di riferimento: `test_pca_random_state_and_sharing_across_seeds`. Provenienza dei dati: vedi la nota di rimando su D-61.
+- **Punti passati a M1 da F6 (nota 2026-11-13):** verificare con `n_nonfinite_cal` (tabella `fits`) se sui dati reali
+  si presenta un residuo non finito in cal; se sì, la variante `raw_mean` dello storico aveva una soglia finita
+  (NaN scartato in silenzio) e la tabella lunga una riga NaN (D-72 C15, passo 6.0): differenza attesa e dichiarata.
 - **Esecuzione:** `cli fit` + `cli analyze` su `machine-1-1` e `machine-3-8`. Stima: pochi minuti.
 - **Completata quando:** PCA e baseline con score identici; AE identici bit a bit oppure con differenze diagnosticate, documentate e coperte da una tolleranza motivata [D-17]; metriche identiche; report salvato in `docs/`.
 - **Procedura in caso di differenze [D-17]:** prima si verifica il numero di thread (registrato nella provenance) e le versioni delle librerie rispetto ai run storici; poi si isola il primo artefatto che diverge (finestre, scaler, residui, score). Non si alzano le tolleranze senza spiegazione.
@@ -527,7 +546,10 @@ D-53 approvata (2026-11-10): `.pyc` tolti dal tracciamento, `dataset/` resta tra
     del test): si decompongono e se ne misura l'effetto (RQ1a, D-12, D-42);
   - **correzioni di bug idiosincratici della pipeline storica** (per esempio la validation usata tre volte, P1, e il
     conteggio per righe della storia in `rules.py`, D-72 C1): si correggono e si dichiarano, con l'impatto misurato
-    (`CLAUDE.md` §5), ma non diventano livelli di un fattore né entrano nella decomposizione.
+    (`CLAUDE.md` §5), ma non diventano livelli di un fattore né entrano nella decomposizione. Elenco delle correzioni
+    dichiarate finora: P1 (validation usata tre volte); storia per righe di `rules.py` (D-72 C1); NaN nel supporto di
+    cal scartato in silenzio dalla soglia statica dello storico (`raw_mean`), ora riga NaN contata (D-72 C15, passo
+    6.0).
 
 ### F9 — Tuning e sensibilità (esperimenti esplorativi)
 - **Obiettivo:** scegliere le configurazioni globali per famiglia, con budget pari, sulle 6 macchine dev.

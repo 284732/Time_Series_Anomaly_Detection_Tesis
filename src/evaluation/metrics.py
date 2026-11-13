@@ -2,8 +2,9 @@
 Metriche dello stadio di analisi (F6, D-34, D-72 C2–C4, V10). Funzioni pure su score per timestamp, label e maschera
 di valutazione; nessuna soglia viene calcolata qui (``thresholds.py``, passo 4).
 
-Regione valutata: come ``protocol.evaluate_timestamps`` (maschera contigua, nessun NaN dentro, almeno un positivo e un
-negativo; altrimenti ``ValueError``, che l'analisi registra come riga NaN, C12).
+Regione valutata: come ``protocol.evaluate_timestamps`` (maschera contigua, almeno un positivo e un negativo) e nessuno
+score non finito dentro (passo 6.0: anche ±inf, che lo storico faceva fallire dentro scikit-learn); altrimenti
+``ValueError``, che l'analisi registra come riga NaN (C12).
 
 Metriche senza soglia (tabella ``free``): ``ap``, ``roc_auc`` (stesse chiamate di ``evaluate_timestamps``),
 ``ap_norm`` = (AP − p) / (1 − p), ``ap_over_p`` = AP / p; diagnostica ``best_f1_oracle`` = cella B.
@@ -49,8 +50,8 @@ def eval_region(y_true: np.ndarray, scores: np.ndarray, mask: np.ndarray) -> Tup
     if not np.asarray(mask)[lo:hi].all():
         raise ValueError("La maschera di valutazione deve essere contigua")
     y, s = y_true[lo:hi], scores[lo:hi]
-    if np.isnan(s).any():
-        raise ValueError("NaN negli score dentro la maschera")
+    if not np.isfinite(s).all():                    # passo 6.0: anche ±inf (prima solo NaN), D-44
+        raise ValueError("score non finiti (NaN o inf) dentro la maschera")
     n_pos = int(y.sum())
     if n_pos == 0 or n_pos == len(y):
         raise ValueError("Servono almeno un punto positivo e uno negativo")

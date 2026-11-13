@@ -217,3 +217,43 @@ def test_result_carries_policy_level_and_n_past():
     assert (r.policy, r.level, r.n_past, r.n_cal_points) == ("roll_quantile", 90.0, 3, 3)
     s = th.static_pct(np.arange(10.0), np.ones(10, bool), 90.0)
     assert (s.policy, s.n_past, s.n_cal_points) == ("static_pct", None, 10) and not math.isnan(s.tau)
+
+
+# ------------------------------------------------------------------ non finiti (passo 6.0, D-44, D-72 C15)
+@pytest.mark.parametrize("bad", [np.inf, -np.inf, np.nan])
+def test_static_threshold_refuses_nonfinite_in_the_cal_support(bad):
+    """Prima di 6.0: un inf nel supporto di cal dava τ = inf (decisioni finite in silenzio) e un NaN veniva scartato
+    in silenzio da threshold_from_validation. Ora: errore (nel supporto ogni punto ha uno score, quindi un NaN lì viene
+    da un residuo non finito). Un non finito fuori dal supporto (bordi di cal) non entra nella soglia ed è ammesso."""
+    cal = np.arange(20.0)
+    m = np.zeros(20, dtype=bool)
+    m[3:17] = True
+    bad_in = cal.copy()
+    bad_in[10] = bad
+    with pytest.raises(th.NonFiniteScoreError, match="non finit"):
+        th.static_pct(bad_in, m, 95.0)
+    bad_out = cal.copy()
+    bad_out[1] = bad
+    assert th.static_pct(bad_out, m, 95.0).tau == th.static_pct(cal, m, 95.0).tau
+
+
+@pytest.mark.parametrize("where", ["cal", "test"])
+@pytest.mark.parametrize("policy", ["roll_quantile", "roll_robust_z"])
+def test_rolling_thresholds_refuse_nonfinite_in_history_or_scores(policy, where):
+    """Un inf nella storia cal → test (o nello score valutato del test) → errore; NaN = punto senza score (D-21),
+    ammesso."""
+    cal, test = np.arange(1.0, 31.0), np.arange(31.0, 51.0)
+    (cal if where == "cal" else test)[5] = np.inf
+    run = {"roll_quantile": lambda c, t: th.roll_quantile(c, t, n_past=5, level=90.0, ts_agg="last"),
+           "roll_robust_z": lambda c, t: th.roll_robust_z(c, t, np.ones(len(c), bool), n_past=5, level=90.0,
+                                                          ts_agg="last")}[policy]
+    with pytest.raises(th.NonFiniteScoreError, match="non finit"):
+        run(cal, test)
+    cal2, test2 = np.arange(1.0, 31.0), np.arange(31.0, 51.0)
+    test2[:3] = np.nan                                              # punti senza score: ammessi
+    run(cal2, test2)
+
+
+def test_nonfinite_error_is_a_value_error():
+    """L'analisi tratta ValueError come metrica non calcolabile (riga NaN contata, C12)."""
+    assert issubclass(th.NonFiniteScoreError, ValueError)

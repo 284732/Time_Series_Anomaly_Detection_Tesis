@@ -873,14 +873,19 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
   - **C5 — normalizer robusto (D-11):** centro = mediana, scala = IQR / 1,349 per sensore sulle finestre di cal, con lo
     stesso pavimento del normalizer storico (`min_scale_ratio` · media delle scale + 1e−12). `analysis.json` registra,
     per ogni fit e ogni normalizer, quanti sensori hanno la scala sul pavimento e quanti la scala grezza esattamente 0
-    (serve a interpretare il fattore normalizer di RQ1b).
+    (serve a interpretare il fattore normalizer di RQ1b). Chiave (passo 6, approvata dall'utente il 2026-11-13):
+    (fit, `window_time_agg`, normalizer), perché il normalizer si fitta separatamente su `cal__last` e `cal__mean`.
     - **Costante (passo 5, 2026-11-13):** 1,349 resta fissa e con nome (`IQR_TO_SIGMA`, C14). L'invarianza di metriche
       senza soglia e decisioni rispetto a un fattore c > 0 sulla costante è verificata empiricamente (bit a bit nei
       casi provati, c ∈ {2; 0,5; 3,7; 1.000}, aggregazioni mean, max e top-k) ma non garantita in generale: il termine
       1e−12 del pavimento non scala con c, quindi le scale sono proporzionali solo entro 1e−12·(c + 1).
   - **C6 — non finiti nella tabella `fits`** (modifica dello schema di F2): tre colonne `nonfinite_loss` (bool),
     `n_nonfinite_cal` (int), `n_nonfinite_test` (int, residui del test comprese le finestre di `test_ctx_head`,
-    dichiarato nella docstring dello schema). Motivo: D-44 deve distinguere un non finito in cal (normalizer e soglia
+    dichiarato nella docstring dello schema). Definizione (passo 6, approvata dall'utente il 2026-11-13): numero di
+    elementi non finiti, somma su tutti i record `cal__*` (rispettivamente `test__*` e `test_ctx_head__*`) di
+    `meta.json`; la colonna descrive il fit, non l'analisi; null per i fit `failed`. La somma sulle aggregazioni conta
+    più volte lo stesso valore non finito: è un indicatore (> 0), non una misura di gravità; il dettaglio per record è
+    in `meta.json`. Motivo: D-44 deve distinguere un non finito in cal (normalizer e soglia
     compromessi per tutto il test) da uno nel test (solo alcuni punti) leggendo solo le tabelle. Nessuna esclusione.
   - **C7 — esportazione legacy:** `src/pipeline/legacy_export.py` importa da `main.py`, in modo tardivo e solo nel suo
     percorso, le funzioni pure `evaluate_variant`, `save_scores` e `make_summary_row`; si rimuove in F12 con `main.py`.
@@ -925,6 +930,19 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
     del piano solo se lo richiede D-42.
   - **C15 — storia di cal:** errore bloccante nei controlli preliminari se cal ha meno di `n_past` score validi, o se
     il supporto di calibrazione di `roll_robust_z` (D-23) è vuoto. Mai soglie NaN in silenzio.
+    - **Non finiti (passo 6.0, approvato dall'utente il 2026-11-13; cambia il comportamento dei passi 3 e 4):**
+      `metrics.eval_region` rifiuta qualunque score non finito nella regione valutata (prima solo i NaN: un `inf`
+      produceva F1 ed eventi finiti), e `thresholds.py` rifiuta score non finiti (`±inf`) nel supporto di cal, nella
+      storia delle soglie mobili e nello score valutato (prima un `inf` dava una soglia `inf`, cioè decisioni finite).
+      L'errore diventa una riga NaN contata (C12). Motivo: D-44 resta aperta e nessun numero finito deve nascere in
+      silenzio da un non finito. Parità con lo storico invariata: `evaluate_timestamps` falliva già (scikit-learn
+      rifiuta gli `inf`) e `main.py` saltava la variante.
+    - **Scostamento dichiarato (passo 6.0, approvato dall'utente il 2026-11-13):** per la variante senza normalizer
+      (`raw_mean`, cioè `mean`/`none`) un residuo NaN in cal dà uno score NaN nel supporto M_cal; lo storico lo
+      scartava in silenzio (`threshold_from_validation` ignora i NaN) e otteneva una soglia finita, ora la tabella
+      lunga ha una riga NaN contata, coerente con D-44 aperta. L'esportazione legacy non cambia (usa
+      `main.evaluate_variant`). È una correzione dichiarata (nota della sezione F8 del piano), da verificare a M1 con
+      `n_nonfinite_cal` e da trattare come caso dichiarato nel controllo incrociato tabella lunga = summary legacy (6.6).
     - **`roll_robust_z` (passo 4, 2026-11-13):** la decisione è z_t ≥ τ, con τ calibrata sullo z di cal; la soglia non
       si riporta sullo score grezzo (la conversione inversa non è esatta in virgola mobile). Le metriche con soglia di
       questa politica si calcolano sulle decisioni in z; le metriche senza soglia restano sullo score grezzo.
@@ -943,6 +961,10 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
     `preproc` = hash del blocco di preprocessing `[:12]`; `seed` dei modelli deterministici = `set_seed_value`.
     **Le repliche della baseline random non sono osservazioni indipendenti:** F7 le deduplica prima di qualunque
     aggregazione.
+    - **Baseline random nella tabella `thr` (passo 6, approvato dall'utente il 2026-11-13):** riceve tutte le politiche
+      del piano, PA e oracolo compresi, come ogni modello (è il caso che motiva RQ1a: l'F1 con PA del random). Le
+      repliche esistono solo tra `ts_agg` (lo score random non dipende dalla proiezione; le soglie mobili solo con
+      `last`); nello scenario `test_context` le righe random sono calcoli distinti (cambia la maschera), non repliche.
   - **V13 e B11 — scritture e lock:** `analyze` tiene il lock dello store per tutto il run (con il gettone legge e, se
     servono, rigenera i residui; `fit` e `analyze` sono mutuamente esclusivi). Tutti i file dell'analisi si scrivono
     in una cartella temporanea dentro il run, poi rinominata in modo atomico in quella definitiva
@@ -1014,6 +1036,9 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
     dati non validi, fit mancante nello store, `analysis_id` già presente, `kind: official`; 3 store occupato; 4
     pubblicazione non riuscita, nessun risultato (rinomina fallita dopo tutti i tentativi di B11; run chiuso `failed`,
     cartella temporanea lasciata per `clean-tmp`; aggiunto con la revisione del passo 0, 2026-11-13); 130 interruzione.
+  - **File nuovi (rev. passo 6, approvata dall'utente il 2026-11-13):** oltre a `analyze.py`, `metrics.py`,
+    `thresholds.py`, `analysis_plan.py` e `legacy_export.py`, anche `src/pipeline/analysis_grid.py` con le funzioni
+    pure della 6b (nucleo di scoring per fit, righe `free` / `thr`, tabella `fits`); `analyze.py` resta orchestrazione.
   - **Aggiunte fuori dai file nuovi (elenco chiuso):** `scoring.py` (`RobustFeatureErrorNormalizer`); `table_schema.py`
     (tre colonne di `fits`, C6); `store.py` (rev. passo 2, funzioni reali: `analysis_dir`, `analysis_complete`,
     `new_analysis_tmp`, `write_analysis_file`, `write_table(..., dest_dir=...)`, `publish_analysis` con i tentativi di

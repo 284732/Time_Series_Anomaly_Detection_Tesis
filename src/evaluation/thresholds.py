@@ -15,6 +15,9 @@ Politiche di soglia dello stadio di analisi (F6, D-72 C1, C14, C15, V11; D-04, D
     n_cal_points = dimensione del supporto (V11). Costanti con nome, uguali a ``rules.py`` (C14).
   * Soglie mobili solo con ``timestamp_agg: last`` (D-24); storia di cal insufficiente o supporto vuoto → errore
     (C15), mai soglie NaN in silenzio. ``check_history`` è il controllo preliminare, senza score.
+  * Non finiti (passo 6.0, D-44): NaN o ±inf nel supporto statico, ±inf nella storia mobile o nello score valutato →
+    ``NonFiniteScoreError``. Nelle sequenze mobili un NaN è un punto senza score (D-21): chi chiama deve garantire che
+    i NaN siano solo dove la geometria non dà score (controllo in ``analysis_grid``, passo 6.2).
 
 Ogni funzione restituisce ``Threshold``: ``score`` (quello a cui si applica la soglia: lo score del test, o lo z del
 test per ``roll_robust_z``), ``tau`` (scalare o per punto del test), ``n_cal_points``.
@@ -42,6 +45,12 @@ class ThresholdHistoryError(ValueError):
     """Storia di cal insufficiente per ``n_past`` o supporto di calibrazione vuoto (C15)."""
 
 
+class NonFiniteScoreError(ValueError):
+    """Score non finito dove la soglia lo userebbe (passo 6.0, D-44): mai una soglia o una decisione finita in
+    silenzio. Nel supporto statico è non finito anche il NaN (lì ogni punto ha uno score); nelle sequenze mobili il NaN
+    è un punto senza score (D-21) e solo ±inf è un errore."""
+
+
 @dataclass(frozen=True)
 class Threshold:
     policy: str
@@ -65,6 +74,9 @@ def _past(cal_ts, test_ts, n_past: int, require_history: bool):
     """Sequenza cal → test, solo score validi (D-21); finestra mobile sugli ``n_past`` precedenti (shift)."""
     cal, test = _f(cal_ts), _f(test_ts)
     x = np.concatenate((cal, test))
+    if np.isinf(x).any():
+        raise NonFiniteScoreError(f"score non finiti (±inf) nella storia cal → test: {int(np.isinf(x).sum())} punti "
+                                  "(passo 6.0, D-44)")
     valid = ~np.isnan(x)
     n_valid_cal = int(valid[: len(cal)].sum())
     if require_history and n_valid_cal < n_past:
@@ -75,7 +87,11 @@ def _past(cal_ts, test_ts, n_past: int, require_history: bool):
 
 def static_pct(cal_ts, cal_support: np.ndarray, level: float, test=None) -> Threshold:
     support = np.asarray(cal_support, dtype=bool)
-    tau = threshold_from_validation(_f(cal_ts)[support], level)
+    values = _f(cal_ts)[support]
+    if not np.isfinite(values).all():
+        raise NonFiniteScoreError(f"score non finiti nel supporto di cal: {int((~np.isfinite(values)).sum())} punti "
+                                  "(passo 6.0, D-44)")
+    tau = threshold_from_validation(values, level)
     score = _f([] if test is None else test)
     return Threshold(STATIC, float(level), None, score, tau, int(support.sum()))
 
