@@ -930,7 +930,10 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
     errore bloccante. `labels_version` per macchina va in `analysis.json`.
   - **C14 — costanti:** pavimento del rolling z (0,05 · |mediana| + 1e−12), costante 1,349, `min_scale_ratio` 0,05 e
     1e−12 dei normalizer sono costanti con nome, uguali allo storico, registrate in `analysis.json`; diventano chiavi
-    del piano solo se lo richiede D-42.
+    del piano solo se lo richiede D-42. Anche k = 5 dell'aggregazione `top5` (passo 6.2, verificato): è un letterale di
+    `main.build_score_variants`, senza chiave di config (il `top_k` di `configs/models/baselines.yaml` è l'iperparametro
+    del rolling z-score, nel `fit_key`); costante con nome `TOP5_K` in `analysis_grid.py`, uguale a
+    `legacy_export.LEGACY_TOPK`, registrata in `analysis.json` con le altre.
   - **C15 — storia di cal:** errore bloccante nei controlli preliminari se cal ha meno di `n_past` score validi, o se
     il supporto di calibrazione di `roll_robust_z` (D-23) è vuoto. Mai soglie NaN in silenzio.
     - **Non finiti (passo 6.0, approvato dall'utente il 2026-11-13; cambia il comportamento dei passi 3 e 4):**

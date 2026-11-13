@@ -482,6 +482,9 @@ D-53 approvata (2026-11-10): `.pyc` tolti dal tracciamento, `dataset/` resta tra
       decisioni fino a t, per ogni politica e scenario; con `mean` e `max` un test dimostra la dipendenza offline
       (perturbare dopo t cambia lo score solo da t − W + 1 in poi, mai prima), così l'etichetta «offline» di D-24 è
       verificata e non data per scontata;
+    - passo 6.5 (revisione di 6.2): `analysis.json` registra `TOP5_K` con le costanti di C14; i motivi delle righe
+      NaN si contano per causa (`ResidualNonFiniteError.reason`, uguale per ogni `ts_agg`: gli score di finestra si
+      controllano prima della proiezione);
     - passo 8: prova golden (sha256 delle uscite di un'analisi sintetica) legata ad `ANALYSIS_CODE_VERSION`, che
       fallisce se le uscite cambiano senza aumentare la versione;
     - passo 8, riepilogo di chiusura di F6: annotare che i test di integrazione dei punti 1 (`meta_sha256` per
