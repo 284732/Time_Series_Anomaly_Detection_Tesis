@@ -99,6 +99,8 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
   di tuning come opzione di scoring: D-41.
 - **Motivazione:** errori a coda pesante e possibile contaminazione del train da anomalie non etichettate (da dichiarare tra i limiti).
 - **Documenti:** proposta §4.4; piano gruppo A punto 4, F6.
+- **Nota di rimando (2026-11-12, F6, il testo sopra resta invariato):** la definizione operativa (centro, scala,
+  pavimento) e la registrazione dei sensori con la scala sul pavimento sono in D-72 (C5).
 
 ### D-12 · RQ1 divisa in RQ1a e RQ1b — APPROVATA · 2026-11-09
 - **Decisione:** RQ1a = quanto cambiano numeri e ranking cambiando *come si misura* (fattori di misura: PA, oracolo,
@@ -238,6 +240,10 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
   un punto al minuto": la frequenza non è verificabile (D-32).
 - **Collegamenti:** D-07, D-18, D-32. **Serve entro:** F6; VUS-PR entro F10.
 - **Documenti:** proposta §4.7; piano F6, F10.
+- **Nota di rimando (2026-11-12, F6, il testo sopra resta invariato):** le definizioni operative di «falsi allarmi
+  ogni 1.440 punti» e del ritardo di rilevamento, la formula unica dell'F1, le righe prodotte per ogni politica di
+  soglia e le celle 2×2 sono in D-72 (C2, C3, C4, V10). La dicitura «FA/giorno» della proposta (§5.1, §9, §12 Fase 4)
+  non si usa: vale la nota sopra («ogni 1.440 punti»).
 
 ### D-51 · Lista delle 6 macchine di sviluppo — APPROVATA · 2026-11-10
 - **Decisione:**
@@ -415,6 +421,8 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
   perché sulla macchina di riferimento `core.autocrlf=true` e il repository non ha `.gitattributes` (verificato 2026-11-10).
 - **Collegamenti:** D-14, D-19, D-58, D-61. **Serve entro:** F3 (manifest), F6 (controllo delle label).
 - **Documenti:** piano F3, F6, F7.
+- **Nota di rimando (2026-11-12, F6, il testo sopra resta invariato):** come lo stadio di analisi ricalcola e
+  confronta `labels_version`, e dove la registra, è fissato in D-72 (C13).
 
 ### D-61 · Hash di riferimento dei file di SMD — APPROVATA · 2026-11-10
 - **Decisione:** `scripts/make_data_hashes.py` legge `dataset/` in sola lettura e scrive
@@ -813,6 +821,165 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
     chiusura (`tests/test_f5_regenerate.py`).
   - Approvazione: utente, 2026-11-12 (piano F5, passo 7).
 
+### D-72 · Stadio di analisi (F6) — APPROVATA · 2026-11-12
+- **Decisione** (gli identificativi C1–C15, V10–V13 e A/B rimandano al piano F6 e alle modifiche dell'utente):
+  - **Perimetro:** 6a parità esatta con `main.py` dai residui dello store; 6b metriche di D-34 (VUS-PR esclusa), soglie
+    statiche e mobili, normalizer robusto, scenari `primary` / `test_context`, baseline random, tabelle `free` / `thr` /
+    `fits`, comando `analyze`; modalità `legacy2` e `split3`. `kind: official` rifiutato fino a F10, come in `fit`.
+    Fuori: VUS-PR, statistica (F7), file di M1, parallelizzazione (solo se la misura la giustifica). `main.py`,
+    `protocol.py`, `protocols.py` e `rules.py` non si modificano.
+  - **C1 — `rules.py`:** resta invariato fino a F12 (nessuna ri-esportazione: ne cambierebbe la semantica e
+    indebolirebbe `tests/test_rules.py`, contro `CLAUDE.md` §5). `thresholds.py` è un modulo nuovo. Un test dimostra
+    che con storia vuota e score mancanti solo iniziali `thresholds.py` coincide bit a bit con `rules.py`. Fatto
+    verificato (2026-11-12, script temporaneo): `rules.rolling_quantile_threshold` conta per righe; coincide con la
+    regola «ultimi `n_past` score validi» (D-21) se i NaN sono solo iniziali, non con un buco interno, che è proprio la
+    giunzione cal → test dell'analisi primaria.
+    - **Regola `burnin`:** non passa in `thresholds.py` e non fa parte della griglia. Motivo: calibra la soglia sui
+      primi punti del test, mentre D-04, D-21 e D-23 fissano cal come unico supporto di calibrazione e di storia
+      iniziale. Resta disponibile in `rules.py` fino a F12.
+  - **C2 — formula unica dell'F1 e celle 2×2:** tutte le metriche con soglia usano i conteggi e la formula di
+    `protocol._prf` (2PR/(P+R)); le celle non vengono da `protocols.py`, che resta invariato. Cella C = soglia statica,
+    `pa` falso; D = statica, `pa` vero; B = oracolo, `pa` falso = `best_f1` di `evaluate_timestamps`; A = oracolo,
+    `pa` vero = ricerca esatta sui massimi dei segmenti (l'algoritmo di `EventRegion`) con i conteggi e la stessa
+    formula. Fatto verificato (2026-11-12, script temporaneo, 2.000 casi casuali): `protocols.four_cells` differisce
+    nell'ultimo bit da `protocol.py` nel 38% dei casi per C e nel 33% per D, quindi riusarlo avrebbe cambiato le
+    metriche storiche.
+    - **Tolleranze delle proprietà:** A ≥ D e PA ≥ no-PA a tolleranza zero (stessa formula). B ≥ C a tolleranza zero:
+      verificato con uno script temporaneo (2026-11-12, scikit-learn 1.9.0) su 20.000 serie casuali, 14.975 con pari
+      merito (valori arrotondati, pochi valori distinti, blocchi di pari merito al massimo), 3,29 milioni di confronti
+      a soglie uguali a tutti i valori osservati, a quantili casuali e fuori intervallo: 0 violazioni, minimo di B − C
+      = 0,0; alla soglia `best_f1_threshold` l'F1 di `_prf` è identico bit a bit a `best_f1` in tutti i casi. Motivo:
+      `precision_recall_curve` calcola P e R con le stesse divisioni tra interi, e `max(P+R, 1e-12)` coincide con P+R
+      quando P+R > 0. Il test definitivo, con gli stessi casi, si scrive al passo 3; se fallisse, la tolleranza
+      effettiva si dichiara qui con la causa prima di proseguire.
+    - Lo scarto rispetto a `protocols.four_cells` è documentato da un test (atteso ≤ 1e−12 relativo).
+  - **C3 — falsi allarmi ogni 1.440 punti** (`false_alarms_per_1440`) = `fa_segments · 1440 / n_eval_points`;
+    segmento di falso allarme come nello storico (segmento di allarme che non tocca nessun punto anomalo);
+    `n_eval_points` comprende i punti anomali. Il nome dice «ogni 1.440 punti», mai «al giorno» (D-34).
+  - **C4 — ritardo di rilevamento** (`detection_delay`, in punti) = media, sui soli eventi rilevati, di (indice del
+    primo allarme dentro l'evento − inizio dell'evento); eventi della regione mascherata; NaN se nessun evento è
+    rilevato; solo con `pa` falso. Nessun ritardo censurato, nessuna mediana aggiuntiva. **Avvertenze per F7:**
+    - il ritardo dipende dal rilevamento (media sui soli eventi rilevati) e non è confrontabile da solo tra modelli:
+      F7 lo presenta sempre insieme a `events_detected` / `event_recall`;
+    - nell'analisi primaria un evento tagliato dalla maschera inizia al bordo della maschera, quindi il ritardo è
+      sottostimato rispetto a `test_context`: il confronto del ritardo tra scenari va dichiarato come distorto.
+  - **C5 — normalizer robusto (D-11):** centro = mediana, scala = IQR / 1,349 per sensore sulle finestre di cal, con lo
+    stesso pavimento del normalizer storico (`min_scale_ratio` · media delle scale + 1e−12). `analysis.json` registra,
+    per ogni fit e ogni normalizer, quanti sensori hanno la scala sul pavimento e quanti la scala grezza esattamente 0
+    (serve a interpretare il fattore normalizer di RQ1b).
+  - **C6 — non finiti nella tabella `fits`** (modifica dello schema di F2): tre colonne `nonfinite_loss` (bool),
+    `n_nonfinite_cal` (int), `n_nonfinite_test` (int, residui del test comprese le finestre di `test_ctx_head`,
+    dichiarato nella docstring dello schema). Motivo: D-44 deve distinguere un non finito in cal (normalizer e soglia
+    compromessi per tutto il test) da uno nel test (solo alcuni punti) leggendo solo le tabelle. Nessuna esclusione.
+  - **C7 — esportazione legacy:** `src/pipeline/legacy_export.py` importa da `main.py`, in modo tardivo e solo nel suo
+    percorso, le funzioni pure `evaluate_variant`, `save_scores` e `make_summary_row`; si rimuove in F12 con `main.py`.
+    **Test richiesti (B10):** in un processo separato, importare `legacy_export` ed eseguire il percorso legacy non
+    cambia `torch.get_num_threads`, lo stato del generatore globale di numpy e di `random`, gli handler del logging e
+    il backend di matplotlib (`main.py` lo importa tramite `src/utils/visualization.py`); in `split3` senza
+    esportazione legacy `main.py` non viene mai importato.
+  - **C8 — piano di analisi:** nuovo tipo di config `configs/analysis/<nome>.yaml`, validato in
+    `src/utils/analysis_plan.py` con le regole di F2 (chiave sconosciuta, campo mancante o tipo errato → errore;
+    chiavi YAML duplicate rifiutate). Chiavi: `scenarios`, `window_time_aggs`, `scorings` (coppie esplicite
+    `sensor_agg`, `normalizer`, non un prodotto cartesiano), `ts_aggs`, `thresholds` (statiche: percentili; mobili:
+    politica, livello, `n_past`), `pa`, `legacy_export` (facoltativo). Nessun valore predefinito (D-42). Regole di
+    coerenza: soglie mobili solo con `last` (D-24); `test_context` solo in `split3` con `step` = 1 (D-60); modelli
+    `native_only` solo con la convenzione none/native.
+  - **C9 — test su es:** per i modelli che non usano `X_val`, perturbare es lascia invariati end-to-end normalizer,
+    soglie e metriche; per gli AE in `split3` es sceglie l'epoca (comportamento atteso, F5), quindi il test verifica
+    con una spia che l'analisi non legga mai i residui `es__*`.
+  - **C10 — proiezioni offline:** lo snapshot F1 e i run di M1 coprono solo `timestamp_agg: last`; un test confronta
+    dal vivo l'esportazione legacy con `main.run_experiment` sui dati sintetici con `mean` e `max` (D-16).
+  - **C11 — ruolo delle macchine:** un dataset senza divisione dev/eval (`split_file: null`, D-58) è rifiutato nei
+    controlli preliminari di `analyze`; `machine_role` resta obbligatorio.
+  - **C12 — varianti non calcolabili:** l'esportazione legacy replica il salto di `main.py` (parità); la tabella lunga
+    scrive righe con `value` NaN, contate in `analysis.json`. Nessuna esclusione (D-44).
+  - **C13 — `labels_version` (D-59):** l'hash si calcola sui byte delle label effettivamente caricati per le metriche e
+    si confronta con la voce del manifest (e con il riferimento degli hash, se il dataset lo ha); una differenza è un
+    errore bloccante. `labels_version` per macchina va in `analysis.json`.
+  - **C14 — costanti:** pavimento del rolling z (0,05 · |mediana| + 1e−12), costante 1,349, `min_scale_ratio` 0,05 e
+    1e−12 dei normalizer sono costanti con nome, uguali allo storico, registrate in `analysis.json`; diventano chiavi
+    del piano solo se lo richiede D-42.
+  - **C15 — storia di cal:** errore bloccante nei controlli preliminari se cal ha meno di `n_past` score validi, o se
+    il supporto di calibrazione di `roll_robust_z` (D-23) è vuoto. Mai soglie NaN in silenzio.
+  - **V10 — righe per politica di soglia:**
+    - `pa` falso: per ogni politica del piano (`static_pct`, `roll_quantile`, `roll_robust_z`) tutte le metriche con
+      soglia e per evento; per l'oracolo solo `f1`;
+    - `pa` vero: per ogni politica elencata nel piano con `pa` vero, oracolo compreso, solo `f1`;
+    - tutte le righe con `pa` vero e tutte quelle con oracolo hanno `diagnostic` vero (D-34);
+    - le celle 2×2 sono casi particolari (C2); `free.best_f1_oracle` coincide esattamente con la riga oracolo, `pa`
+      falso, `f1`;
+    - quali combinazioni compaiono lo decide il piano di analisi (D-42 resta APERTA, nessun default).
+  - **V11 — `n_cal_points`:** `free`: finestre di cal del normalizer (0 senza normalizer); `static_pct`: |M_cal|;
+    `roll_robust_z`: dimensione del supporto di calibrazione (D-23); `roll_quantile`: `n_past`; oracolo: 0.
+  - **V12 — convenzioni:** baseline random con `config_id = "random_baseline"`, `deterministic` falso, convenzione
+    none/native, righe replicate identiche per ogni `ts_agg` (e per ogni altro livello che lo schema richieda);
+    `preproc` = hash del blocco di preprocessing `[:12]`; `seed` dei modelli deterministici = `set_seed_value`.
+    **Le repliche della baseline random non sono osservazioni indipendenti:** F7 le deduplica prima di qualunque
+    aggregazione.
+  - **V13 e B11 — scritture e lock:** `analyze` tiene il lock dello store per tutto il run (con il gettone legge e, se
+    servono, rigenera i residui; `fit` e `analyze` sono mutuamente esclusivi). Tutti i file dell'analisi si scrivono
+    in una cartella temporanea dentro il run, poi rinominata in modo atomico in quella definitiva
+    `runs/<kind>/<esperimento>/analyses/<analysis_id>/` (rev. passo 0: la cartella definitiva è indicizzata da
+    `analysis_id`, non dal `run_id`, che è unico per run; `analyses` non può coincidere con un `run_id`, che ha la forma
+    ora UTC + 8 caratteri casuali). Il run conserva log e `run.json`, con l'`analysis_id` prodotto. `analysis.json` è il
+    marcatore di completamento, scritto per ultimo. Una cartella temporanea rimasta dopo un'interruzione non blocca il
+    nuovo lancio; la elencano `status` e `orphan_tmp` e la rimuove `clean-tmp` (estensione della nota «F5 passo 6» su
+    D-70), con test. Una cartella definitiva esistente e completa con lo stesso `analysis_id` causa un rifiuto
+    esplicito (codice 2) con un messaggio che indica la cartella esistente, mai una sovrascrittura. F7 legge solo
+    analisi complete.
+  - **B11 — rinomina atomica su Windows (rev. passo 0):** `os.rename` della cartella temporanea solo se la
+    destinazione non esiste (controllo esplicito prima della rinomina, sotto lock: su POSIX `os.rename` sostituirebbe
+    in silenzio una cartella vuota). Su `PermissionError` (antivirus o indicizzatore che tengono aperto un file) al
+    massimo `PUBLISH_RENAME_ATTEMPTS` tentativi distanziati di `PUBLISH_RENAME_WAIT_S` secondi (costanti con nome in
+    `store.py`; valori proposti 5 e 0,2 s, da fissare al passo 2, dove si valuta anche un'attesa crescente, per
+    esempio 0,2 → 0,4 → 0,8 → 1,6 s), poi errore esplicito: codice di uscita 4, run chiuso `failed`, cartella
+    temporanea lasciata per `clean-tmp`. Mai una copia come ripiego, mai un risultato parziale nella cartella
+    definitiva. Test: rinomina che fallisce in modo simulato sempre (errore esplicito, nessuna cartella definitiva,
+    temporanea intatta) e solo al primo tentativo (analisi pubblicata, contenuto identico).
+  - **B12 — versione del codice di analisi e identità dell'analisi:** costante `ANALYSIS_CODE_VERSION`, analoga a
+    `FIT_CODE_VERSION`. Rev. passo 0: `analysis_id` = sha256 della serializzazione canonica di
+    - `plan_sha256`;
+    - `ANALYSIS_CODE_VERSION`;
+    - per ogni fit usato, in ordine di `fit_key`: `fit_key`, `status` e, per i fit non `failed`, gli sha256 per array
+      dei residui effettivamente letti (identità dei residui di F5, record di `meta.json`, mai `npz_sha256`);
+    - `labels_version` per macchina, in ordine di macchina;
+    - hash del manifest (`canonical_hash` di `Manifest.to_dict()`);
+
+    troncato a 12 caratteri. `analysis.json` registra in chiaro tutti i componenti dell'hash, la costante e il commit
+    git. Motivo: `fit_key` identifica la richiesta, non il risultato; un fit DL rifatto con lo stesso `fit_key` (in un altro store, su
+    un'altra macchina fisica o con un altro numero di thread) può dare residui diversi, e una correzione delle label o
+    delle metriche cambia i numeri a parità di piano. L'id deve garantire «stessi ingressi e stesso codice, quindi
+    stessi numeri». Ordine dei passi (nessuna lettura dei residui serve all'id: gli sha256 sono in `meta.json`):
+    1. senza lock (letture ammesse da F5): validazione, controlli preliminari, manifest e `labels_version`, lettura dei
+       `meta.json`, insieme dei residui da leggere secondo il piano, id provvisorio; se la cartella definitiva esiste ed è
+       completa, rifiuto anticipato (codice 2);
+    2. lock e `begin_run`;
+    3. sotto lock, nuova lettura dei `meta.json` e nuovo calcolo dell'id, che è quello definitivo (un fit `failed` può
+       essere stato rifatto nel frattempo); nuovo controllo della cartella definitiva (codice 2);
+    4. ogni array letto passa da `get_residuals`, che lo verifica contro lo sha256 di `meta.json`; la rigenerazione
+       rifiuta residui con sha256 diverso; quindi gli array letti sono esattamente quelli entrati nell'id.
+  - **B13 — test di leakage:** perturbare il test non cambia normalizer e soglie statiche; le soglie mobili restano
+    invariate fino a t (test di causalità).
+  - **Codici di uscita di `analyze`:** 0 completa; 1 almeno un fit `failed` (solo righe in `fits`); 2 config, piano o
+    dati non validi, fit mancante nello store, `analysis_id` già presente, `kind: official`; 3 store occupato; 4
+    pubblicazione non riuscita, nessun risultato (rinomina fallita dopo tutti i tentativi di B11; run chiuso `failed`,
+    cartella temporanea lasciata per `clean-tmp`; aggiunto con la revisione del passo 0, 2026-11-13); 130 interruzione.
+  - **Aggiunte fuori dai file nuovi (elenco chiuso):** `scoring.py` (`RobustFeatureErrorNormalizer`); `table_schema.py`
+    (tre colonne di `fits`, C6); `store.py` (cartella temporanea dell'analisi nel run, rinomina atomica in
+    `analyses/<analysis_id>/` con i tentativi di B11, `write_table` nella cartella temporanea, elenco per
+    `status` / `orphan_tmp` / `clean-tmp`); `cli.py` (`analyze`, estensione di `clean-tmp`). Nessun metodo esistente
+    cambia comportamento per i casi già ammessi.
+- **Motivazione:** metriche storiche invariate per costruzione (stesse funzioni e stessa formula), nuove metriche
+  definite prima di vederne i valori, nessuna esclusione implicita mentre D-44 è aperta, analisi ripetibile e
+  identificata dai suoi ingressi effettivi (piano, residui, label, manifest) e dalla versione del codice.
+- **Approvazione:** utente, 2026-11-12, su raccomandazione di Claude Project (piano F6, C1–C15, V10–V13, modifiche
+  A1–A9, B10–B13); revisione del passo 0 (ambito e formula di `analysis_id`, rinomina su Windows) approvata
+  dall'utente il 2026-11-13.
+- **Collegamenti:** D-04, D-11, D-20, D-21, D-22, D-23, D-24, D-34, D-42, D-44, D-59, D-60, D-70.
+  **Serve entro:** F6.
+- **Documenti:** piano F6 (testo corretto e nota); proposta §12 Fase 4 (nota), §5.1, §6, §9 (superate sui punti sopra,
+  rimando di una riga in ciascuna); `CLAUDE.md` §3.4 (D-72 tra le approvate).
+
 ### D-53 · File tracciati da git (`.pyc`, dataset) — APPROVATA · 2026-11-10
 - **Decisione:** i `.pyc` non sono tracciati: i 35 file già tracciati sono tolti dal tracciamento con
   `git rm -r --cached` sulle cartelle `__pycache__` (restano sul disco) e `.gitignore` esclude `__pycache__/` e `*.pyc`.
@@ -891,6 +1058,9 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
   - **Raccomandazione per i livelli di `n_past` di `roll_robust_z`:** escludere 2.880 dai livelli ufficiali oppure
     limitarlo agli esperimenti esplorativi (circa 8 superamenti per un percentile al 99,5% su 1.659 punti autocorrelati).
   - Già fissato da D-32: fattore "contesto all'inizio del test: sì/no". Vincolo da D-24: soglie mobili solo con `last`.
+- **Nota (2026-11-12, F6, la voce resta APERTA):** in F6 i livelli dei fattori sono dati del piano di analisi
+  (`configs/analysis/<nome>.yaml`, D-72 C8): nessun valore predefinito nel codice; le combinazioni presenti in tabella
+  (scoring, soglie, `n_past`, PA) sono quelle elencate nel piano. I piani usati in F6 sono solo sintetici, nei test.
 
 ### D-43 · Descrittori per RQ3 (massimo 4) e ipotesi — APERTA · **Serve entro:** F10.
 ### D-44 · Regole di esclusione (fit fallito, macchina con un solo evento) — APERTA · **Serve entro:** F10.
@@ -898,6 +1068,14 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
   finita resta `complete` con `nonfinite_loss: true`, e per ogni residuo si registra `n_nonfinite`; un errore di
   modello dà `status: failed`; un run interrotto dà la riga di registro `interrupted`, distinta da `failed` (D-70).
   Le tre situazioni restano distinguibili per la regola che si deciderà qui.
+- **Nota (2026-11-12, F6, la voce resta APERTA):** lo stadio di analisi non esclude nulla (D-72):
+  - la tabella `fits` riporta `status`, `nonfinite_loss`, `n_nonfinite_cal` e `n_nonfinite_test` (D-72 C6), così la
+    regola si può applicare leggendo solo le tabelle: un non finito in cal compromette normalizer e soglia per tutto il
+    test, uno nel test solo alcuni punti;
+  - un fit `failed` compare solo in `fits`, senza righe di metriche;
+  - una metrica non calcolabile (score non finiti nella maschera, regione senza positivi o senza negativi) dà una riga
+    con `value` NaN, contata in `analysis.json`; la pipeline storica in quel caso saltava la variante, e solo
+    l'esportazione legacy replica il salto (D-72 C12).
 
 ### D-45 · Secondo dataset — APERTA
 - **Vincolo:** deve avere più entità (PSM escluso; ASD candidato da verificare). Il piano congelato per SMD si riapplica
@@ -942,6 +1120,24 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
   - statistiche di BatchNorm del Conv-AE: in eval non vengono mai aggiornate (media 0, varianza 1); scelta da dichiarare.
 - **Serve entro:** F8.
 - **Collegamenti:** D-10, D-33, D-67, D-68.
+- **Nota (2026-11-12, F6, la voce resta APERTA):** proposta di Claude (non approvata): includere gli AE non addestrati
+  come baseline che separa il contributo dell'architettura (pesi casuali, stesso input e stesso scoring) da quello
+  dell'apprendimento, utile per interpretare Δ(DL − PCA) in RQ2–RQ3. La decisione spetta all'utente, entro F8; se
+  approvata, servono le scelte elencate sopra e un controllo di parità dedicato (oggi nessuna config li usa). Vedi
+  anche D-71.
+
+### D-71 · Perimetro dei modelli DL — APERTA · 2026-11-12
+- **Fatto verificato (D-68, `schema.MODEL_SCHEMAS`):** i modelli profondi del nucleo sono solo autoencoder
+  ricostruttivi (`conv_autoencoder`, `lstm_autoencoder`); VAE, OC-SVM e Isolation Forest sono esclusi dai run
+  ufficiali (D-10); gli AE non addestrati sono rimandati (D-69).
+- **Problema:** una conclusione formulata su «il deep learning» generalizzerebbe oltre la famiglia di modelli valutata.
+- **Opzioni:**
+  - (a) dichiarare le conclusioni limitate ai modelli ricostruttivi (Conv-AE, LSTM-AE) in tutte le RQ;
+  - (b) aggiungere un modello recente come riferimento esterno; richiede una voce che integri D-10 (perimetro dei run
+    ufficiali) e una scelta del modello, del budget e della parità di trattamento (D-41).
+- **Proposta:** (a) in ogni caso; (b) da valutare con il relatore dopo M1.
+- **Serve entro:** F8.
+- **Collegamenti:** D-10, D-41, D-68, D-69.
 
 ---
 

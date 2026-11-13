@@ -392,18 +392,21 @@ D-53 approvata (2026-11-10): `.pyc` tolti dal tracciamento, `dataset/` resta tra
 ### F6 — Stadio di analisi
 - **Obiettivo:** prima riprodurre esattamente le metriche storiche dai residui, poi estendere.
 - **File:**
-  - nuovi: `src/pipeline/analyze.py`, `src/evaluation/metrics.py`, `src/evaluation/thresholds.py`;
-  - da modificare: `src/evaluation/rules.py` (diventa un modulo di compatibilità che ri-esporta le funzioni), `src/evaluation/scoring.py` (aggiunta del normalizer robusto), `src/cli.py` (comando `analyze`).
+  - nuovi: `src/pipeline/analyze.py`, `src/evaluation/metrics.py`, `src/evaluation/thresholds.py`, `src/utils/analysis_plan.py`, `src/pipeline/legacy_export.py` [D-72];
+  - da modificare, solo con aggiunte: `src/evaluation/scoring.py` (normalizer robusto), `src/pipeline/table_schema.py` (tre colonne di `fits`), `src/pipeline/store.py` (cartella temporanea dell'analisi), `src/cli.py` (comando `analyze`, estensione di `clean-tmp`) [D-72];
+  - invariati: `src/evaluation/rules.py` (resta fino a F12, la regola `burnin` non passa in `thresholds.py`), `src/evaluation/protocols.py`, `src/evaluation/protocol.py`, `main.py` [D-72 C1, C2]. *(rev. 2026-11-12: prima `rules.py` diventava un modulo di compatibilità che ri-esportava le funzioni.)*
 - **Modifiche:**
   - **6a, parità:** analisi in modalità legacy → stessi `.npz` e stesso summary della pipeline storica;
-  - **6b, estensioni:** AP normalizzata, normalizer robusto [D-11], metriche per evento, ritardo di rilevamento, falsi allarmi ogni 1.440 punti, celle 2×2 (da `protocols.py`), secondo l'elenco fissato in D-34; soglie mobili con storia continua **cal → test** [D-04], fatta degli ultimi `n_past` score validi, senza aggiornamenti nei punti senza score [D-21], e applicate solo con `timestamp_agg: last` [D-24]; supporto di calibrazione in cal secondo D-23 (normalizer su tutte le finestre di cal, soglie statiche e baseline random su [W−1, T_cal−W+1), numero di punti di calibrazione registrato nella tabella lunga); griglia dei fattori; tabella lunga in CSV.gz [D-19]. VUS-PR secondo i tempi fissati in D-34.
+  - **6b, estensioni:** AP normalizzata, normalizer robusto [D-11], metriche per evento, ritardo di rilevamento, falsi allarmi ogni 1.440 punti, celle 2×2 calcolate con la formula unica dell'F1 di `protocol._prf` (non da `protocols.py`, D-72 C2), secondo l'elenco fissato in D-34 e le righe per politica di soglia di D-72 (V10); soglie mobili con storia continua **cal → test** [D-04], fatta degli ultimi `n_past` score validi, senza aggiornamenti nei punti senza score [D-21], e applicate solo con `timestamp_agg: last` [D-24]; supporto di calibrazione in cal secondo D-23 (normalizer su tutte le finestre di cal, soglie statiche e baseline random su [W−1, T_cal−W+1), numero di punti di calibrazione registrato nella tabella lunga); griglia dei fattori; tabella lunga in CSV.gz [D-19]. VUS-PR secondo i tempi fissati in D-34.
 - **Dipendenze:** F5.
 - **Test:**
   - parità esatta con lo snapshot F1;
   - causalità end-to-end: perturbare il test dopo t lascia invariati gli score e le decisioni di soglia fino a t;
   - proprietà: l'oracolo è ≥ dell'F1 calibrato, il PA è ≥ del no-PA;
   - le soglie con storia coincidono con quelle senza storia quando la storia è vuota;
-  - perturbare il segmento es lascia invariati normalizer, soglie e metriche [D-04];
+  - es [D-04, D-72 C9]: per i modelli che non usano `X_val`, perturbare es lascia invariati end-to-end normalizer, soglie e metriche; per gli AE in `split3` es sceglie l'epoca (atteso), quindi una spia verifica che l'analisi non legga mai i residui `es__*` *(rev. 2026-11-12: prima «perturbare il segmento es lascia invariati normalizer, soglie e metriche», falso per gli AE)*;
+  - leakage [D-72 B13]: perturbare il test non cambia normalizer e soglie statiche; le soglie mobili restano invariate fino a t (test di causalità);
+  - righe per politica di soglia secondo D-72 V10; proprietà A ≥ D, PA ≥ no-PA e B ≥ C a tolleranza zero [D-72 C2];
   - la storia delle soglie mobili conta solo score validi e salta i punti senza score [D-21]. L'attuale `rules.py` conta per righe: la nuova `thresholds.py` non deve farlo;
   - le politiche di soglia mobile rifiutano `timestamp_agg` offline [D-24];
   - il normalizer usa tutte le finestre di cal e le soglie statiche la maschera di cal; in `legacy2` coincidono con la pipeline storica [D-23];
@@ -411,6 +414,47 @@ D-53 approvata (2026-11-10): `.pyc` tolti dal tracciamento, `dataset/` resta tra
 - **Completata quando:** 6a esatta; 6b verde; la tabella lunga rispetta lo schema di F2.
 - **Rischi:** numero di combinazioni della griglia (si stimano circa 15 minuti per l'esperimento ufficiale). Va misurato su dati sintetici e, se serve, parallelizzato per macchina.
 - **Impatto sui risultati:** metriche storiche invariate; metriche nuove aggiunte.
+- **Nota (2026-11-12, piano F6 approvato):** decisione D-72 (perimetro, C1–C15, V10–V13, B10–B13) e note di rimando su
+  D-11, D-34, D-42, D-44, D-59, D-69; nuova voce APERTA D-71.
+  - **Perimetro:** 6a parità esatta con `main.py` dai residui dello store (esportazione legacy nello stesso formato,
+    confrontata con lo snapshot F1 a tolleranza zero e, per `timestamp_agg` `mean` e `max`, con `main.py` dal vivo); 6b
+    metriche di D-34 senza VUS-PR, soglie, normalizer robusto, scenari, baseline random, tabelle `free` / `thr` / `fits`,
+    `analyze`; `kind: official` rifiutato fino a F10. Fuori: VUS-PR, F7, file di M1, parallelizzazione.
+  - **Flusso di `analyze`:** validazione di esperimento e piano → controlli preliminari bloccanti (manifest, segmenti,
+    ruolo delle macchine, coerenza piano–modalità, fit presenti, `n_past`, `labels_version`) → lock e `begin_run`
+    (stage `analyze`, `plan_sha256`) → per macchina label e maschere; per fit residui `cal`, `test` e, se serve,
+    `test_ctx_head` (mai `es`), normalizer su tutte le finestre di cal, score, proiezione (con contesto: finestre di
+    `test_ctx_head` e del test proiettate sulla serie estesa, poi tolti i W−1 punti di contesto), metriche e soglie;
+    baseline random per seed → tabelle, esportazione legacy facoltativa e `analysis.json` (per ultimo) nella cartella
+    temporanea del run, poi rinomina atomica in `runs/<kind>/<esperimento>/analyses/<analysis_id>/` → `finish_run`.
+  - **Identità dell'analisi [D-72 B12, rev. passo 0]:** `analysis_id` = sha256 canonico di `plan_sha256`,
+    `ANALYSIS_CODE_VERSION`, per ogni fit usato (ordinati per `fit_key`) `fit_key`, `status` e sha256 per array dei
+    residui letti (fit non `failed`), `labels_version` per macchina e hash del manifest, troncato a 12; componenti in
+    chiaro in `analysis.json`. Nessun residuo si legge per calcolare l'id (gli sha256 sono in `meta.json`): id
+    provvisorio senza lock con rifiuto anticipato, id definitivo ricalcolato sotto lock, ogni array letto verificato da
+    `get_residuals` contro lo stesso sha256. Id già presente e completo: codice 2, messaggio con la cartella esistente.
+  - **Rinomina su Windows [D-72 B11, rev. passo 0]:** `os.rename` solo se la destinazione non esiste; su
+    `PermissionError` al massimo `PUBLISH_RENAME_ATTEMPTS` tentativi distanziati di `PUBLISH_RENAME_WAIT_S` (valori
+    proposti; al passo 2 si valuta un'attesa crescente), poi errore esplicito con codice di uscita 4 «pubblicazione non
+    riuscita, nessun risultato» (run chiuso `failed`, cartella temporanea lasciata per `clean-tmp`; la CLI e i suoi
+    test lo coprono al passo 7); mai copia di ripiego, mai risultati parziali nella cartella definitiva; test con rinomina che fallisce in
+    modo simulato sempre e solo al primo tentativo.
+  - **Copertura dei rischi passati da F5:** gettone del lock (rigenerazione sotto lock, gettone estraneo rifiutato);
+    es mai letto (spia); convenzione none/native del rolling z-score (score nativo = `score_anomalies` bit a bit);
+    `test_ctx_head` (proiezione con contesto contro forza bruta); baseline random (parità con lo snapshot, M_cal in
+    `split3`); non finiti (righe NaN e colonne di `fits`, nessuna esclusione); identità dei residui = sha256 per array
+    di `meta.json`, registrati in `analysis.json` (mai `npz_sha256`).
+  - **Passi:** 0 registro e documentazione → 1 `analysis_plan.py` (schema, `plan_sha256`, `ANALYSIS_CODE_VERSION`,
+    `analysis_id`, coerenza) → 2 6a: `analyze.py` (controlli, lock, residui, scoring storico), `legacy_export.py`,
+    cartella temporanea del run e rinomina in `analyses/<analysis_id>/` (con i test di B11); parità con lo snapshot F1
+    e dal vivo (`mean`, `max`); spia su es; test sull'import di `main.py` in un processo separato (B10) → 3 `metrics.py` (C2–C4, V10; test di B ≥ C su casi casuali con pari
+    merito) → 4 `thresholds.py` (C1, C15; equivalenza con `rules.py` a storia vuota) → 5 normalizer robusto (C5) →
+    6 6b: griglia completa, tre tabelle (C6, V11, V12), `split3`, `test_context`, NaN, fit falliti, `labels_version`,
+    rigenerazione, causalità e leakage end-to-end, tabella lunga = summary legacy sulle metriche in comune, misura
+    della durata → 7 CLI `analyze` (codici di uscita 0/1/2/3/4/130 di D-72) ed estensione di `clean-tmp` → 8 chiusura. Dopo ogni passo: snapshot F1, golden T0 e
+    R1, poi `python -m pytest -q`.
+  - **Decisioni APERTE toccate, stato invariato:** D-42 (livelli = dati del piano), D-44 (nessuna esclusione), D-69,
+    D-71; non toccate D-25, D-30, D-36, D-37, D-38, D-39, D-40, D-41, D-57.
 
 ### F7 — Statistica e report
 - **Obiettivo:** RQ1–RQ4 calcolate dalla tabella lunga.
@@ -451,6 +495,12 @@ D-53 approvata (2026-11-10): `.pyc` tolti dal tracciamento, `dataset/` resta tra
 - **Completata quando:** report approvato da te.
 - **Rischi:** nell'analisi primaria la maschera del test coincide con quella storica [W−1, T−W+1) [D-20, D-22] e cal coincide con la validation storica [D-23], quindi il confronto legacy vs canonico avviene sugli stessi timestamp. La variante con contesto cambia la maschera e va confrontata a parte.
 - **Impatto sui risultati:** **sì, dichiarato e documentato.**
+- **Nota (2026-11-12, da F6):** nel report legacy contro canonico si tengono separati due tipi di differenza:
+  - **fattori di protocollo della letteratura** (PA, soglia oracolo, proiezione offline, metrica, contesto all'inizio
+    del test): si decompongono e se ne misura l'effetto (RQ1a, D-12, D-42);
+  - **correzioni di bug idiosincratici della pipeline storica** (per esempio la validation usata tre volte, P1, e il
+    conteggio per righe della storia in `rules.py`, D-72 C1): si correggono e si dichiarano, con l'impatto misurato
+    (`CLAUDE.md` §5), ma non diventano livelli di un fattore né entrano nella decomposizione.
 
 ### F9 — Tuning e sensibilità (esperimenti esplorativi)
 - **Obiettivo:** scegliere le configurazioni globali per famiglia, con budget pari, sulle 6 macchine dev.

@@ -224,6 +224,8 @@ Due avvertenze da riportare nella tesi:
 | `reporting/` | Tabelle e figure per la tesi a partire dalle uscite di `stats` | — |
 | `cli.py` | `python -m src.cli fit | analyze | stats | report | status | compare` | — |
 
+> Superato (D-72 C1, C2, C3; D-34): `thresholds.py` è nuovo e non deriva da `rules.py`; niente «FA/giorno» ma falsi allarmi ogni 1.440 punti; le celle PA e oracolo non vengono da `protocols.py`.
+
 ### 5.2 Interazioni
 
 ```
@@ -288,6 +290,8 @@ dataset/, results/   # invariati, sola lettura
 main.py, aggregate_results.py   # pipeline legacy, mantenuta fino a parità dimostrata
 ```
 
+> Superato (D-72 C1): `rules.py→thresholds.py` non vale; `thresholds.py` è un modulo nuovo e `rules.py` resta invariato fino a F12.
+
 Tengo `src/evaluation/` invece di rinominarlo: non cambia la sostanza e evita di rompere import e test.
 
 ## 7. Flusso completo dei dati e degli esperimenti
@@ -341,6 +345,8 @@ Cosa salvare: le opzioni valutate.
 | Regressione R0 (ponte) | La nuova pipeline in modalità `legacy2` riproduce `results_repro_*_01` (stessi score, tolleranza 0 o esplicitata) | fasi 1–5; lo lancia l'utente |
 | Regressione R1 | Hash golden dei residui sintetici, legato a `FIT_CODE_VERSION` | sempre |
 | Statistica | Copertura del bootstrap stratificato ≈ 95% su dati simulati; regola δ su casi noti; Holm; la decomposizione SS somma al totale | sempre |
+
+> Superato (D-72 C3; D-34): «FA/giorno» non si usa; la metrica è falsi allarmi ogni 1.440 punti.
 
 Marcatori pytest: `slow` e `regression`, esclusi dalla suite veloce. I test di regressione su dati reali li lanci tu.
 
@@ -424,6 +430,14 @@ Ogni fase si chiude con `pytest` verde. Le fasi 1–5 non devono cambiare alcun 
 - *Completata quando:* un fit in modalità `legacy2` produce checkpoint e residui da cui si ricostruiscono esattamente gli score degli `.npz` storici.
 
 **Fase 4 — Stadio di analisi**
+
+> **Nota (2026-11-12, D-72 e D-34).** Superato su due punti, qui e nelle righe corrispondenti di §5.1
+> (`evaluation/thresholds.py` «Da `rules.py`», `evaluation/metrics.py` «FA/giorno; PA e oracolo da `protocols.py`»),
+> §6 (`rules.py→thresholds.py`) e §9 («FA/giorno»):
+> - `thresholds.py` è un modulo nuovo e `rules.py` resta invariato fino a F12; la regola `burnin` non passa in
+>   `thresholds.py` (D-72 C1); le celle 2×2 non vengono da `protocols.py` ma dalla formula unica dell'F1 (D-72 C2);
+> - la metrica si chiama «falsi allarmi ogni 1.440 punti», mai «al giorno» (D-34; definizione in D-72 C3).
+
 - *File:* `pipeline/analyze.py`, `evaluation/metrics.py`, `evaluation/thresholds.py` (da `rules.py`), `cli.py analyze`.
 - *Modifiche:* prima la parità con il `summary` di `main.py`; poi APnorm, metriche per evento con ritardo, FA/giorno, celle 2×2, soglie con storia, tabella lunga.
 - *Test:* ponte analisi ≡ `main.py` su dati sintetici; invarianti 4 e 5; R0.

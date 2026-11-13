@@ -22,7 +22,8 @@ Aggiunte di F5 (D-70, V4 allargata in modo esplicito; nessun metodo esistente ca
   * ``orphan_tmp``: elenco in sola lettura di ``tmp/`` (scritture interrotte e cestini della sostituzione dei fit
     ``failed``; ``write_fit`` usa per entrambi ``tmp/<uuid>``, quindi la classificazione è per contenuto);
   * stato ``interrupted`` del registro (run interrotto, distinto da ``failed``);
-  * lock di scrittura ``.lock`` (``O_EXCL``; pid, host, ora di avvio, ``run_id``) e ``is_stale``.
+  * lock di scrittura ``.lock`` (``O_EXCL``; pid, host, ora di avvio, ``run_id``, ``nonce``) e ``is_stale``; il
+    ``nonce`` (uuid4 per acquisizione, F5 passo 5) distingue due acquisizioni con lo stesso ``run_id`` e la stessa ora.
 """
 
 import csv
