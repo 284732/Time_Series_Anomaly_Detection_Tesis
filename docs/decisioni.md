@@ -884,6 +884,19 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
     politica, livello, `n_past`), `pa`, `legacy_export` (facoltativo). Nessun valore predefinito (D-42). Regole di
     coerenza: soglie mobili solo con `last` (D-24); `test_context` solo in `split3` con `step` = 1 (D-60); modelli
     `native_only` solo con la convenzione none/native.
+    - **Precisazioni (passo 1, approvate dall'utente il 2026-11-13):**
+      1. `native` non si dichiara negli `scorings`: per i modelli `native_only` l'analisi applica da sola la
+         convenzione none/native; `analysis.json` registra quali modelli producono righe native (passo 6);
+      2. `legacy_export` è ammesso solo con split `legacy2` (la parità con `main.py` ha senso solo lì);
+      3. `level` di `roll_quantile` e `roll_robust_z` è un percentile in (0, 100], con la semantica di `rules.py`
+         (quantile `level`/100 della storia; percentile su cal del robust z); il test «storia vuota = `rules.py`» del
+         passo 4 copre la conversione percentile → quantile anche con livelli non interi (es. 99,5);
+      4. soglie mobili con `ts_aggs` senza `last` sono un errore, non un salto silenzioso; con `last` e livelli offline
+         le righe mobili esistono solo per `last`.
+      Inoltre: ogni famiglia di soglie è obbligatoria e si dichiara vuota se non usata (`[]`, `false`); livelli
+      ripetuti in qualunque lista (anche dopo la normalizzazione, es. `98` e `98.0`) sono rifiutati; `plan_sha256` è
+      l'hash canonico del piano in forma normalizzata (liste ordinate, livelli float), quindi non dipende da ordine,
+      commenti e formato del file.
   - **C9 — test su es:** per i modelli che non usano `X_val`, perturbare es lascia invariati end-to-end normalizer,
     soglie e metriche; per gli AE in `split3` es sceglie l'epoca (comportamento atteso, F5), quindi il test verifica
     con una spia che l'analisi non legga mai i residui `es__*`.
@@ -944,6 +957,15 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
       dei residui effettivamente letti (identità dei residui di F5, record di `meta.json`, mai `npz_sha256`);
     - `labels_version` per macchina, in ordine di macchina;
     - hash del manifest (`canonical_hash` di `Manifest.to_dict()`);
+    - (passo 1, approvato dall'utente il 2026-11-13) le pseudo-chiavi `random_baseline_key` di ogni (macchina, seed)
+      della baseline random, ordinate: la baseline non ha fit nello store, e senza di esse un esperimento di soli
+      modelli deterministici con seed diversi avrebbe lo stesso id con righe della baseline diverse;
+    - (passo 1, dal controllo sistematico di copertura) per ogni fit `meta_sha256` = hash di `meta.json` senza
+      `provenance` e `created_by`: copre ciò che l'analisi legge da `meta.json` oltre ai residui (`set_seed_value`,
+      colonna `seed` dei deterministici per V12; `fit_info`, tempi e `error` della tabella `fits`; segmenti);
+      `fit_key` verificato contro l'hash del `fit_payload` registrato;
+    - (passo 1, dal controllo sistematico di copertura) ambiente dell'analisi: versione di Python, versioni di numpy,
+      scipy, pandas e scikit-learn, sha256 del lock delle dipendenze (le metriche dipendono dalle librerie);
 
     troncato a 12 caratteri. `analysis.json` registra in chiaro tutti i componenti dell'hash, la costante e il commit
     git. Motivo: `fit_key` identifica la richiesta, non il risultato; un fit DL rifatto con lo stesso `fit_key` (in un altro store, su

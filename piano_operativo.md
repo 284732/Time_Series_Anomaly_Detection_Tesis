@@ -427,10 +427,10 @@ D-53 approvata (2026-11-10): `.pyc` tolti dal tracciamento, `dataset/` resta tra
     `test_ctx_head` e del test proiettate sulla serie estesa, poi tolti i W−1 punti di contesto), metriche e soglie;
     baseline random per seed → tabelle, esportazione legacy facoltativa e `analysis.json` (per ultimo) nella cartella
     temporanea del run, poi rinomina atomica in `runs/<kind>/<esperimento>/analyses/<analysis_id>/` → `finish_run`.
-  - **Identità dell'analisi [D-72 B12, rev. passo 0]:** `analysis_id` = sha256 canonico di `plan_sha256`,
-    `ANALYSIS_CODE_VERSION`, per ogni fit usato (ordinati per `fit_key`) `fit_key`, `status` e sha256 per array dei
-    residui letti (fit non `failed`), `labels_version` per macchina e hash del manifest, troncato a 12; componenti in
-    chiaro in `analysis.json`. Nessun residuo si legge per calcolare l'id (gli sha256 sono in `meta.json`): id
+  - **Identità dell'analisi [D-72 B12, rev. passo 0 e passo 1]:** `analysis_id` = sha256 canonico di `plan_sha256`,
+    `ANALYSIS_CODE_VERSION`, per ogni fit usato (ordinati per `fit_key`) `fit_key`, `status`, `meta_sha256` e sha256
+    per array dei residui letti (fit non `failed`), `labels_version` per macchina, hash del manifest, pseudo-chiavi
+    della baseline random e ambiente dell'analisi, troncato a 12; componenti in chiaro in `analysis.json`. Nessun residuo si legge per calcolare l'id (gli sha256 sono in `meta.json`): id
     provvisorio senza lock con rifiuto anticipato, id definitivo ricalcolato sotto lock, ogni array letto verificato da
     `get_residuals` contro lo stesso sha256. Id già presente e completo: codice 2, messaggio con la cartella esistente.
   - **Rinomina su Windows [D-72 B11, rev. passo 0]:** `os.rename` solo se la destinazione non esiste; su
@@ -453,6 +453,9 @@ D-53 approvata (2026-11-10): `.pyc` tolti dal tracciamento, `dataset/` resta tra
     rigenerazione, causalità e leakage end-to-end, tabella lunga = summary legacy sulle metriche in comune, misura
     della durata → 7 CLI `analyze` (codici di uscita 0/1/2/3/4/130 di D-72) ed estensione di `clean-tmp` → 8 chiusura. Dopo ogni passo: snapshot F1, golden T0 e
     R1, poi `python -m pytest -q`.
+  - **Precisazioni approvate al passo 1 [D-72 C8]:** al passo 6 `analysis.json` registra quali modelli producono
+    righe native (convenzione none/native applicata dall'analisi, non dichiarata nel piano); al passo 4 il test
+    «storia vuota = `rules.py`» copre la conversione percentile → quantile, anche con livelli non interi (es. 99,5).
   - **Decisioni APERTE toccate, stato invariato:** D-42 (livelli = dati del piano), D-44 (nessuna esclusione), D-69,
     D-71; non toccate D-25, D-30, D-36, D-37, D-38, D-39, D-40, D-41, D-57.
 
