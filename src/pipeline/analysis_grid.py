@@ -22,13 +22,19 @@ Baseline random: come ``main.run_machine`` (``default_rng(seed)``, prima T_cal v
 stessi array nei due scenari.
 """
 
+from collections import Counter
 from dataclasses import dataclass, field
-from typing import Dict, Mapping, Optional, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 import numpy as np
+import pandas as pd
 
-from src.evaluation.protocol import window_scores_to_timestamps
+from src.data.windows import cal_mask, eval_mask
+from src.evaluation import metrics as mt
+from src.evaluation import thresholds as th
+from src.evaluation.protocol import _segments, window_scores_to_timestamps
 from src.evaluation.scoring import FeatureErrorNormalizer, RobustFeatureErrorNormalizer, aggregate_scores, scale_counts
+from src.pipeline import table_schema as ts
 from src.utils.analysis_plan import AnalysisPlan
 
 SEP = "__"
@@ -80,6 +86,7 @@ class FitScores:
     scores: Dict[Combo, ScoreSet] = field(default_factory=dict)
     errors: Dict[Combo, ResidualNonFiniteError] = field(default_factory=dict)
     scale_counts: Dict[Tuple[str, str], Dict[str, int]] = field(default_factory=dict)
+    cal_windows: Dict[str, int] = field(default_factory=dict)    # window_time_agg → finestre di cal (V11)
 
 
 def _name(segment: str, agg: str) -> str:
@@ -200,6 +207,7 @@ def fit_scores(residuals: Mapping[str, np.ndarray], plan: AnalysisPlan, native_o
     for wagg in plan.window_time_aggs:
         cal_res, test_res = residuals[_name("cal", wagg)], residuals[_name("test", wagg)]
         ctx_res = residuals[_name(TEST_CTX_HEAD, wagg)] if ctx else None
+        out.cal_windows[wagg] = int(len(cal_res))
         norms = {}
         for kind in sorted({n for _, n in plan.scorings}):
             norms[kind] = fit_normalizer(kind, cal_res)
@@ -222,3 +230,165 @@ def _store(out: FitScores, combo: Combo, compute, n_cal_points: int) -> None:
         out.errors[combo] = exc
         return
     out.scores[combo] = ScoreSet(cal_ts, test_ts, n_cal_points)
+
+
+def random_fit_scores(seed: int, geom: Geometry, plan: AnalysisPlan) -> FitScores:
+    """Baseline random come un fit (V12): convenzione none/native, stessi array per ogni ts_agg (repliche) e per i due
+    scenari (cambia solo la maschera); n_cal_points delle righe free = 0."""
+    cal, test = random_scores(seed, geom.t_cal, geom.t_test)
+    out = FitScores()
+    for scenario in plan.scenarios:
+        for ts_agg in plan.ts_aggs:
+            out.scores[Combo(scenario, NATIVE[0], NATIVE[1], NATIVE[2], ts_agg)] = ScoreSet(cal, test, 0)
+    return out
+
+
+# ---------------------------------------------------------------- 6.3: righe free e thr (V10, V11, V12, C12)
+@dataclass
+class RowsResult:
+    free: List[Dict[str, Any]] = field(default_factory=list)
+    thr: List[Dict[str, Any]] = field(default_factory=list)
+    nan_reasons: Counter = field(default_factory=Counter)        # motivo → numero di righe con value NaN
+
+
+class _Failed(Exception):
+    def __init__(self, reason: str):
+        self.reason = reason
+
+
+def nan_reason(exc: BaseException) -> str:
+    """Motivo di una metrica non calcolabile (C12). Solo le cause note; storia insufficiente (C15, controllo
+    preliminare) e ogni altro errore si propagano."""
+    if isinstance(exc, ResidualNonFiniteError):
+        return exc.reason
+    if isinstance(exc, th.ThresholdHistoryError):
+        raise exc
+    if isinstance(exc, th.NonFiniteScoreError):
+        return "nonfinite_score"
+    msg = str(exc)
+    if isinstance(exc, ValueError) and "Servono almeno un punto positivo e uno negativo" in msg:
+        return "region_without_both_classes"
+    if isinstance(exc, ValueError) and "non finiti" in msg:
+        return "nonfinite_score"
+    raise exc
+
+
+def _attempt(fn):
+    try:
+        return fn()
+    except ValueError as exc:
+        raise _Failed(nan_reason(exc)) from None
+
+
+def _measure(labels: np.ndarray, mask: np.ndarray) -> Dict[str, Any]:
+    """Colonne di misura dalla sola regione valutata (definite anche per le righe NaN)."""
+    idx = np.flatnonzero(mask)
+    y = np.asarray(labels).astype(int)[idx[0]: idx[-1] + 1]
+    return {"n_eval_points": int(len(y)), "n_events": len(_segments(y)), "prevalence": int(y.sum()) / len(y)}
+
+
+def _threshold_specs(plan: AnalysisPlan, ts_agg: str):
+    """(politica, livello, n_past, lista dei pa) secondo V10; soglie mobili solo con last (D-24)."""
+    pa_of = lambda p: [False] + ([True] if p in plan.pa else [])  # noqa: E731
+    specs = [(th.STATIC, lv, None, pa_of(th.STATIC)) for lv in plan.static_pct]
+    if ts_agg == th.CAUSAL_TS_AGG:
+        specs += [(th.ROLL_QUANTILE, lv, n, pa_of(th.ROLL_QUANTILE)) for lv, n in plan.roll_quantile]
+        specs += [(th.ROLL_ROBUST_Z, lv, n, pa_of(th.ROLL_ROBUST_Z)) for lv, n in plan.roll_robust_z]
+    if plan.oracle:
+        specs.append((mt.ORACLE, None, None, pa_of(mt.ORACLE)))
+    return specs
+
+
+def _geometric_cal_points(policy: str, n_past: Optional[int], geom: Geometry, m_cal: np.ndarray) -> int:
+    """n_cal_points (V11) quando la soglia non si può calcolare (riga NaN): dalla sola geometria."""
+    if policy == th.STATIC:
+        return int(m_cal.sum())
+    if policy == mt.ORACLE:
+        return 0
+    return th.check_history(policy, geom.t_cal, geom.window_size, geom.step, geom.mode, n_past)
+
+
+def _threshold(policy, level, n_past, score: ScoreSet, m_cal, ts_agg):
+    if policy == th.STATIC:
+        return th.static_pct(score.cal_ts, m_cal, level, test=score.test_ts)
+    if policy == th.ROLL_QUANTILE:
+        return th.roll_quantile(score.cal_ts, score.test_ts, n_past=n_past, level=level, ts_agg=ts_agg)
+    return th.roll_robust_z(score.cal_ts, score.test_ts, m_cal, n_past=n_past, level=level, ts_agg=ts_agg)
+
+
+def metric_rows(identity: Mapping[str, Any], fs: FitScores, labels: np.ndarray, geom: Geometry,
+                plan: AnalysisPlan) -> RowsResult:
+    """Righe free e thr di un fit (o della baseline random) per ogni combinazione: valori di ``metrics`` sugli score
+    del nucleo con le soglie di ``thresholds``; righe con value NaN, contate per motivo, dove la metrica non è
+    calcolabile (C12). ``diagnostic`` vero per oracolo e PA (D-34)."""
+    out = RowsResult()
+    w, step = geom.window_size, geom.step
+    masks = {sc: eval_mask(geom.t_test, w, step, sc, geom.mode) for sc in plan.scenarios}
+    m_cal = cal_mask(geom.t_cal, w, step, geom.mode)
+
+    def emit(table, base, metrics, values, reason, extra=None):
+        for metric in metrics:
+            value = float("nan") if reason else float(values[metric])
+            if reason:
+                out.nan_reasons[reason] += 1
+            row = dict(base, **(extra or {}), metric=metric, value=value, nan_reason=reason)
+            (out.free if table == "free" else out.thr).append(row)
+
+    for combo in sorted(set(fs.scores) | set(fs.errors)):
+        mask = masks[combo.scenario]
+        score = fs.scores.get(combo)
+        base = dict(identity, scenario=combo.scenario, window_time_agg=combo.window_time_agg,
+                    sensor_agg=combo.sensor_agg, normalizer=combo.normalizer, ts_agg=combo.ts_agg,
+                    **_measure(labels, mask))
+        combo_reason = fs.errors[combo].reason if combo in fs.errors else None
+        # free
+        values, reason = None, combo_reason
+        if reason is None:
+            try:
+                values = _attempt(lambda: mt.free_metrics(labels, score.test_ts, mask))
+            except _Failed as f:
+                reason = f.reason
+        n_free = score.n_cal_points if score is not None else _free_cal_points(combo, fs)
+        for metrics, diag in ((ts.FREE_METRICS, False), (ts.FREE_DIAGNOSTIC_METRICS, True)):
+            emit("free", dict(base, n_cal_points=n_free, diagnostic=diag), metrics, values, reason)
+        # thr
+        for policy, level, n_past, pas in _threshold_specs(plan, combo.ts_agg):
+            t, reason = None, combo_reason
+            if reason is None and policy != mt.ORACLE:
+                try:
+                    t = _attempt(lambda: _threshold(policy, level, n_past, score, m_cal, combo.ts_agg))
+                except _Failed as f:
+                    reason = f.reason
+            n_cal = t.n_cal_points if t is not None else _geometric_cal_points(policy, n_past, geom, m_cal)
+            for pa in pas:
+                vals, r = None, reason
+                if r is None:
+                    try:
+                        if policy == mt.ORACLE:
+                            vals = {"f1": _attempt(lambda: mt.oracle_f1(labels, score.test_ts, mask, pa=pa))}
+                        else:
+                            vals = _attempt(lambda: mt.thr_metrics(labels, t.score, t.tau, mask, pa=pa))
+                    except _Failed as f:
+                        r = f.reason
+                extra = {"threshold_policy": policy, "threshold_level": None if level is None else float(level),
+                         "n_past": n_past, "pa": pa, "n_cal_points": n_cal,
+                         "diagnostic": bool(pa or policy == mt.ORACLE)}
+                emit("thr", base, mt.metric_names(policy, pa), vals, r, extra)
+    return out
+
+
+def _free_cal_points(combo: Combo, fs: FitScores) -> int:
+    """n_cal_points free di una combinazione in errore: finestre di cal del normalizer (dai conteggi del fit)."""
+    if combo.normalizer == "none":
+        return 0
+    return int(fs.cal_windows.get(combo.window_time_agg, 0))
+
+
+def to_frame(rows: List[Dict[str, Any]], table: str) -> pd.DataFrame:
+    """Righe → DataFrame validato dallo schema di F2 (colonne nell'ordine dello schema, tipi canonici)."""
+    df = pd.DataFrame(rows, columns=list(ts.columns(table)))
+    if table == "thr":
+        df["n_past"] = df["n_past"].astype("Int64")
+        df["threshold_level"] = df["threshold_level"].astype("float64")
+    df["value"] = df["value"].astype("float64")
+    return ts.validate(df, table)

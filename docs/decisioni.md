@@ -925,6 +925,16 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
     controlli preliminari di `analyze`; `machine_role` resta obbligatorio.
   - **C12 — varianti non calcolabili:** l'esportazione legacy replica il salto di `main.py` (parità); la tabella lunga
     scrive righe con `value` NaN, contate in `analysis.json`. Nessuna esclusione (D-44).
+    - **Colonna `nan_reason` in `free` e `thr` (passo 6.3, approvata dall'utente il 2026-11-13; modifica dello schema
+      di F2, come C6):** motivo per riga dei NaN da cause note: `nonfinite_residual_cal`, `nonfinite_residual_test`,
+      `nonfinite_residual_test_ctx_head` (score di finestra non finito, controllato prima della proiezione),
+      `projection_nan_cal`, `projection_nan_test` (NaN dopo la proiezione fuori dalla geometria; difesa, con finestre
+      finite non deve mai comparire), `region_without_both_classes`, `nonfinite_score`. Null se `value` è finito oppure
+      NaN per definizione (`detection_delay` senza eventi rilevati, C4). Regole dello schema: `value` NaN con motivo
+      null solo per `detection_delay`; motivo non null richiede `value` NaN; motivo fuori elenco rifiutato. I conteggi
+      per motivo di `analysis.json` coincidono con quelli della colonna. Storia insufficiente (C15) ed errori inattesi
+      non diventano righe NaN: si propagano. Motivo: F7 legge solo le tabelle e, per applicare D-44, deve distinguere
+      riga per riga i NaN da residui non finiti da quelli dovuti alla regione o definiti da C4.
   - **C13 — `labels_version` (D-59):** l'hash si calcola sui byte delle label effettivamente caricati per le metriche e
     si confronta con la voce del manifest (e con il riferimento degli hash, se il dataset lo ha); una differenza è un
     errore bloccante. `labels_version` per macchina va in `analysis.json`.

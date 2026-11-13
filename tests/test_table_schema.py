@@ -22,7 +22,7 @@ def _free(n=4, seed=0):
             "fit_key": f"{i:020x}", "seed": 42, "deterministic": True, "split_mode": "legacy2",
             "scenario": "primary", "window_time_agg": "last", "sensor_agg": "mean", "normalizer": "std",
             "ts_agg": "last", "metric": "ap_norm", "diagnostic": False, "value": float(rng.random()),
-            "n_eval_points": 1962, "n_events": 6, "prevalence": 0.1, "n_cal_points": 362,
+            "nan_reason": None, "n_eval_points": 1962, "n_events": 6, "prevalence": 0.1, "n_cal_points": 362,
         })
     return pd.DataFrame(rows)
 
@@ -121,8 +121,11 @@ def test_nulls_in_non_nullable_columns_are_errors(col):
 
 
 def test_nan_value_is_allowed_but_inf_is_not():
+    """NaN ammesso con il suo motivo (nan_reason, F6 passo 6.3); inf mai."""
     df = _free()
     df.loc[0, "value"] = np.nan
+    df["nan_reason"] = df["nan_reason"].astype(object)
+    df.loc[0, "nan_reason"] = "region_without_both_classes"
     ts.validate(df, "free")
     df.loc[0, "value"] = np.inf
     with pytest.raises(TableSchemaError, match="infiniti"):

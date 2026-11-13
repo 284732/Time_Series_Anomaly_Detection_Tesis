@@ -96,9 +96,16 @@ _THR_EXTRA = (
     Column("n_past", "int", nullable=True),
     Column("pa", "bool"),
 )
+# Motivi delle righe con value NaN (F6 passo 6.3, D-72 C12): residuo non finito per segmento, NaN dopo la proiezione
+# fuori dalla geometria (difesa), regione senza le due classi, score non finito valutato. Null = valore finito o NaN
+# per definizione (solo detection_delay senza eventi rilevati, C4).
+NAN_REASONS = ("nonfinite_residual_cal", "nonfinite_residual_test", "nonfinite_residual_test_ctx_head",
+               "projection_nan_cal", "projection_nan_test", "region_without_both_classes", "nonfinite_score")
+NAN_BY_DEFINITION = ("detection_delay",)
 _MEASURE = (
     Column("diagnostic", "bool"),
-    Column("value", "float", nullable=True),          # NaN ammesso (es. metrica non definita)
+    Column("value", "float", nullable=True),          # NaN ammesso solo con nan_reason, o per definizione (C4)
+    Column("nan_reason", "str", nullable=True, levels=NAN_REASONS),
     Column("n_eval_points", "int"),
     Column("n_events", "int"),
     Column("prevalence", "float"),
@@ -238,6 +245,11 @@ def _rules(df: pd.DataFrame, table: str) -> None:
         if ((policy == "oracle") & lvl.notna()).any():
             raise TableSchemaError("thr.threshold_level: nullo per la politica oracle")
         expected = (policy == "oracle") | df["pa"]
+    nan_value, reason = df["value"].isna(), df["nan_reason"].notna()
+    if (reason & ~nan_value).any():
+        raise TableSchemaError(f"{table}.nan_reason: ammesso solo con value NaN")
+    if (nan_value & ~reason & ~df["metric"].isin(NAN_BY_DEFINITION)).any():
+        raise TableSchemaError(f"{table}.nan_reason: obbligatorio per value NaN (salvo {NAN_BY_DEFINITION}, C4)")
     if (df["diagnostic"] != expected).any():
         raise TableSchemaError(f"{table}.diagnostic: deve essere vero esattamente per oracolo e PA (D-34)")
 
