@@ -885,7 +885,10 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
     elementi non finiti, somma su tutti i record `cal__*` (rispettivamente `test__*` e `test_ctx_head__*`) di
     `meta.json`; la colonna descrive il fit, non l'analisi; null per i fit `failed`. La somma sulle aggregazioni conta
     più volte lo stesso valore non finito: è un indicatore (> 0), non una misura di gravità; il dettaglio per record è
-    in `meta.json`. Motivo: D-44 deve distinguere un non finito in cal (normalizer e soglia
+    in `meta.json`. **`nonfinite_loss` dei fit `failed` = null** (passo 6.1, approvato dall'utente il 2026-11-13):
+    un fit fallito non ha `fit_info`; `False` affermerebbe una loss finita senza saperlo, e un filtro
+    «`nonfinite_loss == False`» in F7 farebbe passare i fit falliti come puliti. Lo schema ammette per questo i bool
+    nullabili (dtype `boolean`); i bool non nullabili restano invariati. Motivo: D-44 deve distinguere un non finito in cal (normalizer e soglia
     compromessi per tutto il test) da uno nel test (solo alcuni punti) leggendo solo le tabelle. Nessuna esclusione.
   - **C7 — esportazione legacy:** `src/pipeline/legacy_export.py` importa da `main.py`, in modo tardivo e solo nel suo
     percorso, le funzioni pure `evaluate_variant`, `save_scores` e `make_summary_row`; si rimuove in F12 con `main.py`.

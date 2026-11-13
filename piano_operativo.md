@@ -501,6 +501,9 @@ D-53 approvata (2026-11-10): `.pyc` tolti dal tracciamento, `dataset/` resta tra
 
 ### F7 — Statistica e report
 - **Obiettivo:** RQ1–RQ4 calcolate dalla tabella lunga.
+- **Nota (2026-11-13, da F6 passo 6.1):** nella tabella `fits` le colonne dei non finiti (`nonfinite_loss`,
+  `n_nonfinite_cal`, `n_nonfinite_test`) sono nullabili (null per i fit `failed`, D-72 C6): filtrare prima sullo stato
+  del fit, poi sui non finiti (pandas non ammette maschere booleane con valori nulli).
 - **File (tutti nuovi):** `src/stats/{aggregate,bootstrap,decisions,ranking,variance,descriptors}.py`, `src/reporting/{tables,figures}.py`, comandi `stats` e `report` in `src/cli.py`. `aggregate_results.py` resta.
 - **Dipendenze:** solo lo schema di F2 (per i test su dati simulati); F6 per l'uso reale. Si può sviluppare in parallelo a F3–F6. Metodo degli IC: D-36 va deciso prima di F7, oppure F7 implementa sia il bootstrap stratificato sia quello gerarchico e la scelta si congela in F10. δ è un parametro senza valore predefinito [D-30].
 - **Test:**

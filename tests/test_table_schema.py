@@ -51,14 +51,17 @@ def _fits():
         {"fit_key": "a" * 20, "dataset": "smd", "machine": "machine-9-1", "model": "conv_autoencoder",
          "config_id": "c1", "seed": 42, "deterministic": False, "split_mode": "legacy2", "status": "complete",
          "best_epoch": 3, "stopped_epoch": 8, "n_components": None, "fit_sec": 1.5, "n_fit_windows": 300,
-         "n_es_windows": 80, "n_cal_windows": 381, "error": None},
+         "n_es_windows": 80, "n_cal_windows": 381, "error": None,
+         "nonfinite_loss": False, "n_nonfinite_cal": 0, "n_nonfinite_test": 3},
         {"fit_key": "b" * 20, "dataset": "smd", "machine": "machine-9-1", "model": "pca",
          "config_id": "c2", "seed": 42, "deterministic": True, "split_mode": "legacy2", "status": "failed",
          "best_epoch": None, "stopped_epoch": None, "n_components": None, "fit_sec": None,
-         "n_fit_windows": None, "n_es_windows": None, "n_cal_windows": None, "error": "ValueError: x"},
+         "n_fit_windows": None, "n_es_windows": None, "n_cal_windows": None, "error": "ValueError: x",
+         "nonfinite_loss": None, "n_nonfinite_cal": None, "n_nonfinite_test": None},
     ]).astype({"best_epoch": "Int64", "stopped_epoch": "Int64", "n_components": "Int64",
                "n_fit_windows": "Int64", "n_es_windows": "Int64", "n_cal_windows": "Int64",
-               "fit_sec": "float64"})
+               "fit_sec": "float64", "nonfinite_loss": "boolean", "n_nonfinite_cal": "Int64",
+               "n_nonfinite_test": "Int64"})
 
 
 TABLE_FACTORIES = {"free": _free, "thr": _thr, "fits": _fits}

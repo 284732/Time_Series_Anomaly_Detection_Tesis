@@ -5,7 +5,14 @@ D-20/D-32, D-23, D-34, D-45; tabella ``fits`` per D-44). Formato CSV.gz [D-19].
 Tabelle:
   * ``free``: metriche senza soglia, una riga per (analisi, fit, scenario, variante, metrica);
   * ``thr``: metriche con soglia (RQ4), stesse colonne più politica e parametri di soglia;
-  * ``fits``: una riga per fit (stato, epoche, componenti, tempi, finestre).
+  * ``fits``: una riga per fit (stato, epoche, componenti, tempi, finestre, non finiti).
+
+Colonne dei non finiti di ``fits`` (F6 passo 6.1, D-72 C6): ``nonfinite_loss`` (loss di training non finita),
+``n_nonfinite_cal`` e ``n_nonfinite_test`` = numero di elementi non finiti sommato su tutti i record ``cal__*``
+(rispettivamente ``test__*`` e ``test_ctx_head__*``) di ``meta.json``. Descrivono il fit, non l'analisi. La somma
+sulle aggregazioni conta più volte lo stesso valore non finito: è un indicatore (> 0), non una misura di gravità; il
+dettaglio per record è in ``meta.json``. Valori per i fit ``complete``, null per i fit ``failed`` (nessun residuo,
+nessuna loss).
 
 Lo schema non contiene la struttura di SMD (D-45): ``dataset``, ``machine`` e ``group`` sono stringhe.
 I livelli dei fattori sono dati (D-42): ``validate`` controlla solo i valori che il codice sa calcolare.
@@ -119,8 +126,13 @@ TABLES: Dict[str, Tuple[Column, ...]] = {
         Column("n_es_windows", "int", nullable=True),
         Column("n_cal_windows", "int", nullable=True),
         Column("error", "str", nullable=True),
+        # F6 passo 6.1 (D-72 C6): non finiti; valori per i fit complete, null per i fit failed
+        Column("nonfinite_loss", "bool", nullable=True),
+        Column("n_nonfinite_cal", "int", nullable=True),
+        Column("n_nonfinite_test", "int", nullable=True),
     ),
 }
+FITS_NONFINITE = ("nonfinite_loss", "n_nonfinite_cal", "n_nonfinite_test")
 
 _FREE_PK = ("analysis_id", "fit_key", "scenario", "window_time_agg", "sensor_agg", "normalizer", "ts_agg",
             "metric")
@@ -145,6 +157,8 @@ def _table(table: str) -> Tuple[Column, ...]:
 def _dtype(col: Column):
     if col.kind == "int" and col.nullable:
         return "Int64"
+    if col.kind == "bool" and col.nullable:      # F6: bool nullabile (nonfinite_loss dei fit failed)
+        return "boolean"
     return _PANDAS_DTYPE[col.kind]
 
 
@@ -168,7 +182,7 @@ def _check_column(df: pd.DataFrame, col: Column, table: str) -> pd.Series:
     if col.kind == "bool":
         if not pd.api.types.is_bool_dtype(s.dtype):
             raise TableSchemaError(f"{table}.{col.name}: atteso bool, trovato {s.dtype}")
-        return s.astype(bool)
+        return s.astype(_dtype(col))
     vals = s[~isna]
     if not vals.map(lambda v: isinstance(v, str) and v != "").all():
         raise TableSchemaError(f"{table}.{col.name}: attese stringhe non vuote")
@@ -179,8 +193,22 @@ def _check_column(df: pd.DataFrame, col: Column, table: str) -> pd.Series:
     return s.astype(object).where(~isna, None)
 
 
+def _fits_rules(df: pd.DataFrame) -> None:
+    """C6: conteggi ≥ 0; valori presenti per i fit complete, null per i fit failed."""
+    for c in ("n_nonfinite_cal", "n_nonfinite_test"):
+        if (df[c].dropna() < 0).any():
+            raise TableSchemaError(f"fits.{c}: valori negativi")
+    complete, failed = df["status"] == "complete", df["status"] == "failed"
+    for c in FITS_NONFINITE:
+        if (complete & df[c].isna()).any():
+            raise TableSchemaError(f"fits.{c}: obbligatorio per i fit complete (D-72 C6)")
+        if (failed & df[c].notna()).any():
+            raise TableSchemaError(f"fits.{c}: nullo per i fit failed (D-72 C6)")
+
+
 def _rules(df: pd.DataFrame, table: str) -> None:
     if table == "fits":
+        _fits_rules(df)
         return
     native = df["sensor_agg"] == "native"
     if ((native & ((df["window_time_agg"] != "none") | (df["normalizer"] != "none")))
@@ -254,10 +282,14 @@ def read_csv_gz(path: Union[str, Path], table: str) -> pd.DataFrame:
     for c in cols:
         if c.kind == "bool":
             mapping = {"True": True, "False": False}
+            missing = df[c.name].isna() if c.nullable else pd.Series(False, index=df.index)
             raw = df[c.name].astype(str)
-            if not raw.isin(list(mapping)).all():
+            if not (raw.isin(list(mapping)) | missing).all():
                 raise TableSchemaError(f"{table}.{c.name}: valori bool non validi nel file")
-            df[c.name] = raw.map(mapping).astype(bool)
+            if c.nullable:
+                df[c.name] = raw.map(mapping).where(~missing, pd.NA).astype("boolean")
+            else:
+                df[c.name] = raw.map(mapping).astype(bool)
         elif c.kind == "str":
             df[c.name] = df[c.name].astype(object).where(df[c.name].notna(), None)
     return validate(df, table)
