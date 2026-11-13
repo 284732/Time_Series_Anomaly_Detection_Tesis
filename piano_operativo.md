@@ -468,7 +468,10 @@ D-53 approvata (2026-11-10): `.pyc` tolti dal tracciamento, `dataset/` resta tra
       riusato con `seeds[0]` diverso (seed legacy = seed del ciclo di `main.py`, colonna `seed` = `set_seed_value`):
       confronto per chiave, nessuna tolleranza;
     - passo 8: prova golden (sha256 delle uscite di un'analisi sintetica) legata ad `ANALYSIS_CODE_VERSION`, che
-      fallisce se le uscite cambiano senza aumentare la versione.
+      fallisce se le uscite cambiano senza aumentare la versione;
+    - passo 8, riepilogo di chiusura di F6: annotare che i test di integrazione dei punti 1 (`meta_sha256` per
+      elenco esplicito) e 2 (V13, errore del registro dopo la pubblicazione) della revisione del passo 2 sono stati
+      scritti dopo il codice e convalidati solo con le prove di difetto (mai visti rossi prima dell'implementazione).
   - **Precisazioni approvate al passo 1 [D-72 C8]:** al passo 6 `analysis.json` registra quali modelli producono
     righe native (convenzione none/native applicata dall'analisi, non dichiarata nel piano); al passo 4 il test
     «storia vuota = `rules.py`» copre la conversione percentile → quantile, anche con livelli non interi (es. 99,5).

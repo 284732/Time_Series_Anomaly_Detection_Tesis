@@ -852,7 +852,14 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
       `precision_recall_curve` calcola P e R con le stesse divisioni tra interi, e `max(P+R, 1e-12)` coincide con P+R
       quando P+R > 0. Il test definitivo, con gli stessi casi, si scrive al passo 3; se fallisse, la tolleranza
       effettiva si dichiara qui con la causa prima di proseguire.
+    - **Esito del test definitivo (passo 3, 2026-11-13):** tolleranza zero confermata per A ≥ D, B ≥ C e PA ≥ no-PA;
+      nella suite 2.000 serie casuali con pari merito (test marcato `slow`, resta nella suite predefinita); verifica
+      una tantum su 20.000 serie (19.986 con pari merito), 1.014.946 confronti, 0 violazioni, minimi di B − C, A − D
+      e D − C = 0,0.
     - Lo scarto rispetto a `protocols.four_cells` è documentato da un test (atteso ≤ 1e−12 relativo).
+    - **FPR (passo 3):** `fpr` = fp / (n · (1 − p)), la stessa espressione di `FPR_at_thr` in `main.make_summary_row`,
+      per la parità bit a bit con lo storico. È matematicamente uguale a fp / n_neg ma può differire nell'ultimo bit:
+      non va «corretta».
   - **C3 — falsi allarmi ogni 1.440 punti** (`false_alarms_per_1440`) = `fa_segments · 1440 / n_eval_points`;
     segmento di falso allarme come nello storico (segmento di allarme che non tocca nessun punto anomalo);
     `n_eval_points` comprende i punti anomali. Il nome dice «ogni 1.440 punti», mai «al giorno» (D-34).
