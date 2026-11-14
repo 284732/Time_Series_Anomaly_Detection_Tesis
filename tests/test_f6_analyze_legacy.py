@@ -183,11 +183,14 @@ def test_analysis_is_published_with_its_identity_in_clear(env, golden_runs):
 
 
 def test_mean_export_reads_the_mean_residuals_except_for_native_models(env, golden_runs):
+    """Residui letti (e nell'id): quelli delle tabelle (window_time_aggs del piano: last) più l'aggregazione
+    dell'esportazione legacy (mean); nativi solo last (rev. passo 6.5: prima solo quelli dell'esportazione)."""
     report = golden_runs[0]["mean"]
     aj = json.loads((report.analysis_dir / an.ANALYSIS_JSON).read_text(encoding="utf-8"))
     for f in aj["components"]["fits"]:
         native = env["store"].read_meta(f["fit_key"])["model"]["native_only"]
-        assert set(f["residual_sha256"]) == ({"cal__last", "test__last"} if native else {"cal__mean", "test__mean"})
+        assert set(f["residual_sha256"]) == ({"cal__last", "test__last"} if native else
+                                             {"cal__last", "test__last", "cal__mean", "test__mean"})
 
 
 def test_same_inputs_refused_before_any_write(env, golden_runs, monkeypatch):
@@ -234,14 +237,11 @@ def test_refusals_happen_before_any_write(env, tmp_path):
     store = env["store"]
     official = copy.deepcopy(env["spec"])
     official["experiment"]["kind"] = "official"
-    no_legacy = legacy_plan("last")
-    del no_legacy["legacy_export"]
     split3 = synth_spec(str(env["data"]), str(env["root"] / "store"), mode="split3")
     missing = copy.deepcopy(env["spec"])
     missing["models"]["pca"]["random_state"] = 7                  # fit_key mai addestrato
     cases = [
         (official, legacy_plan("last"), an.AnalysisRefused, "official"),
-        (env["spec"], no_legacy, an.AnalysisRefused, "legacy_export"),
         (split3, legacy_plan("last"), ap.ConfigError, "legacy_export"),
         (missing, legacy_plan("last"), an.AnalysisPreflightError, "fit mancante"),
     ]
@@ -542,20 +542,16 @@ print(json.dumps({{"same": {{k: before[k] == after[k] for k in before}}, "main":
     assert (tmp_path / "summary_timestamp_metrics.csv").exists()
 
 
-def test_main_is_never_imported_without_legacy_export(env):
-    """In split3 senza esportazione legacy ``main.py`` non si importa mai (al passo 2 il piano è rifiutato prima di
-    ogni lettura; dal passo 6 l'analisi producerà le tabelle e il test resta valido)."""
-    spec = synth_spec(str(env["data"]), str(env["root"] / "store_split3"), mode="split3")
-    plan = legacy_plan("last")
+# Il test «split3 senza esportazione legacy: main.py mai importato» è in tests/test_f6_analyze_tables.py (passo 6.5),
+# dove l'analisi legge davvero i residui (al passo 2 il piano senza legacy_export era rifiutato e il test era banale).
+
+
+def test_legacy2_plan_without_legacy_export_produces_only_tables(env):
+    """Rev. passo 6.5: il piano senza legacy_export non è più rifiutato; in legacy2 produce le tabelle e nessuna
+    esportazione legacy."""
+    plan = legacy_plan("last", pct=92.0)
     del plan["legacy_export"]
-    code = rf"""
-import src.pipeline.analyze as an
-imported_at_import = "main" in sys.modules
-try:
-    an.run_analysis({spec!r}, {plan!r}, datasets_dir=r"{env['datasets_dir']}", repo_root=r"{env['repo']}")
-except an.AnalysisRefused:
-    pass
-print(json.dumps({{"at_import": imported_at_import, "after": "main" in sys.modules}}))
-"""
-    res = _subprocess(code)
-    assert res == {"at_import": False, "after": False}
+    report = analyze(env, plan)
+    aj = json.loads((report.analysis_dir / an.ANALYSIS_JSON).read_text(encoding="utf-8"))
+    assert aj["outputs"]["legacy_export"] is None and not (report.analysis_dir / "legacy").exists()
+    assert all((report.analysis_dir / "tables" / f"{t}.csv.gz").exists() for t in ("free", "thr", "fits"))

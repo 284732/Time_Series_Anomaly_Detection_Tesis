@@ -491,6 +491,15 @@ D-53 approvata (2026-11-10): `.pyc` tolti dal tracciamento, `dataset/` resta tra
       elenco esplicito) e 2 (V13, errore del registro dopo la pubblicazione) della revisione del passo 2 sono stati
       scritti dopo il codice e convalidati solo con le prove di difetto (mai visti rossi prima dell'implementazione);
       lo stesso vale per il test «NaN nel supporto statico» del passo 6.0 (convalidato solo con la mutazione);
+    - chiusura di F6: test del passo 2 modificati in 6.5, nessuno reso più permissivo:
+      - `test_mean_export_reads_the_mean_residuals_except_for_native_models`: i residui letti (e nell'id) comprendono
+        ora anche `last`, usato dalle tabelle; l'asserzione resta un'uguaglianza esatta di insiemi;
+      - `test_refusals_happen_before_any_write`: tolto il caso «piano senza `legacy_export` rifiutato», perché il rifiuto
+        era provvisorio (passo 2); gli altri quattro rifiuti restano; nuovo
+        `test_legacy2_plan_without_legacy_export_produces_only_tables` per il comportamento definitivo;
+      - `test_main_is_never_imported_without_legacy_export`: sostituito da
+        `test_split3_without_legacy_export_reads_residuals_and_never_imports_main` (`test_f6_analyze_tables.py`), più
+        forte: oltre a `main.py` mai importato verifica che l'analisi legga davvero i residui (chiamate > 0);
     - passo 6.2 (requisito approvato al passo 6.0): `analysis_grid` verifica che gli score NaN di cal e del test
       stiano solo dove la geometria delle finestre non dà score (primi W − 1 punti senza contesto, coda); un NaN
       altrove (da residuo non finito) è un errore → riga NaN contata, mai un punto saltato nella storia delle soglie
