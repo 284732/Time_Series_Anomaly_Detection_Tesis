@@ -19,7 +19,7 @@ from src.utils.schema import ConfigError
 SHA_A, SHA_B, SHA_C, SHA_D = "a" * 64, "b" * 64, "c" * 64, "d" * 64
 CID_PCA, CID_CONV, CID_LSTM, CID_RZ = "0123456789ab", "1123456789ab", "2123456789ab", "3123456789ab"
 CID_UNTR = "4123456789ab"          # AE non addestrato (D-69): stesso nome di modello, config_id diverso
-PRE_1, PRE_2 = "aaaaaaaaaaaa", "bbbbbbbbbbbb"
+EXP_P, EXP_S = "synth_conv_pca", "synth_scaler"   # esperimento primario e variante di scaler (livelli di preproc)
 
 
 def _pca():
@@ -54,8 +54,9 @@ def _plan():
     """Piano valido con tutte le sezioni (esplorativo)."""
     return {
         "stats": {"name": "synth_example", "kind": "exploratory", "machine_role": "dev"},
-        "inputs": [{"experiment": "synth_conv_pca", "config_sha256": SHA_A, "plan_sha256": SHA_B},
-                   {"experiment": "synth_scaler", "config_sha256": SHA_C, "plan_sha256": SHA_D}],
+        "inputs": [{"experiment": EXP_P, "config_sha256": SHA_A, "plan_sha256": SHA_B},
+                   {"experiment": EXP_S, "config_sha256": SHA_C, "plan_sha256": SHA_D}],
+        "primary_experiment": EXP_P,
         "exclusions": {
             "failed_fit": "exclude_machine_pair",
             "nonfinite_loss": "error",
@@ -111,15 +112,15 @@ def _plan():
                                  {"window_time_agg": "mean", "sensor_agg": "top5", "normalizer": "robust"}],
                      "threshold": [{"policy": "static_pct", "level": 99.0},
                                    {"policy": "roll_quantile", "level": 99.0, "n_past": 1440}],
-                     "preproc": [PRE_1, PRE_2]},
+                     "preproc": [EXP_P, EXP_S]},
                  "tau_reference": {"scoring": {"window_time_agg": "last", "sensor_agg": "mean", "normalizer": "std"},
-                                   "threshold": {"policy": "static_pct", "level": 99.0}, "preproc": PRE_1},
+                                   "threshold": {"policy": "static_pct", "level": 99.0}, "preproc": EXP_P},
                  "delta_reference": {"model": "pca", "config_id": CID_PCA}},
                 {"name": "design_native", "table": "thr", "metric": "fpr",
                  "models": [{"model": "rolling_zscore", "config_id": CID_RZ}],
                  "factors": {"threshold": [{"policy": "static_pct", "level": 99.0},
                                            {"policy": "roll_robust_z", "level": 99.5, "n_past": 720}],
-                             "preproc": [PRE_1]},
+                             "preproc": [EXP_P]},
                  "tau_reference": None,
                  "delta_reference": None},
             ],
@@ -313,7 +314,6 @@ def _mutations():
     for r in ts.NAN_REASONS:
         muts.append({("exclusions", "nan_rows", r): "error"})
     for i in (0, 1):
-        muts.append({("inputs", i, "experiment"): f"exp_{i}_x"})
         muts.append({("inputs", i, "config_sha256"): "e" * 63 + str(i)})
         muts.append({("inputs", i, "plan_sha256"): "f" * 63 + str(i)})
     return muts
@@ -421,15 +421,15 @@ def _structural_mutations():
                         {"window_time_agg": "last", "sensor_agg": "mean", "normalizer": "std"}],
             "threshold": [{"policy": "roll_quantile", "level": 97.0, "n_past": 360},
                           {"policy": "roll_robust_z", "level": 98.0, "n_past": 360}],
-            "preproc": ["cccccccccccc", "dddddddddddd"]}
+            "preproc": [EXP_S, EXP_P]}
         b["tau_reference"] = {"scoring": {"window_time_agg": "mean", "sensor_agg": "max", "normalizer": "none"},
                               "threshold": {"policy": "roll_quantile", "level": 97.0, "n_past": 360},
-                              "preproc": "cccccccccccc"}
+                              "preproc": EXP_S}
         n = p["rq1b"]["blocks"][1]
         n["models"][0]["config_id"] = "3" * 12
         n["factors"] = {"threshold": [{"policy": "roll_quantile", "level": 95.0, "n_past": 360},
                                       {"policy": "static_pct", "level": 98.0}],
-                        "preproc": ["eeeeeeeeeeee"]}
+                        "preproc": [EXP_S, EXP_P]}
 
     @m
     def rq1b_tables(p):
@@ -439,7 +439,23 @@ def _structural_mutations():
         del b["tau_reference"]["threshold"]
         n = p["rq1b"]["blocks"][1]
         n.update(table="free", metric="ap_norm")
-        n["factors"] = {"preproc": [PRE_1, PRE_2]}
+        n["factors"] = {"preproc": [EXP_P, EXP_S]}
+
+    @m
+    def rename_experiments(p):
+        ren = {EXP_P: "exp_primary_x", EXP_S: "exp_scaler_x"}
+        for e in p["inputs"]:
+            e["experiment"] = ren[e["experiment"]]
+        p["primary_experiment"] = ren[p["primary_experiment"]]
+        for b in p["rq1b"]["blocks"]:
+            b["factors"]["preproc"] = [ren[x] for x in b["factors"]["preproc"]]
+            if b["tau_reference"] is not None:
+                b["tau_reference"]["preproc"] = ren[b["tau_reference"]["preproc"]]
+
+    @m
+    def primary_other(p):
+        p["primary_experiment"] = EXP_S
+        p["rq1b"]["blocks"][1]["factors"]["preproc"] = [EXP_S]
 
     @m
     def baselines_empty(p):
@@ -758,6 +774,8 @@ def test_missing_rq_key_is_rejected_but_explicit_null_is_admitted(sec):
     q[sec] = None
     if sec == "rq2":
         q["rq3"] = None                     # rq3 richiede rq2
+    if sec == "rq1b":
+        q["inputs"] = q["inputs"][:1]       # senza RQ1b l'esperimento dello scaler non ha ruolo
     sp.validate_stats_plan(q)
 
 
@@ -901,7 +919,7 @@ def test_rq1a_free_block_rejects_threshold_factors(factor):
 @pytest.mark.parametrize("factor", ["scoring", "preproc"])
 def test_rq1a_rejects_design_factors(factor):
     p = _plan()
-    p["rq1a"]["blocks"][0]["factors"][factor] = [PRE_1]
+    p["rq1a"]["blocks"][0]["factors"][factor] = [EXP_P]
     _err(p, factor)
 
 
@@ -1060,7 +1078,7 @@ def test_rq1b_scoring_levels_are_residual_scorings():
 def test_rq1b_single_model_block_has_null_references_and_multi_model_block_has_them():
     p = _plan()
     p["rq1b"]["blocks"][1]["tau_reference"] = {"threshold": {"policy": "static_pct", "level": 99.0},
-                                               "preproc": PRE_1}
+                                               "preproc": EXP_P}
     _err(p, "null")
     q = _plan()
     q["rq1b"]["blocks"][0]["delta_reference"] = None
@@ -1074,10 +1092,10 @@ def test_rq1b_needs_a_factor_with_two_levels():
     _err(p, "livelli")
 
 
-@pytest.mark.parametrize("pre", ["abc", "AAAAAAAAAAAA", 12])
-def test_rq1b_preproc_levels_are_twelve_hex(pre):
+@pytest.mark.parametrize("pre", ["", "a/b", 12, "aaaaaaaaaaaa"])
+def test_rq1b_preproc_levels_are_declared_experiment_names(pre):
     p = _plan()
-    p["rq1b"]["blocks"][1]["factors"]["preproc"] = [pre]
+    p["rq1b"]["blocks"][0]["factors"]["preproc"] = [EXP_P, pre]
     _err(p)
 
 
@@ -1234,8 +1252,79 @@ def test_descriptive_baseline_is_never_a_delta_reference():
 def test_baseline_rules_apply_only_to_declared_sections():
     p = _plan()                                   # RQ null: nessun controllo su sezioni assenti
     p["rq2"] = p["rq3"] = p["rq4"] = p["rq1b"] = None
+    p["inputs"] = p["inputs"][:1]
     sp.validate_stats_plan(p)
 
 
 def test_model_roles_of_the_output_schema():
     assert sp.MODEL_ROLES == ("compared", "reference", "descriptive_baseline", "random_baseline")
+
+
+# ---------------------------------------------------------------- passo 1-ter: esperimento primario
+def test_primary_experiment_is_mandatory():
+    p = _plan()
+    del p["primary_experiment"]
+    _err(p, "primary_experiment")
+
+
+@pytest.mark.parametrize("name", ["other_experiment", "", "a/b", None, 12])
+def test_primary_experiment_must_be_a_declared_input(name):
+    p = _plan()
+    p["rq1b"] = None                              # solo il controllo sull'esperimento primario
+    p["primary_experiment"] = name
+    _err(p, "primary_experiment")
+    if name == "other_experiment":
+        _err(p, "non è tra gli esperimenti di inputs")
+
+
+def test_primary_experiment_is_required_even_without_rq2():
+    p = _plan()
+    p["rq2"] = p["rq3"] = None
+    assert sp.validate_stats_plan(p).primary_experiment == EXP_P
+    del p["primary_experiment"]
+    _err(p, "primary_experiment")
+
+
+def test_rq1b_preproc_level_must_be_a_declared_input():
+    p = _plan()
+    p["rq1b"]["blocks"][0]["factors"]["preproc"] = [EXP_P, "unknown_experiment"]
+    _err(p, r"preproc.*unknown_experiment.*inputs")
+
+
+@pytest.mark.parametrize("block", [0, 1])
+def test_every_rq1b_block_includes_the_primary_experiment(block):
+    p = _plan()
+    b = p["rq1b"]["blocks"][block]
+    b["factors"]["preproc"] = [EXP_S]
+    if b["tau_reference"] is not None:
+        b["tau_reference"]["preproc"] = EXP_S
+    _err(p, r"primary_experiment.*D-40")
+
+
+def test_rq1b_tau_reference_preproc_is_one_of_the_block_experiments():
+    p = _plan()
+    p["rq1b"]["blocks"][0]["factors"]["preproc"] = [EXP_P]
+    p["rq1b"]["blocks"][0]["factors"]["threshold"].pop()     # resta lo scoring a due livelli
+    p["rq1b"]["blocks"][0]["tau_reference"]["preproc"] = EXP_S
+    _err(p, "tau_reference.preproc")
+
+
+def test_single_input_plan_with_rq1b_on_the_primary_only():
+    p = _plan()
+    p["inputs"] = p["inputs"][:1]
+    p["rq1b"]["blocks"][0]["factors"]["preproc"] = [EXP_P]
+    p["rq1b"]["blocks"][0]["tau_reference"]["preproc"] = EXP_P
+    plan = sp.validate_stats_plan(p)
+    assert plan.primary_experiment == EXP_P
+
+
+def test_every_input_has_a_role():
+    p = _plan()                                   # synth_scaler compare solo come livello di preproc di RQ1b
+    p["rq1b"] = None
+    _err(p, r"inputs.*synth_scaler.*nessun ruolo")
+    p = _plan()
+    for blk in p["rq1b"]["blocks"]:
+        blk["factors"]["preproc"] = [EXP_P]
+        if blk["tau_reference"] is not None:
+            blk["tau_reference"]["preproc"] = EXP_P
+    _err(p, r"inputs.*synth_scaler.*nessun ruolo")

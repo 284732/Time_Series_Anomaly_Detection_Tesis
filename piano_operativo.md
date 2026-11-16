@@ -715,6 +715,10 @@ D-53 approvata (2026-11-10): `.pyc` tolti dal tracciamento, `dataset/` resta tra
   - `configs/experiments/official.yaml` (config dell'esperimento): D-09 (`experiment.seeds`, 5 seed), modelli e
     iperparametri selezionati in F9 (D-41), preprocessing (D-40), macchine di valutazione (D-08); hash =
     `config_sha256`;
+  - le config degli altri esperimenti dichiarati nel piano statistico ufficiale: quelli che fanno da livelli di preproc
+    nei blocchi di RQ1b (D-73 P5, nota del passo 1-ter). Si scrivono e si congelano qui, ciascuna con il suo
+    `config_sha256` nel registro, insieme alla config dell'esperimento primario, prima del piano di analisi.
+    *(rev. 2026-11-16: prima una sola config di esperimento.)*
   - `configs/analysis/official.yaml` (piano di analisi, D-72 C8): solo ciò che `analyze` calcola, cioè la parte di
     D-42 sui livelli calcolati (`scenarios`, compreso `test_context` di D-20 e D-32; `window_time_aggs`; `scorings`;
     `ts_aggs`; `thresholds` con livelli e `n_past`; `pa`), con i vincoli di D-24 e D-60 verificati dal validatore;
@@ -731,6 +735,8 @@ D-53 approvata (2026-11-10): `.pyc` tolti dal tracciamento, `dataset/` resta tra
   la config dell'esperimento, `analyze` il piano di analisi (e la config), `stats` il piano statistico (e gli hash che
   dichiara); inoltre se l'albero git è modificato o se tra le macchine compare una di sviluppo. *(rev. 2026-11-16: prima
   «il piano», al singolare, senza la config dell'esperimento.)*
+- **Nota (2026-11-16, da F7, D-73 P6):** dopo il congelamento, modificare `configs/base.yaml` o i percorsi delle config
+  (`paths.store_root`, `data.data_dir`) invalida i `config_sha256` dichiarati nel piano statistico.
 - **Completata quando:** piano congelato in un commit (lo fai tu o lo chiedi tu).
 - **Impatto sui risultati:** nessuno.
 

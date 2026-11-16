@@ -1502,6 +1502,41 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
     `descriptive_baselines`. Controllo e test nel passo 2.
   - **Modelli `native` come baseline descrittive (utente, 2026-11-16):** ammessi (le baseline semplici sono il caso
     d'uso); nessun rifiuto.
+- **Nota di rimando (2026-11-16, passo 1-ter e piano del passo 2, il testo sopra resta invariato; utente, su
+  raccomandazione di Claude Project):**
+  - **Fatto verificato (`config.config_id`, `config.fit_payload`, `_base_payload`):** `config_id` è l'hash di nome e
+    `params` del modello. Del `fit_payload` restano fuori da `config_id`:
+    - `fit_code_version`, `data_version`, `dataset`, `machine`;
+    - `split`, `preprocessing`, `windows`, `residual_aggs`, `device`;
+    - `training`, per i modelli addestrati;
+    - `seed`, per i modelli non deterministici.
+
+    Lo stesso `(model, config_id)` può quindi comparire in più esperimenti con fit diversi.
+  - **P5, `primary_experiment`:** chiave obbligatoria, uno degli esperimenti di `inputs`. RQ2, RQ1a, RQ4 e le
+    descrittive (comprese le baseline descrittive) leggono solo da quell'esperimento. Qui si fissa il preprocessing
+    canonico (D-40), congelato in F10.
+  - **P5, livelli di preproc di RQ1b:** sono **nomi di esperimenti** di `inputs` (non hash del preprocessing); ogni
+    blocco di RQ1b contiene l'esperimento primario tra i suoi livelli (verificato in `plan.py`). L'id del
+    preprocessing di ogni livello si legge dalle tabelle al passo 2 e si registra in `stats.json`.
+  - **P5/P6, nessun ingresso senza ruolo:** un esperimento di `inputs` che non è né `primary_experiment` né un livello
+    di preproc in un blocco di RQ1b è rifiutato in `plan.py`. È la stessa logica dei modelli non dichiarati: niente
+    entra negli ingressi senza un uso dichiarato.
+  - **P6, controlli del passo 2:**
+    - (i) dentro un esperimento, ogni `(model, config_id, machine, seed)` corrisponde a un solo fit;
+    - (ii) gli esperimenti che fanno da livelli di preproc in un blocco di RQ1b hanno `fit_payload` identici a parte
+      `preprocessing`: stessi split, finestre, training, `residual_aggs`, device, macchine, seed e `data_version`,
+      per gli stessi `(model, config_id)`. Altrimenti codice 2 con i campi che differiscono, perché le altre
+      differenze si confonderebbero con l'effetto dello scaler; due livelli con lo stesso preprocessing → codice 2;
+    - (iii) l'esperimento primario tra i livelli di preproc di ogni blocco di RQ1b: già in `plan.py`.
+  - **P6, `stats_id` e `stats.json`:**
+    - gli sha256 dei file delle tabelle letti si registrano in `stats.json` ed entrano nei componenti di `stats_id`;
+    - `analysis_code_version` è uguale tra gli ingressi, altrimenti codice 2; la versione corrente si registra
+      soltanto;
+    - con `stats.kind = official` tutti gli ingressi sono `official`; con `exploratory` qualunque ingresso è
+      ammesso, e `stats.json` registra il kind di ciascuno.
+  - **Ricostruzione dei `fit_key`:** una funzione pura estratta da `fit.plan_fits` (macchine e `data_version` come
+    argomenti), usata sia da `plan_fits` sia dallo stadio di statistica; snapshot F1 e golden invariati. Un eventuale
+    helper in `src/data/manifest.py` per risolvere le macchine dallo spec senza leggere i dati è un'aggiunta.
 
 ### D-53 · File tracciati da git (`.pyc`, dataset) — APPROVATA · 2026-11-10
 - **Decisione:** i `.pyc` non sono tracciati: i 35 file già tracciati sono tolti dal tracciamento con

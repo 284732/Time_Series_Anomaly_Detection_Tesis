@@ -6,6 +6,11 @@ File ``configs/stats/<nome>.yaml``, validato con le regole di F2: chiave sconosc
   * ``stats``: ``name``, ``kind`` (``exploratory`` | ``official``), ``machine_role`` (``dev`` | ``eval``, P13);
   * ``inputs``: esperimenti attesi con ``config_sha256`` e ``plan_sha256`` (P6; i controlli sugli ingressi reali sono
     del passo 2);
+  * ``primary_experiment``: uno degli esperimenti di ``inputs``. RQ2, RQ1a, RQ4 e le descrittive leggono solo da
+    lì: ``config_id`` identifica solo nome e ``params`` del modello, mentre il fit dipende anche da split, preprocessing,
+    finestre, training, ``residual_aggs``, device e dati; un esperimento li fissa tutti. Qui si fissa il
+    preprocessing canonico (D-40), congelato in F10. Gli altri esperimenti di ``inputs`` sono i livelli di preproc dei
+    blocchi di RQ1b (nomi di esperimento); un esperimento senza nessuno dei due ruoli è rifiutato;
   * ``exclusions``: forma operativa di D-44 (P8): un'azione per ogni caso, compreso ogni motivo di
     ``table_schema.NAN_REASONS``;
   * ``descriptive``: metriche descrittive per modello;
@@ -46,8 +51,8 @@ from src.utils.schema import ConfigError
 # ``stats_id``, D-73 P6).
 STATS_CODE_VERSION = 1
 
-TOP_KEYS = ("stats", "inputs", "exclusions", "descriptive", "descriptive_baselines", "rq2", "rq1a", "rq1b", "rq3",
-            "rq4")
+TOP_KEYS = ("stats", "inputs", "primary_experiment", "exclusions", "descriptive", "descriptive_baselines", "rq2",
+            "rq1a", "rq1b", "rq3", "rq4")
 RQ_KEYS = ("rq2", "rq1a", "rq1b", "rq3", "rq4")
 KINDS = _schema.EXPERIMENT_KINDS
 OFFICIAL = "official"
@@ -113,6 +118,10 @@ class StatsPlan:
     @property
     def machine_role(self) -> str:
         return self.data["stats"]["machine_role"]
+
+    @property
+    def primary_experiment(self) -> str:
+        return self.data["primary_experiment"]
 
     @property
     def m(self) -> int:
@@ -372,6 +381,29 @@ def _check_baselines(data: Mapping[str, Any]) -> None:
         check(data["rq4"]["models"], "rq4.models")
 
 
+def _check_experiments(data: Mapping[str, Any]) -> None:
+    """Esperimento primario e livelli di preproc di RQ1b: esperimenti dichiarati in ``inputs``; ogni blocco di RQ1b
+    contiene l'esperimento primario tra i suoi livelli di preproc."""
+    declared = [e["experiment"] for e in data["inputs"]]
+    primary = data["primary_experiment"]
+    if primary not in declared:
+        raise ConfigError(f"primary_experiment: {primary!r} non è tra gli esperimenti di inputs {declared}")
+    blocks = [] if data["rq1b"] is None else data["rq1b"]["blocks"]
+    used = {primary} | {x for blk in blocks for x in blk["factors"]["preproc"]}
+    for blk in blocks:
+        where = f"rq1b.blocks[{blk['name']}].factors.preproc"
+        unknown = [x for x in blk["factors"]["preproc"] if x not in declared]
+        if unknown:
+            raise ConfigError(f"{where}: {unknown} non sono esperimenti di inputs {declared}")
+        if primary not in blk["factors"]["preproc"]:
+            raise ConfigError(f"{where}: manca l'esperimento primario (primary_experiment {primary!r}, preprocessing "
+                              "canonico, D-40)")
+    unused = sorted(set(declared) - used)
+    if unused:
+        raise ConfigError(f"inputs: {unused} non hanno nessun ruolo (né primary_experiment né livello di preproc di "
+                          "un blocco di RQ1b): nessun ingresso senza ruolo (D-73 P6)")
+
+
 def _rq2(v: Any, kind: str) -> Dict[str, Any]:
     d = _keys(v, "rq2", ("metric", "reference", "family", "delta", "alpha", "ci", "sign_flip"))
     metric = _choice(ts.FREE_METRICS)(d["metric"], "rq2.metric")
@@ -459,7 +491,7 @@ def _rq1a_block(v: Any, path: str) -> Dict[str, Any]:
 _RQ1B_LEVELS = {
     "scoring": _scoring_level,
     "threshold": _threshold((STATIC,) + ROLLING, "RQ1b: politiche di design, l'oracolo è di misura"),
-    "preproc": _hex12,
+    "preproc": _schema._path_name,     # nome di un esperimento di inputs (D-73 P5, passo 1-ter)
 }
 
 
@@ -531,6 +563,7 @@ def validate_stats_plan(raw: Any) -> StatsPlan:
     data = {
         "stats": stats,
         "inputs": _inputs(d["inputs"]),
+        "primary_experiment": _schema._path_name(d["primary_experiment"], "primary_experiment"),
         "exclusions": _exclusions(d["exclusions"]),
         "descriptive": _descriptive(d["descriptive"]),
         "descriptive_baselines": _descriptive_baselines(d["descriptive_baselines"]),
@@ -540,6 +573,7 @@ def validate_stats_plan(raw: Any) -> StatsPlan:
         "rq3": None if d["rq3"] is None else _rq3(d["rq3"], kind),
         "rq4": None if d["rq4"] is None else _rq4(d["rq4"]),
     }
+    _check_experiments(data)
     _check_baselines(data)
     return StatsPlan(data)
 
