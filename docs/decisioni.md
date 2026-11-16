@@ -1537,6 +1537,24 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
   - **Ricostruzione dei `fit_key`:** una funzione pura estratta da `fit.plan_fits` (macchine e `data_version` come
     argomenti), usata sia da `plan_fits` sia dallo stadio di statistica; snapshot F1 e golden invariati. Un eventuale
     helper in `src/data/manifest.py` per risolvere le macchine dallo spec senza leggere i dati è un'aggiunta.
+- **Nota di rimando (2026-11-16, passo 2, il testo sopra resta invariato; utente, su raccomandazione di Claude
+  Project):**
+  - **P6, ingresso senza fit:** un'analisi senza fit nei `components` (al più la baseline random) → codice 2: non
+    contribuisce a nessuna RQ e il dataset non è verificabile.
+  - **Fatto verificato (`fit.plan_tasks`, `fit.set_seed_value`, `analyze._tables`; tabelle di un'analisi sintetica):**
+    - un modello deterministico ha **un solo fit per macchina**, con il seed `experiment.seeds[0]`. Il `fit_key` non
+      contiene il seed, quindi cambiare `experiment.seeds` non cambia i suoi `fit_key`; cambia solo le chiavi della
+      baseline random;
+    - nelle tabelle `free` e `thr` ha **una sola riga per cella**, con `seed = seeds[0]` e `deterministic = true`
+      (colonna già presente). Non ci sono repliche per seed da deduplicare;
+    - la baseline random ha una riga per seed, con valori diversi tra i seed: sono repliche vere. La replica identica
+      bit a bit di V12 riguarda le copie tra livelli di `ts_agg`, non i seed.
+  - **Conseguenze per i passi 3 e 4:**
+    - per i modelli deterministici `n_seeds = 1`. La deviazione standard sui seed è **non applicabile**: si dichiara
+      con un valore esplicito nelle uscite, distinto da un NaN da filtrare o da un'anomalia. La forma (colonna o
+      valore) si fissa al passo 4;
+    - per un modello deterministico `exclude_fit` toglie l'unico fit, quindi equivale a escludere la macchina per quel
+      modello. La sensibilità di D-44 (P8, analisi con `exclude_machine_pair`) lo dichiara.
 
 ### D-53 · File tracciati da git (`.pyc`, dataset) — APPROVATA · 2026-11-10
 - **Decisione:** i `.pyc` non sono tracciati: i 35 file già tracciati sono tolti dal tracciamento con

@@ -192,9 +192,16 @@ class FitReport:
 
 def plan_fits(cfg: ExperimentConfig, manifest) -> List[FitTask]:
     """Compiti del run, in ordine macchina → modello → seed. Un modello deterministico: un solo compito per macchina."""
+    machines = manifest.resolve(cfg.data.machines)
+    return plan_tasks(cfg, machines, {m: manifest.data_version(m) for m in machines})
+
+
+def plan_tasks(cfg: ExperimentConfig, machines: Sequence[str], data_versions: Mapping[str, str]) -> List[FitTask]:
+    """Compiti per macchine e ``data_version`` dati (funzione pura, nessuna lettura dei dati): la usano ``plan_fits``
+    e lo stadio di statistica, che ricostruisce i ``fit_key`` di un'analisi dalla config (D-73 P6)."""
     tasks: List[FitTask] = []
-    for machine in manifest.resolve(cfg.data.machines):
-        dv = manifest.data_version(machine)
+    for machine in machines:
+        dv = data_versions[machine]
         for name in cfg.run_models:
             det = cfg.models[name].deterministic
             for seed in (cfg.seeds[:1] if det else cfg.seeds):
