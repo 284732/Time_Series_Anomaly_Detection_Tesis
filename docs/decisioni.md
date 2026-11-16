@@ -1555,6 +1555,50 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
       valore) si fissa al passo 4;
     - per un modello deterministico `exclude_fit` toglie l'unico fit, quindi equivale a escludere la macchina per quel
       modello. La sensibilità di D-44 (P8, analisi con `exclude_machine_pair`) lo dichiara.
+- **Nota di rimando (2026-11-16, passo 3, P8 e P7, il testo sopra resta invariato; utente, su raccomandazione di Claude
+  Project):**
+  - **Unità di inferenza** (portata di `exclude_machine_pair`):
+    - `rq2`: il confronto intero;
+    - `rq1a/<blocco>`: il blocco;
+    - `rq1b/<blocco>`: il blocco, su tutti gli esperimenti dei suoi livelli di preproc;
+    - `rq4`: il blocco intero, con lo stesso insieme di macchine per tutte le metriche;
+    - `descriptive/<i>`: ogni voce delle descrittive è la sua unità, e riporta il proprio numero di macchine.
+  - **Celle non usate da nessuna unità né descrittiva:** le regole di `nan_rows` non si applicano e non generano
+    esclusioni. I loro NaN si contano in `stats.json` per motivo e modello, come informazione («NaN in celle non
+    usate»), non come esclusioni. I casi a livello di fit (`failed_fit`, `nonfinite_*`) si applicano sempre,
+    indipendentemente dalle celle.
+  - **Principio dei seed:** dentro ogni unità l'insieme dei seed di un (model, config_id, machine) è lo stesso in
+    tutte le celle (verificato; altrimenti errore). Quindi:
+    - `exclude_fit` toglie il fit da ogni cella in cui compare (globale anche per le descrittive);
+    - nelle unità che attraversano più esperimenti (blocchi di RQ1b con il fattore preproc) toglie lo stesso
+      (model, config_id, machine, seed) da tutti gli esperimenti del blocco;
+    - le unità che leggono solo `primary_experiment` non sono toccate dai fit esclusi negli altri esperimenti.
+  - **Baseline random (P7):** dopo la deduplicazione tra `ts_agg` (solo scenario `primary`, verifica bit a bit) si tiene
+    la riga con `ts_agg = last`, e il numero di repliche rimosse va nel registro. La random è nelle unità delle
+    descrittive e, come riferimento, nei blocchi di RQ1a; non è un livello del fattore modello.
+  - **Propagazione a senso unico (P7/P8, utente):**
+    - un'esclusione causata da un modello confrontato o di riferimento (riferimento di RQ2, `delta_reference`) toglie
+      la macchina dall'unità per tutti, random e baseline descrittive comprese;
+    - un caso della baseline random o di una baseline descrittiva (NaN di una riga, oppure caso a livello di fit) non
+      toglie mai macchine né fit ai modelli dell'unità. Toglie solo le righe di quella baseline per quella macchina:
+      dalle unità della cella per un NaN di riga, da tutte le sue unità per un caso a livello di fit. Si registra con
+      la sua regola e il suo motivo e con azione effettiva `reference_only`, qualunque sia l'azione dichiarata salvo
+      `error`, che ferma comunque;
+    - vale anche per la baseline random nei blocchi di RQ1a.
+  - **Etichetta `diagnostic` verificata, non presunta:** una riga deve avere `diagnostic` vero esattamente quando ha
+    oracolo, PA vero o una metrica diagnostica (`best_f1_oracle`); altrimenti errore. Le unità di RQ2, RQ1b, RQ4 e
+    delle descrittive escludono il PA solo attraverso questa etichetta, che quindi si controlla.
+  - **Errori aggiuntivi:**
+    - un NaN con `nan_reason` nullo su una metrica diversa da `detection_delay`, in una cella usata (NaN senza
+      motivo);
+    - un'unità senza macchine dopo le esclusioni;
+    - `n_events` diversi tra le righe dello scenario `primary` della stessa macchina.
+  - **Ordine dentro il passo 2 di P8:** `nonfinite_loss`, poi `nonfinite_cal`, poi `nonfinite_test`; vale il primo
+    caso trovato.
+  - **Casi `error`:** si segnalano tutti, anche quando un'altra esclusione dello stesso passo toglierebbe la stessa
+    riga.
+  - **Conteggi:** il filtro restituisce il numero di macchine per unità e per gruppo, prima e dopo le esclusioni, da
+    registrare in `stats.json`. La soglia minima per gruppo del bootstrap stratificato si fissa al passo 6.
 
 ### D-53 · File tracciati da git (`.pyc`, dataset) — APPROVATA · 2026-11-10
 - **Decisione:** i `.pyc` non sono tracciati: i 35 file già tracciati sono tolti dal tracciamento con
