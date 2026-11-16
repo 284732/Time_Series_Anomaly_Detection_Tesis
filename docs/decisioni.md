@@ -1186,6 +1186,40 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
     predefinito), con `stats_plan_sha256` proprio. δ, α, B, seed del bootstrap, famiglia confermativa, riferimento di
     RQ2 (D-37), regole di D-44, blocchi e livelli (D-42) stanno qui, non nel piano di analisi (il cui hash entra in
     `analysis_id`). Ogni chiave di RQ è obbligatoria, `null` per non calcolarla. F10 congela entrambi i piani.
+    - **Revisione (2026-11-16, passo 1, schema approvato dall'utente):**
+      - sezioni di primo livello: `stats` (`name`, `kind`, `machine_role`), `inputs`, `exclusions`, `descriptive`,
+        `rq2`, `rq1a`, `rq1b`, `rq3`, `rq4`; un piano con tutte le RQ `null` è rifiutato; `rq3` richiede `rq2`;
+      - **fissati per definizione, senza chiave nel piano:** RQ2 scenario `primary` e `ts_agg = last`; RQ1b e RQ4
+        scenario `primary`, `ts_agg = last`, `pa` falso (il PA è diagnostico, D-34). Un loro cambiamento è un cambiamento
+        del codice (`STATS_CODE_VERSION`);
+      - `eta2_principal` (`total` | `without_machine`) in ciascuna sezione che decompone (`rq1a`, `rq1b`, `rq4`);
+        ogni blocco dichiara `tau_reference` (combinazione canonica dei livelli, P11) e `delta_reference` (modello
+        di riferimento per le inversioni di segno); in `rq1b` un blocco con un solo modello ha entrambi `null`
+        (esplicito), in `rq1a` servono almeno 2 modelli; almeno un fattore (modello compreso) con almeno 2 livelli;
+      - i fattori dichiarabili sono tutti obbligatori per la tabella del blocco (un fattore con un solo livello è una
+        condizione fissata, mai un default implicito): RQ1a `free` → `ts_agg`, `scenario`; RQ1a `thr` → `ts_agg`,
+        `scenario`, `threshold` (solo `static_pct` | `oracle`), `pa`; RQ1b `free` → `scoring`, `preproc`; RQ1b `thr`
+        → `scoring`, `threshold` (`static_pct` | `roll_quantile` | `roll_robust_z`), `preproc`; senza `scoring` per i
+        blocchi di modelli `native` (D-25), che non si mescolano con quelli non `native`. Il validatore sa quali modelli
+        sono `native` dall'attributo di classe `native_only` (`schema.model_class`); il passo 2 lo riscontra con
+        `native_models` di `analysis.json`;
+      - V10: in un blocco `thr` con oracolo o con `pa` vero tra i livelli la metrica deve essere `f1` (le altre
+        metriche non hanno quelle righe);
+      - **`detection_delay` non è mai una risposta decomposta** (RQ1a, RQ1b, RQ4): è NaN per definizione (C4) e
+        decomporlo scarterebbe celle in silenzio. Si riporta solo in forma descrittiva (`descriptive` e la parte
+        descrittiva di RQ4, `rq4.descriptive_metrics`), sempre insieme a `event_recall` (regola del validatore) e al
+        numero di seed con almeno un evento rilevato;
+      - con `kind: official`: `rq2.metric` = `ap_norm` (D-07) e `n_boot` ≥ 10.000 (D-36); con `exploratory` la
+        metrica di RQ2 è libera tra quelle senza soglia non diagnostiche e `n_boot` è libero;
+      - metriche diagnostiche (`best_f1_oracle`, righe con oracolo o `pa` vero) escluse da `descriptive`, RQ2, RQ1b e
+        RQ4 (P13); in RQ1a l'oracolo e il PA sono livelli di fattori di misura;
+      - **canonicalizzazione come `plan_sha256` di F6:** numeri reali normalizzati a float (99 e 99.0 sono lo stesso
+        livello, per tipo e per hash), interi senza conversione (un float al posto di un intero è un errore), bool mai
+        accettati come numeri; duplicati controllati sui valori normalizzati **prima** dell'ordinamento; liste senza
+        ordine significativo ordinate; `stats_plan_sha256` = hash canonico della forma normalizzata.
+        `STATS_CODE_VERSION` non entra in `stats_plan_sha256` (entra in `stats_id`, P6): un aggiornamento del codice
+        non cambia l'hash di un piano congelato;
+      - tutti i motivi di `NAN_REASONS` sono chiavi obbligatorie di `exclusions.nan_rows`.
   - **P6 — ingressi e uscite:**
     - gli `analysis_id` si passano da CLI; il piano statistico dichiara gli **esperimenti attesi** per nome e, per
       ciascuno, il `plan_sha256` dell'analisi atteso. Codice 2 per: ingresso di un esperimento non dichiarato;
@@ -1198,6 +1232,25 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
       quella config: nome e kind uguali a quelli di `analysis.json` e insieme dei `fit_key` di `analysis.json`
       (`components`) uguale a quello generato dalla config. Test al passo 2 (decisione dell'utente, 2026-11-16, vedi
       la nota su D-09);
+    - **Revisione (2026-11-16, passo 1, approvata dall'utente):**
+      - *Copertura di `fit_key` (fatto verificato in `config.fit_payload` e `_base_payload`):* entrano
+        `FIT_CODE_VERSION`, `data_version` della macchina (hash di train e test, D-59), `dataset`, `machine`, `split`
+        (modo e frazioni o `val_ratio`), `preprocessing` (`scaler_type`, `min_range`, `clip`), `windows`
+        (`window_size`, `step`, `train_step`), modello (nome e `params`), `residual_aggs` (D-33), `device`,
+        `training` (tutti e sei i campi) per i modelli addestrati, `seed` per i modelli non deterministici (la PCA con
+        `random_state: from_seed` è non deterministica). Campi della config che non entrano, e perché non influenzano
+        il fit: `experiment.name`, `experiment.kind`, `experiment.notes` (etichette; `kind: official` è solo un
+        rifiuto); `experiment.seeds` come lista (entra il singolo seed dei modelli non deterministici; per i
+        deterministici il seed non cambia il fit per costruzione, D-57, combinazioni incoerenti rifiutate dal
+        validatore); `paths.store_root` (posizione); `data.data_dir` (posizione: il contenuto è identificato da
+        `data_version`); `data.machines` (insieme delle macchine: ogni fit ha la sua `machine`); `training` per i
+        modelli non addestrati (non lo usano); `models` fuori da `run_models` e `run_models` (selezione di cosa
+        eseguire, non di come). Nessun campo che influenza il fit ne resta fuori. Fuori dalla config, quindi fuori da
+        `fit_key`: numero di thread di torch e versioni delle librerie (provenance, D-17); per l'analisi li coprono
+        gli sha256 dei residui in `analysis_id` (D-72 B12);
+      - *riscontro con il registro:* se `registry.csv` contiene la riga del run dell'analisi (`run_id` di
+        `analysis.json`) con un `config_sha256` diverso da quello calcolato → codice 2; se la riga manca → solo un
+        avviso, registrato in `stats.json`. Il registro resta un riscontro, non una prova (V13). Test al passo 2;
     - si leggono solo le analisi complete (cartella pubblicata con `analysis.json`, D-72 V13); controlli bloccanti tra
       ingressi: stesso dataset, stesso hash del manifest, stessa `labels_version` per macchina, stesso ruolo delle
       macchine;
@@ -1228,6 +1281,17 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
       calcolata e riportata accanto, altrimenti il piano è rifiutato;
     - `detection_delay` NaN per definizione (D-72 C4) non è un'esclusione: per macchina si riportano la media sui seed
       in cui è definito, il numero di seed con almeno un evento rilevato ed `event_recall`.
+    - **Revisione (2026-11-16, passo 1, approvata dall'utente) — portata delle esclusioni**, per le righe
+      (`nan_rows`) e per coerenza per i casi a livello di fit:
+      - `exclude_fit` esclude il fit da **tutta** l'inferenza, in ogni cella, mai da una sola cella: medie su seed
+        diversi tra celle confonderebbero il fattore con il seed;
+      - `exclude_machine_pair` esclude la macchina dall'**intera unità di inferenza** che contiene la cella: l'intero
+        blocco in RQ1a, RQ1b e RQ4, l'intero confronto in RQ2 (per tutti i modelli confrontati).
+      Azioni ammesse: `failed_fit`, `nonfinite_loss`, `nonfinite_cal` e ogni motivo di `nan_rows` → `error` |
+      `exclude_fit` | `exclude_machine_pair`; `nonfinite_test` → anche `keep`; `min_events` (`n` ≥ 1, scenario
+      `primary`) → `error` | `exclude_machine_pair`. `exclude_fit_sensitivity` (bool) è vero se e solo se compare
+      almeno un `exclude_fit`. Test al passo 3: una riga NaN in una sola cella fa sparire il fit da tutte le celle,
+      oppure la macchina da tutto il blocco.
   - **P9 — RQ3:** Spearman con IC bootstrap e interfaccia dei descrittori; in F7 solo i descrittori ricavabili dalle
     tabelle (`prevalence`, `n_events` dello scenario `primary`). I descrittori dai dati attendono D-43.
   - **P10 — RQ4:** decomposizione delle metriche con soglia in modello e politica (livello, `n_past`) a
