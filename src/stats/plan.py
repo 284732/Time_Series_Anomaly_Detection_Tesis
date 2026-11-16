@@ -9,6 +9,10 @@ File ``configs/stats/<nome>.yaml``, validato con le regole di F2: chiave sconosc
   * ``exclusions``: forma operativa di D-44 (P8): un'azione per ogni caso, compreso ogni motivo di
     ``table_schema.NAN_REASONS``;
   * ``descriptive``: metriche descrittive per modello;
+  * ``descriptive_baselines``: modelli ``{model, config_id}`` con ruolo di baseline descrittiva (AE non addestrati,
+    D-69; P7 esteso), lista anche vuota ma sempre dichiarata; mai confrontati (famiglia o riferimento di RQ2, modelli
+    o ``delta_reference`` dei blocchi di RQ1a e RQ1b, modelli di RQ4). L'identità è la coppia ``(model, config_id)``;
+    il riscontro con lo schema dei modelli si aggiunge quando D-69 lo fissa;
   * ``rq2``, ``rq1a``, ``rq1b``, ``rq3``, ``rq4``: ognuna obbligatoria, ``null`` per non calcolarla; almeno una non
     nulla; ``rq3`` richiede ``rq2``.
 
@@ -42,7 +46,8 @@ from src.utils.schema import ConfigError
 # ``stats_id``, D-73 P6).
 STATS_CODE_VERSION = 1
 
-TOP_KEYS = ("stats", "inputs", "exclusions", "descriptive", "rq2", "rq1a", "rq1b", "rq3", "rq4")
+TOP_KEYS = ("stats", "inputs", "exclusions", "descriptive", "descriptive_baselines", "rq2", "rq1a", "rq1b", "rq3",
+            "rq4")
 RQ_KEYS = ("rq2", "rq1a", "rq1b", "rq3", "rq4")
 KINDS = _schema.EXPERIMENT_KINDS
 OFFICIAL = "official"
@@ -57,6 +62,9 @@ ETA2_VERSIONS = ("total", "without_machine")                # D-25
 TABLE_DESCRIPTORS = ("prevalence", "n_events")              # P9: solo descrittori ricavabili dalle tabelle
 OFFICIAL_MIN_N_BOOT = 10_000                                # D-36, solo kind official
 OFFICIAL_RQ2_METRIC = "ap_norm"                             # D-07, solo kind official
+
+# Colonna ``model_role`` delle uscite (D-73 P13), distinta da ``inference`` e dalle righe ``diagnostic``.
+MODEL_ROLES = ("compared", "reference", "descriptive_baseline", "random_baseline")
 
 PRIMARY, LAST = "primary", "last"
 FIXED = {
@@ -111,6 +119,12 @@ class StatsPlan:
         """Numero di confronti della famiglia confermativa (D-36); 0 senza RQ2."""
         rq2 = self.data["rq2"]
         return 0 if rq2 is None else len(rq2["family"])
+
+    @property
+    def ci_level(self) -> Optional[float]:
+        """Livello degli IC di RQ2: 1 − α/m (Bonferroni, D-36); ``None`` senza RQ2."""
+        rq2 = self.data["rq2"]
+        return None if rq2 is None else 1 - rq2["alpha"] / self.m
 
 
 # ---------------------------------------------------------------- validatori elementari
@@ -324,6 +338,40 @@ def _descriptive(v: Any) -> List[Dict[str, Any]]:
     return _unique_sorted(out, "descriptive")
 
 
+def _descriptive_baselines(v: Any) -> List[Dict[str, str]]:
+    return _levels(v, "descriptive_baselines", _model_ref, nonempty=False)
+
+
+def _pair(m: Mapping[str, Any]) -> Tuple[str, str]:
+    return m["model"], m["config_id"]
+
+
+def _check_baselines(data: Mapping[str, Any]) -> None:
+    """Una baseline descrittiva (coppia model, config_id) non è mai un modello confrontato (D-69, D-73 P7 e P13)."""
+    base = {_pair(b) for b in data["descriptive_baselines"]}
+    if not base:
+        return
+
+    def check(models: Sequence[Mapping[str, Any]], where: str) -> None:
+        hit = sorted({_pair(m) for m in models} & base)
+        if hit:
+            raise ConfigError(f"{where}: {hit} è dichiarato baseline descrittiva (descriptive_baselines; D-69, D-73 "
+                              "P7): non si confronta")
+    rq2 = data["rq2"]
+    if rq2 is not None:
+        check([rq2["reference"]], "rq2.reference")
+        check(rq2["family"], "rq2.family")
+    for sec in ("rq1a", "rq1b"):
+        if data[sec] is not None:
+            for blk in data[sec]["blocks"]:
+                where = f"{sec}.blocks[{blk['name']}]"
+                if blk["delta_reference"] is not None:
+                    check([blk["delta_reference"]], f"{where}.delta_reference")
+                check(blk["models"], f"{where}.models")
+    if data["rq4"] is not None:
+        check(data["rq4"]["models"], "rq4.models")
+
+
 def _rq2(v: Any, kind: str) -> Dict[str, Any]:
     d = _keys(v, "rq2", ("metric", "reference", "family", "delta", "alpha", "ci", "sign_flip"))
     metric = _choice(ts.FREE_METRICS)(d["metric"], "rq2.metric")
@@ -485,12 +533,14 @@ def validate_stats_plan(raw: Any) -> StatsPlan:
         "inputs": _inputs(d["inputs"]),
         "exclusions": _exclusions(d["exclusions"]),
         "descriptive": _descriptive(d["descriptive"]),
+        "descriptive_baselines": _descriptive_baselines(d["descriptive_baselines"]),
         "rq2": None if d["rq2"] is None else _rq2(d["rq2"], kind),
         "rq1a": None if d["rq1a"] is None else _rq1(d["rq1a"], "rq1a", _rq1a_block),
         "rq1b": None if d["rq1b"] is None else _rq1(d["rq1b"], "rq1b", _rq1b_block),
         "rq3": None if d["rq3"] is None else _rq3(d["rq3"], kind),
         "rq4": None if d["rq4"] is None else _rq4(d["rq4"]),
     }
+    _check_baselines(data)
     return StatsPlan(data)
 
 

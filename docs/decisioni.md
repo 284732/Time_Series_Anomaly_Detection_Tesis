@@ -1432,6 +1432,31 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
   - **P13 e D-45:** senza secondo dataset, le uscite di RQ2 con `inference = confirmatory` si descrivono nella tesi come
     «confermative rispetto al protocollo congelato, su dati già osservati con altri protocolli»; il report lo riporta
     accanto alle decisioni di RQ2.
+- **Nota di rimando (2026-11-16, passo 1-bis, il testo sopra resta invariato; utente, su raccomandazione di Claude
+  Project):**
+  - **P5, nuova sezione `descriptive_baselines`:** lista obbligatoria (anche vuota) di `{model, config_id}`. Il ruolo
+    di baseline descrittiva (AE non addestrati, D-69) si dichiara nel piano, perché lo schema dei modelli di D-69 non
+    esiste ancora; il riscontro con le config dei modelli si aggiunge quando D-69 lo fissa. L'identità è la coppia
+    `(model, config_id)`: un Conv-AE addestrato e uno non addestrato hanno lo stesso `model` e `config_id` diversi.
+    Rifiutati: duplicati; `random_baseline` (ha il suo ruolo, P7); una baseline nella famiglia o come riferimento di
+    RQ2, tra i modelli o come `delta_reference` di un blocco di RQ1a o RQ1b, tra i modelli di RQ4. `tau_reference`
+    contiene solo livelli di fattori, mai modelli: il rifiuto lì è vuoto per costruzione;
+  - **P5, livello degli IC:** il piano espone `m` = numero dei confronti della famiglia e il livello 1 − α/m
+    (Bonferroni, D-36);
+  - **P13, colonna `model_role`:** ogni riga delle uscite ha `model_role` ∈ {`compared`, `reference`,
+    `descriptive_baseline`, `random_baseline`}, distinta da `inference` e dalle righe `diagnostic`.
+  - **P13, assegnazione di `model_role` (utente, 2026-11-16):** per RQ e per blocco, non una volta per il piano:
+    - RQ2: il riferimento è `reference`, i membri della famiglia sono `compared`;
+    - blocchi di RQ1a, RQ1b e RQ4: il modello `delta_reference` è `reference`, gli altri sono `compared`;
+    - le baseline descrittive (`descriptive_baseline`) e il random (`random_baseline`) tengono il loro ruolo ovunque;
+    - il ruolo si scrive riga per riga, insieme alla RQ e al blocco (passi 4 e 7).
+  - **P6, modelli non dichiarati (utente, 2026-11-16):** ogni modello `(model, config_id)` presente negli ingressi
+    compare nel piano almeno una volta (famiglia o riferimento di RQ2, modelli di un blocco, modelli di RQ4,
+    `descriptive_baselines`); altrimenti codice 2 con l'elenco dei modelli non dichiarati. Motivo: ignorarli in
+    silenzio sarebbe un'esclusione implicita (D-44). Un modello che non serve a nessuna inferenza si dichiara in
+    `descriptive_baselines`. Controllo e test nel passo 2.
+  - **Modelli `native` come baseline descrittive (utente, 2026-11-16):** ammessi (le baseline semplici sono il caso
+    d'uso); nessun rifiuto.
 
 ### D-53 · File tracciati da git (`.pyc`, dataset) — APPROVATA · 2026-11-10
 - **Decisione:** i `.pyc` non sono tracciati: i 35 file già tracciati sono tolti dal tracciamento con

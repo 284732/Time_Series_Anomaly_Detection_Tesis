@@ -18,6 +18,7 @@ from src.utils.schema import ConfigError
 
 SHA_A, SHA_B, SHA_C, SHA_D = "a" * 64, "b" * 64, "c" * 64, "d" * 64
 CID_PCA, CID_CONV, CID_LSTM, CID_RZ = "0123456789ab", "1123456789ab", "2123456789ab", "3123456789ab"
+CID_UNTR = "4123456789ab"          # AE non addestrato (D-69): stesso nome di modello, config_id diverso
 PRE_1, PRE_2 = "aaaaaaaaaaaa", "bbbbbbbbbbbb"
 
 
@@ -41,6 +42,14 @@ def _rz():
             "normalizer": "none"}
 
 
+def _untr(**scoring):
+    """Baseline descrittiva (D-69) nella forma con scoring, per i tentativi di usarla come modello confrontato."""
+    d = {"model": "conv_autoencoder", "config_id": CID_UNTR, "window_time_agg": "last", "sensor_agg": "top5",
+         "normalizer": "std"}
+    d.update(scoring)
+    return d
+
+
 def _plan():
     """Piano valido con tutte le sezioni (esplorativo)."""
     return {
@@ -56,6 +65,7 @@ def _plan():
             "min_events": {"n": 2, "action": "exclude_machine_pair"},
             "exclude_fit_sensitivity": True,
         },
+        "descriptive_baselines": [{"model": "conv_autoencoder", "config_id": CID_UNTR}],
         "descriptive": [
             {"table": "free", "metric": "ap_norm", "scenario": "primary", "ts_agg": "last", "threshold": None},
             {"table": "thr", "metric": "event_recall", "scenario": "primary", "ts_agg": "last",
@@ -297,6 +307,8 @@ def _mutations():
         {("rq3", "ci", "seed"): 3},
         {("rq4", "eta2_principal"): "total"},
         {("rq4", "offset_indicator"): False},
+        {("descriptive_baselines", 0, "model"): "lstm_autoencoder"},
+        {("descriptive_baselines", 0, "config_id"): "5123456789ab"},
     ]
     for r in ts.NAN_REASONS:
         muts.append({("exclusions", "nan_rows", r): "error"})
@@ -428,6 +440,10 @@ def _structural_mutations():
         n = p["rq1b"]["blocks"][1]
         n.update(table="free", metric="ap_norm")
         n["factors"] = {"preproc": [PRE_1, PRE_2]}
+
+    @m
+    def baselines_empty(p):
+        p["descriptive_baselines"] = []
 
     @m
     def rq3_rq4(p):
@@ -1106,3 +1122,120 @@ def test_names_are_store_path_names(name):
     q = _plan()
     q["inputs"][0]["experiment"] = name
     _err(q)
+
+
+# ---------------------------------------------------------------- passo 1-bis: famiglia, baseline descrittive, ruoli
+def test_family_of_three_gives_m_3_and_bonferroni_level():
+    p = _plan()
+    p["rq2"]["family"] = [_conv(), _lstm(), _m("input_norm", "6" * 12, "last", "mean", "std")]  # 3 confronti (D-71)
+    plan = sp.validate_stats_plan(p)
+    assert plan.m == 3
+    assert plan.ci_level == 1 - 0.05 / 3          # Bonferroni al 1 − α/m (D-36)
+    assert sp.validate_stats_plan(_plan()).ci_level == 1 - 0.05 / 2
+
+
+def test_without_rq2_m_is_zero_and_no_ci_level():
+    p = _plan()
+    p["rq2"] = p["rq3"] = None
+    plan = sp.validate_stats_plan(p)
+    assert plan.m == 0 and plan.ci_level is None
+
+
+def test_descriptive_baselines_are_mandatory_but_may_be_empty():
+    p = _plan()
+    p["descriptive_baselines"] = []
+    assert sp.validate_stats_plan(p).to_dict()["descriptive_baselines"] == []
+    p = _plan()
+    del p["descriptive_baselines"]
+    _err(p, "descriptive_baselines")
+    p = _plan()
+    p["descriptive_baselines"] = None
+    _err(p, "descriptive_baselines")
+
+
+def test_descriptive_baselines_are_normalized_and_sorted():
+    p = _plan()
+    p["descriptive_baselines"] = [{"model": "lstm_autoencoder", "config_id": "5123456789ab"},
+                                  {"model": "conv_autoencoder", "config_id": CID_UNTR}]
+    out = sp.validate_stats_plan(p).to_dict()["descriptive_baselines"]
+    assert out == [{"config_id": CID_UNTR, "model": "conv_autoencoder"},
+                   {"config_id": "5123456789ab", "model": "lstm_autoencoder"}]
+
+
+def test_duplicate_descriptive_baselines_are_rejected():
+    p = _plan()
+    p["descriptive_baselines"] = [{"model": "conv_autoencoder", "config_id": CID_UNTR},
+                                  {"model": "lstm_autoencoder", "config_id": "5123456789ab"},
+                                  {"model": "conv_autoencoder", "config_id": CID_UNTR}]
+    _err(p, "duplicat")
+
+
+def test_random_baseline_is_not_a_descriptive_baseline():
+    p = _plan()
+    p["descriptive_baselines"] = [{"model": "random_baseline", "config_id": CID_UNTR}]
+    _err(p, "D-73 P7")
+
+
+def test_descriptive_baseline_is_never_in_the_confirmatory_family():
+    p = _plan()
+    p["rq2"]["family"].append(_untr())
+    _err(p, r"rq2\.family.*baseline descrittiva")
+
+
+def test_descriptive_baseline_is_never_the_rq2_reference():
+    p = _plan()
+    p["rq2"]["reference"] = _untr()
+    _err(p, r"rq2\.reference.*baseline descrittiva")
+
+
+def test_baseline_identity_is_model_and_config_id_whatever_the_scoring():
+    p = _plan()
+    p["rq2"]["family"].append(_untr(window_time_agg="mean", sensor_agg="max", normalizer="none"))
+    _err(p, "baseline descrittiva")
+
+
+def test_same_model_name_with_another_config_id_is_not_the_baseline():
+    plan = sp.validate_stats_plan(_plan())        # Conv-AE addestrato (CID_CONV) nella famiglia, non addestrato fuori
+    pairs = [(e["model"], e["config_id"]) for e in plan.to_dict()["rq2"]["family"]]
+    assert ("conv_autoencoder", CID_CONV) in pairs
+    assert plan.to_dict()["descriptive_baselines"] == [{"config_id": CID_UNTR, "model": "conv_autoencoder"}]
+
+
+@pytest.mark.parametrize("block", [0, 1])
+def test_descriptive_baseline_is_never_a_model_of_an_rq1a_block(block):
+    p = _plan()
+    p["rq1a"]["blocks"][block]["models"].append(_untr())
+    _err(p, r"rq1a\.blocks.*baseline descrittiva")
+
+
+def test_descriptive_baseline_is_never_a_model_of_an_rq1b_block():
+    p = _plan()
+    p["rq1b"]["blocks"][0]["models"].append({"model": "conv_autoencoder", "config_id": CID_UNTR})
+    _err(p, r"rq1b\.blocks.*baseline descrittiva")
+
+
+def test_descriptive_baseline_is_never_a_model_of_rq4():
+    p = _plan()
+    p["rq4"]["models"].append(_untr())
+    _err(p, r"rq4\.models.*baseline descrittiva")
+
+
+def test_descriptive_baseline_is_never_a_delta_reference():
+    p = _plan()                                   # nel blocco e come riferimento: rifiuto sul riferimento
+    b = p["rq1a"]["blocks"][1]
+    b["models"].append(_untr())
+    b["delta_reference"] = _untr()
+    _err(p, r"delta_reference.*baseline descrittiva")
+    p = _plan()                                   # solo come riferimento: non è un modello del blocco
+    p["rq1b"]["blocks"][0]["delta_reference"] = {"model": "conv_autoencoder", "config_id": CID_UNTR}
+    _err(p, "delta_reference: deve essere uno dei modelli del blocco")
+
+
+def test_baseline_rules_apply_only_to_declared_sections():
+    p = _plan()                                   # RQ null: nessun controllo su sezioni assenti
+    p["rq2"] = p["rq3"] = p["rq4"] = p["rq1b"] = None
+    sp.validate_stats_plan(p)
+
+
+def test_model_roles_of_the_output_schema():
+    assert sp.MODEL_ROLES == ("compared", "reference", "descriptive_baseline", "random_baseline")
