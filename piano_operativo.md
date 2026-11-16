@@ -78,7 +78,7 @@ D-53 approvata (2026-11-10): `.pyc` tolti dal tracciamento, `dataset/` resta tra
 17. Livelli dei fattori per RQ1a e RQ1b [D-42].
 18. Descrittori per RQ3 [D-43].
 19. Regole di esclusione [D-44].
-20. Secondo dataset [D-45]: conviene sceglierlo molto prima di F10.
+20. ~~Secondo dataset~~ — **risolta da D-45** (approvata 2026-11-16): nessun secondo dataset in questa tesi, per ora; limite dichiarato.
 
 **Dipendono dall'utente, senza una fase che le blocchi:** scadenze [D-54]. Macchine dei numeri preliminari [D-52] e file tracciati da git [D-53] sono approvate (2026-11-10).
 
@@ -653,7 +653,15 @@ D-53 approvata (2026-11-10): `.pyc` tolti dal tracciamento, `dataset/` resta tra
   - da modificare: `configs/base.yaml` (valori canonici);
   - nuovi: `configs/experiments/protocol_switch_dev.yaml`, test di leakage end-to-end;
   - la lista delle macchine di sviluppo è già in `configs/dev_machines.yaml` da F0 [D-51].
-- **Dipendenze:** M1; decisioni D-38, D-39, D-40.
+- **Dipendenze:** M1; decisioni D-38, D-39, D-40; implementazione, dopo M1 e prima di F8, degli AE non addestrati
+  (D-69, con i punti aperti della voce: schema, seed nel `fit_key`, BatchNorm, controllo di parità) e del modello di
+  previsione (D-71, punti aperti in D-74). *(rev. 2026-11-16: prima «M1; decisioni D-38, D-39, D-40».)*
+- **Nota (2026-11-16, da F7, decisioni D-69, D-71, D-74):** quando il modello di previsione esiste (un solo punto
+  previsto per finestra, solo `ts_agg = last`, D-74 punti a–c):
+  - `analyze` / `analysis_grid` non produce righe offline (`ts_agg` `mean`, `max`) per il modello di previsione;
+  - `src/stats/plan.py` lo rifiuta nei blocchi con `window_time_agg` o `ts_agg` a più di un livello;
+  - test per entrambi i punti.
+  Gli AE non addestrati si dichiarano baseline descrittive nel piano statistico (D-73).
 - **Test (su dati sintetici):**
   - perturbare es, cal o test lascia invariati scaler e PCA;
   - perturbare il test lascia invariati normalizer e soglie;

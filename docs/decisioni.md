@@ -98,6 +98,9 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
 ### D-10 · OC-SVM, Isolation Forest, VAE — APPROVATA · 2026-11-09
 - **Decisione:** restano nel registro dei modelli e nei test; sono esclusi dai run ufficiali e dal tuning.
 - **Documenti:** `CLAUDE.md` §6; proposta §11.
+- **Nota di rimando (2026-11-16, il testo sopra resta invariato):** il perimetro dei run ufficiali si estende con gli
+  AE non addestrati come baseline descrittiva (D-69, approvata) e con un modello di previsione (D-71 approvata, punti
+  aperti in D-74); un modello recente è un'eventuale estensione separata (D-75, aperta).
 
 ### D-11 · Normalizer robusto come variante — APPROVATA · 2026-11-09
 - **Decisione:** si aggiunge un normalizer robusto (mediana/IQR) come variante, accanto a quello storico. Se entra nel budget
@@ -386,6 +389,95 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
 - **Collegamenti:** D-30, D-37, D-45, D-71, D-73. **Serve entro:** F7 (implementazione); α, B e famiglia entro F10.
 - **Documenti:** piano F7, F10; proposta §1 punto 4, §4.8, §10 (superate su questi punti); `piano_tesi_v1.md` §2
   (bootstrap gerarchico non adottato).
+- **Nota di rimando (2026-11-16, il testo sopra resta invariato):**
+  - **famiglia confermativa prevista** (D-71): {Conv vs PCA, LSTM vs PCA, previsione vs PCA}, m = 3, congelata in F10
+    come parametro del piano statistico; la molteplicità resta (M1), IC di Bonferroni al 1 − α/3. «Holm su tre
+    confronti» non è adottato: contraddice la regola a quattro esiti basata sugli IC;
+  - **terminologia:** «famiglia confermativa» (questa voce, insieme dei confronti su cui si corregge) ≠ «famiglia di
+    modelli» (D-71, unità delle conclusioni); la correzione è unica sui tre confronti, non una per famiglia di modelli;
+  - **limite aggiornato:** l'inferenza è condizionata ai 3 gruppi di SMD e non c'è un secondo dataset (D-45): RQ2 è
+    confermativa rispetto al protocollo congelato, su dati già osservati con altri protocolli.
+
+### D-45 · Secondo dataset — APPROVATA · 2026-11-16
+- **Testo della voce APERTA (storico, invariato):**
+  - **Vincolo:** deve avere più entità (PSM escluso; ASD candidato da verificare). Il piano congelato per SMD si riapplica
+    invariato. **Serve entro:** da scegliere presto; condiziona la forza delle conclusioni.
+- **Decisione:** nessun secondo dataset in questa tesi, per ora. Limite dichiarato.
+- **Conseguenza:** la proposta §4.9 considera il secondo dataset necessario per un'affermazione confermativa, perché SMD
+  è già stato osservato con i protocolli storici. Senza di esso RQ2 resta pre-registrata e congelata (F10), ma nella
+  tesi va descritta come **«confermativa rispetto al protocollo congelato, su dati già osservati con altri
+  protocolli»**. L'inferenza resta condizionata ai 3 gruppi di SMD (D-36).
+- **Approvazione:** utente, 2026-11-16 (discussione sul perimetro della tesi, su raccomandazione di Claude Project).
+- **Collegamenti:** D-08, D-36, D-52, D-73 (P13).
+- **Documenti:** proposta §4.9 (nota), §7 punto 4 (replica non prevista); piano gruppo C punto 20.
+
+### D-69 · AE non addestrati (baseline descrittiva) — APPROVATA · 2026-11-16
+- **Testo della voce APERTA (storico, invariato):**
+  - **Fatti verificati (2026-11-11):** `UntrainedLSTMAEDetector` e `UntrainedConvAEDetector` sono nel registro di `main.py`
+    (`untrained_lstm_ae`, `untrained_conv_ae`) ma in nessuna config di `configs/` e in nessun run di D-50
+    (`results_repro_last_01` / `results_repro_mean_01` contengono solo `pca`, `pca_pointwise`, `conv_autoencoder`,
+    `lstm_autoencoder` e `random_baseline`). Non sono in `schema.MODEL_SCHEMAS`: la nuova pipeline oggi non li esegue.
+  - **Rimandati da F4** (decisione dell'utente, 2026-11-11). Se una config li includesse prima della chiusura di questa
+    voce, quella config non avrebbe parità verificata con la pipeline storica.
+  - **Da decidere:**
+    - chiavi di schema: `init_std`, `channels` / `hidden_dim`, `latent_dim`;
+    - seed nel `fit_key` (modelli non deterministici: i pesi dipendono dal seed);
+    - statistiche di BatchNorm del Conv-AE: in eval non vengono mai aggiornate (media 0, varianza 1); scelta da dichiarare.
+  - **Serve entro:** F8.
+  - **Collegamenti:** D-10, D-33, D-67, D-68.
+  - **Nota (2026-11-12, F6, la voce resta APERTA):** proposta di Claude (non approvata): includere gli AE non addestrati
+    come baseline che separa il contributo dell'architettura (pesi casuali, stesso input e stesso scoring) da quello
+    dell'apprendimento, utile per interpretare Δ(DL − PCA) in RQ2–RQ3. La decisione spetta all'utente, entro F8; se
+    approvata, servono le scelte elencate sopra e un controllo di parità dedicato (oggi nessuna config li usa). Vedi
+    anche D-71.
+- **Decisione:** gli AE non addestrati (Conv, LSTM) entrano nei run come **baseline descrittiva**, fuori dalla famiglia
+  confermativa. Separano il contributo dell'architettura (pesi casuali, stesso input e stesso scoring) da quello
+  dell'apprendimento, per interpretare Δ(DL − PCA).
+- **Trattamento in F7:** come la baseline random (D-73 P7): righe di riferimento e descrittive, **mai** livelli del
+  fattore modello in RQ1a, RQ1b e RQ4, mai nella famiglia confermativa né come riferimento di RQ2. Finché lo schema non
+  esiste, il ruolo si dichiara nel piano statistico (chiave da aggiungere al passo 1-bis di F7, D-73).
+- **Restano da fissare prima di F8** (punti della voce aperta): chiavi di schema (`init_std`, `channels` /
+  `hidden_dim`, `latent_dim`); seed nel `fit_key` (pesi dipendenti dal seed); trattamento del BatchNorm del Conv-AE (in
+  eval le statistiche non si aggiornano mai). Serve anche un controllo di parità dedicato (nessuna config storica li
+  usa).
+- **Ordine:** implementazione dopo M1, prima di F8.
+- **Approvazione:** utente, 2026-11-16 (discussione sul perimetro della tesi, su raccomandazione di Claude Project).
+- **Collegamenti:** D-10, D-33, D-36, D-67, D-68, D-71, D-73.
+- **Documenti:** piano F8.
+
+### D-71 · Perimetro dei modelli DL — APPROVATA · 2026-11-16
+- **Testo della voce APERTA (storico, invariato):**
+  - **Fatto verificato (D-68, `schema.MODEL_SCHEMAS`):** i modelli profondi del nucleo sono solo autoencoder
+    ricostruttivi (`conv_autoencoder`, `lstm_autoencoder`); VAE, OC-SVM e Isolation Forest sono esclusi dai run
+    ufficiali (D-10); gli AE non addestrati sono rimandati (D-69).
+  - **Problema:** una conclusione formulata su «il deep learning» generalizzerebbe oltre la famiglia di modelli valutata.
+  - **Opzioni:**
+    - (a) dichiarare le conclusioni limitate ai modelli ricostruttivi (Conv-AE, LSTM-AE) in tutte le RQ;
+    - (b) aggiungere un modello recente come riferimento esterno; richiede una voce che integri D-10 (perimetro dei run
+      ufficiali) e una scelta del modello, del budget e della parità di trattamento (D-41).
+  - **Proposta:** (a) in ogni caso; (b) da valutare con il relatore dopo M1.
+  - **Serve entro:** F8.
+  - **Collegamenti:** D-10, D-41, D-68, D-69.
+  - **Nota (2026-11-16, F7, la voce resta APERTA):** la famiglia confermativa di RQ2 è un parametro del piano statistico,
+    non una costante del codice (D-36, D-73): un eventuale modello aggiunto con l'opzione (b) entra nella famiglia senza
+    modificare il codice, e m segue la famiglia dichiarata.
+- **Decisione:**
+  - **(a)** le conclusioni si dichiarano **per famiglia di modelli** (ricostruzione: Conv-AE, LSTM-AE; previsione), mai
+    su «il deep learning» in generale;
+  - si aggiunge un **modello di previsione** (per esempio un LSTM); forma della previsione, scoring e proiezione sono
+    decisi in D-74, che integra D-10;
+  - un modello recente (opzione (b) della voce aperta) è una voce a parte, D-75, da decidere a fine M1.
+- **Famiglia confermativa prevista di RQ2:** {Conv vs PCA, LSTM vs PCA, previsione vs PCA}, m = 3, congelata in F10
+  come parametro del piano statistico (D-36, D-73).
+- **Molteplicità:** resta D-36 (M1), IC di Bonferroni al 1 − α/m con m = 3. La proposta «Holm su tre confronti»
+  **non** è adottata: contraddice D-36 approvata, la cui regola a quattro esiti si basa sugli IC.
+- **Terminologia:** «famiglia di modelli» (questa voce: unità delle conclusioni, per esempio la ricostruzione) ≠
+  «famiglia confermativa» (D-36: insieme dei confronti su cui si corregge). La correzione è **unica** sui tre confronti,
+  non una per famiglia di modelli.
+- **Ordine:** implementazione del modello di previsione dopo M1, prima di F8.
+- **Approvazione:** utente, 2026-11-16 (discussione sul perimetro della tesi, su raccomandazione di Claude Project).
+- **Collegamenti:** D-10, D-36, D-41, D-68, D-69, D-73, D-74, D-75.
+- **Documenti:** piano F8.
 
 ---
 
@@ -1333,6 +1425,13 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
 - **Collegamenti:** D-07, D-08, D-12, D-18, D-19, D-23, D-25, D-30, D-34, D-36, D-37, D-42, D-43, D-44, D-71, D-72.
   **Serve entro:** F7.
 - **Documenti:** piano F7; `CLAUDE.md` §3.4; proposta §5.1–5.3 (superate sui punti sopra).
+- **Nota di rimando (2026-11-16, passo 0-bis, il testo sopra resta invariato):**
+  - **P7 esteso:** gli AE non addestrati (D-69) hanno lo stesso trattamento della baseline random: righe di riferimento
+    e descrittive, mai livelli del fattore modello in RQ1a, RQ1b e RQ4, mai nella famiglia confermativa né come
+    riferimento di RQ2;
+  - **P13 e D-45:** senza secondo dataset, le uscite di RQ2 con `inference = confirmatory` si descrivono nella tesi come
+    «confermative rispetto al protocollo congelato, su dati già osservati con altri protocolli»; il report lo riporta
+    accanto alle decisioni di RQ2.
 
 ### D-53 · File tracciati da git (`.pyc`, dataset) — APPROVATA · 2026-11-10
 - **Decisione:** i `.pyc` non sono tracciati: i 35 file già tracciati sono tolti dal tracciamento con
@@ -1433,10 +1532,6 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
   `exclude_machine_pair`, `keep`; nessun default; `exclude_fit` solo con sensibilità `exclude_machine_pair`). Restano
   da decidere i valori, cioè quale azione per ogni caso e la soglia sul numero di eventi.
 
-### D-45 · Secondo dataset — APERTA
-- **Vincolo:** deve avere più entità (PSM escluso; ASD candidato da verificare). Il piano congelato per SMD si riapplica
-  invariato. **Serve entro:** da scegliere presto; condiziona la forza delle conclusioni.
-
 ### D-46 · Sensibilità delle proporzioni dello split — APERTA
 - **Opzioni:** nessuna; oppure una sola variante (es. 70/15/15) sulle macchine di sviluppo in F9. **Serve entro:** F9.
 
@@ -1463,40 +1558,42 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
   C4); prima dicevano «Correzione del modello in F4» e «F4 (implementazione), D-41 (griglia)». La voce resta APERTA.
 - **Collegamenti:** D-37, D-41, `CLAUDE.md` §5.
 
-### D-69 · AE non addestrati (baseline di sanità E0, `piano_tesi_v1.md` §5) — APERTA · 2026-11-11
-- **Fatti verificati (2026-11-11):** `UntrainedLSTMAEDetector` e `UntrainedConvAEDetector` sono nel registro di `main.py`
-  (`untrained_lstm_ae`, `untrained_conv_ae`) ma in nessuna config di `configs/` e in nessun run di D-50
-  (`results_repro_last_01` / `results_repro_mean_01` contengono solo `pca`, `pca_pointwise`, `conv_autoencoder`,
-  `lstm_autoencoder` e `random_baseline`). Non sono in `schema.MODEL_SCHEMAS`: la nuova pipeline oggi non li esegue.
-- **Rimandati da F4** (decisione dell'utente, 2026-11-11). Se una config li includesse prima della chiusura di questa
-  voce, quella config non avrebbe parità verificata con la pipeline storica.
-- **Da decidere:**
-  - chiavi di schema: `init_std`, `channels` / `hidden_dim`, `latent_dim`;
-  - seed nel `fit_key` (modelli non deterministici: i pesi dipendono dal seed);
-  - statistiche di BatchNorm del Conv-AE: in eval non vengono mai aggiornate (media 0, varianza 1); scelta da dichiarare.
-- **Serve entro:** F8.
-- **Collegamenti:** D-10, D-33, D-67, D-68.
-- **Nota (2026-11-12, F6, la voce resta APERTA):** proposta di Claude (non approvata): includere gli AE non addestrati
-  come baseline che separa il contributo dell'architettura (pesi casuali, stesso input e stesso scoring) da quello
-  dell'apprendimento, utile per interpretare Δ(DL − PCA) in RQ2–RQ3. La decisione spetta all'utente, entro F8; se
-  approvata, servono le scelte elencate sopra e un controllo di parità dedicato (oggi nessuna config li usa). Vedi
-  anche D-71.
+### D-74 · Modello di previsione (integra D-10) — APERTA · 2026-11-16
+- **Origine:** D-71 (approvata): si aggiunge un modello di previsione ai run ufficiali, con conclusioni dichiarate per
+  famiglia di modelli. Integra D-10 (perimetro dei run ufficiali), il cui testo resta invariato.
+- **Punti approvati (utente, 2026-11-16, su raccomandazione di Claude Project):**
+  - **a) Forma della previsione:** un solo punto previsto per finestra (dai primi W−1 punti si prevede l'ultimo).
+    Motivo: forma classica dei detector a previsione, semplice, distinta in modo netto dalla ricostruzione. La
+    previsione a più passi o sequence-to-sequence è scartata: darebbe un modello molto vicino a una ricostruzione e più
+    parametri da tarare.
+  - **b) Conseguenza di (a), non una decisione:** c'è un solo residuo per finestra (vettore per sensore), quindi
+    `window_time_agg` è degenerato (`last` = `mean`). `sensor_agg` e `normalizer` restano fattori veri.
+  - **c) Proiezione:** il modello di previsione usa solo `ts_agg = last`. Motivo: il residuo riguarda il solo punto
+    previsto (l'ultimo della finestra); con `ts_agg` offline (`mean`, `max`) all'istante t finirebbero errori di
+    finestre che prevedono altri istanti, anche successivi a t: lo score non sarebbe interpretabile né causale. In RQ1a
+    il modello entra solo in blocchi con `ts_agg` a un solo livello (`last`); gli altri fattori di misura (scenario,
+    statica contro oracolo, PA) restano.
+  - **d) Conseguenze da dichiarare nella tesi:**
+    - in RQ1a e RQ1b il modello di previsione sta in blocchi senza i fattori `ts_agg` e `window_time_agg` (come i
+      `native` per lo scoring);
+    - nel tuning (D-41) gli AE scelgono anche `window_time_agg` e il modello di previsione no: non è una disparità di
+      budget, perché l'opzione non esiste, ma va dichiarato.
+- **Restano APERTI, da decidere prima di F8:** schema (chiavi, iperparametri); budget di tuning e parità di
+  trattamento (D-41).
+- **Nota per F8:** quando il modello di previsione esiste:
+  - `analyze` / `analysis_grid` non produce righe offline (`ts_agg` `mean`, `max`) per il modello di previsione;
+  - `src/stats/plan.py` lo rifiuta nei blocchi con `window_time_agg` o `ts_agg` a più di un livello;
+  - test per entrambi i punti.
+- **Ordine:** implementazione dopo M1, prima di F8. **Serve entro:** F8.
+- **Collegamenti:** D-10, D-33, D-36, D-41, D-71.
 
-### D-71 · Perimetro dei modelli DL — APERTA · 2026-11-12
-- **Fatto verificato (D-68, `schema.MODEL_SCHEMAS`):** i modelli profondi del nucleo sono solo autoencoder
-  ricostruttivi (`conv_autoencoder`, `lstm_autoencoder`); VAE, OC-SVM e Isolation Forest sono esclusi dai run
-  ufficiali (D-10); gli AE non addestrati sono rimandati (D-69).
-- **Problema:** una conclusione formulata su «il deep learning» generalizzerebbe oltre la famiglia di modelli valutata.
-- **Opzioni:**
-  - (a) dichiarare le conclusioni limitate ai modelli ricostruttivi (Conv-AE, LSTM-AE) in tutte le RQ;
-  - (b) aggiungere un modello recente come riferimento esterno; richiede una voce che integri D-10 (perimetro dei run
-    ufficiali) e una scelta del modello, del budget e della parità di trattamento (D-41).
-- **Proposta:** (a) in ogni caso; (b) da valutare con il relatore dopo M1.
-- **Serve entro:** F8.
-- **Collegamenti:** D-10, D-41, D-68, D-69.
-- **Nota (2026-11-16, F7, la voce resta APERTA):** la famiglia confermativa di RQ2 è un parametro del piano statistico,
-  non una costante del codice (D-36, D-73): un eventuale modello aggiunto con l'opzione (b) entra nella famiglia senza
-  modificare il codice, e m segue la famiglia dichiarata.
+### D-75 · Modello recente come estensione (es. Anomaly Transformer) — APERTA · 2026-11-16
+- **Origine:** opzione (b) di D-71, separata dalla decisione approvata.
+- **Decisione da prendere:** a fine M1.
+- **Vincoli se approvata:** estensione con piano di analisi e piano statistico **congelati a parte**; non entra mai
+  nella famiglia confermativa del piano principale; righe etichettate a parte; non deve ritardare l'analisi
+  principale. Integrerebbe D-10 (perimetro) e D-41 (budget e parità di trattamento).
+- **Collegamenti:** D-10, D-36, D-41, D-71.
 
 ---
 

@@ -9,6 +9,9 @@ Domanda guida (dettagli in `piano_tesi_v1.md`, con le revisioni registrate in `d
 in quali condizioni un autoencoder profondo (Conv-AE, LSTM-AE) migliora in modo praticamente rilevante
 una baseline lineare ben calibrata (PCA), e quanto di questo vantaggio sopravvive alle scelte
 metodologiche (scoring, aggregazione, preprocessing, soglia, protocollo)?
+Perimetro delle conclusioni: si dichiarano per famiglia di modelli (ricostruzione: Conv-AE, LSTM-AE; previsione),
+mai su «il deep learning» in generale (D-71); RQ2 si descrive come «confermativa rispetto al protocollo congelato,
+su dati già osservati con altri protocolli» (D-45).
 
 - RQ1a misura: quanto cambiano numeri e ranking cambiando *come si misura* (PA, oracolo, proiezione
   offline, metrica), a parità di modello addestrato.
@@ -91,7 +94,7 @@ Problemi noti (da risolvere nella nuova pipeline, non da preservare):
 Descritta in `proposta_architettura_target.md` e realizzata secondo `piano_operativo.md`: stadio di fit
 (checkpoint + residui per sensore, `fit_key` = hash della config rilevante + `FIT_CODE_VERSION`), stadio di
 analisi (nessun fit, tabella lunga), stadio di statistica e report. Le scelte già approvate sono in
-`docs/decisioni.md` (D-03…D-26, D-32, D-33, D-34, D-36, D-50, D-51, D-52, D-55, D-56, D-58…D-68, D-70, D-72, D-73); quelle ancora aperte sono nelle
+`docs/decisioni.md` (D-03…D-26, D-32, D-33, D-34, D-36, D-45, D-50, D-51, D-52, D-55, D-56, D-58…D-69, D-70, D-71, D-72, D-73); quelle ancora aperte sono nelle
 sezioni D ed E del registro.
 
 ## 4. Protezione di dataset, risultati e configurazioni storiche

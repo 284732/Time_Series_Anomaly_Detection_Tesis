@@ -197,6 +197,8 @@ Due avvertenze da riportare nella tesi:
 - **RQ1 divisa in RQ1a e RQ1b** [D-12, approvata].
 - **RQ2: quale "PCA tarata"?** Aperta [D-37]: PCA a finestre (stesso input degli AE) o la migliore delle due scelta sulle macchine di sviluppo.
 - **δ** va fissato prima dei run ufficiali [D-30, aperta].
+> Superato (D-45, 2026-11-16): nessun secondo dataset in questa tesi, per ora; RQ2 resta pre-registrata e congelata, descritta come «confermativa rispetto al protocollo congelato, su dati già osservati con altri protocolli».
+
 - **Il "secondo dataset" non è opzionale** se si vuole un'affermazione confermativa, perché SMD è già stato osservato in tutte le analisi precedenti. Deve avere più entità, altrimenti l'unità "macchina" non esiste: PSM ha una sola serie, quindi non va bene; ASD (12 server) sarebbe un candidato, ma i dettagli vanno verificati. Va scelto presto. [D-45, aperta]
 - **Il train di SMD non è etichettato** e può contenere anomalie: soglie e normalizer su cal possono esserne contaminati. Conviene usare statistiche robuste e dichiararlo.
 - **La deriva domina le metriche con soglia.** L'F1 a soglia misura soprattutto la deriva, non il detector: è un argomento per RQ4, non per RQ2.
