@@ -89,6 +89,11 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
 ### D-09 · 5 seed nella valutazione — APPROVATA · 2026-11-09
 - **Decisione:** 5 seed per gli AE nei run ufficiali; modelli deterministici una sola volta. Seed per il tuning: D-41.
 - **Documenti:** proposta §4.5; piano gruppo C punto 16.
+- **Nota di rimando (2026-11-16, F7, il testo sopra resta invariato):** i seed sono `experiment.seeds` della config
+  dell'esperimento, non di un piano. Decisione dell'utente (2026-11-16, su raccomandazione di Claude Project):
+  `configs/experiments/official.yaml` (seed, modelli e iperparametri selezionati in F9, preprocessing, macchine) si
+  scrive e si congela in F10 con il suo hash nel registro; F11 la esegue soltanto. Ordine di congelamento: config
+  dell'esperimento → piano di analisi → piano statistico (che dichiara gli hash dei primi due, D-73 P6).
 
 ### D-10 · OC-SVM, Isolation Forest, VAE — APPROVATA · 2026-11-09
 - **Decisione:** restano nel registro dei modelli e nei test; sono esclusi dai run ufficiali e dal tuning.
@@ -209,6 +214,10 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
 - **Collegamenti:** D-21, D-23, D-25, D-42.
 - **Serve entro:** F6.
 - **Documenti:** proposta §4.6, §4.8; piano F6.
+- **Nota di rimando (2026-11-16, F7, il testo sopra resta invariato):** la «Conseguenza» vale solo se la politica di
+  soglia fosse un fattore di RQ1a. Per D-12 (verificato sul testo) è un fattore di design (RQ1b), che si legge a
+  `ts_agg = last`; RQ1a a soglia statica fissa è un disegno completo. Il non incrocio reale è la metrica. Decomposizione
+  approvata in D-25.
 
 ### D-26 · Normalizzazione originale di SMD su train+test — APPROVATA · 2026-11-10 (fatto verificato)
 - **Fatto verificato** (2026-11-10, sola lettura di `dataset/`, tolleranza 1e−6): sulle 28 macchine ci sono 1.064 sensori,
@@ -294,6 +303,89 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
 - **Serve entro:** F3 (ramo `split3` di `fit_scaler`), F8.
 - **Collegamenti:** D-04, D-05, D-06, D-23, D-40, D-63.
 - **Documenti:** `CLAUDE.md` §5; piano F3, F8.
+
+### D-25 · Metodo di decomposizione della varianza per RQ1a e RQ1b — APPROVATA · 2026-11-16
+- **Testo della voce APERTA (storico, invariato):**
+  - *Conflitto:* `piano_tesi_v1.md` §2 prevede un modello misto
+    (`metrica ~ modello * fattori + (1|macchina) + (1|gruppo)`); la proposta §4.8 prevede somme dei quadrati su disegno
+    bilanciato, che con D-24 non è più completo.
+  - *Opzioni:* (a) decomposizione a blocchi, separata per proiezione causale e offline; (b) modello lineare per disegno
+    sbilanciato (somme dei quadrati di tipo II/III) con numpy/scipy; (c) modello misto, che richiede statsmodels:
+    nuova dipendenza da approvare (D-18).
+  - *Serve entro:* F7.
+- **Premessa (fatto verificato sul testo di D-12, 2026-11-16):** la politica di soglia è un fattore di *design* (RQ1b),
+  l'oracolo un fattore di *misura* (RQ1a). («Aggregazione», tra i fattori di design di D-12, è l'aggregazione
+  dell'errore dentro la finestra, `window_time_agg`, non la proiezione `timestamp_agg`: proposta §1 punto 3 e §4.4,
+  dove `window_time_agg` e `sensor_agg` sono di design e `timestamp_agg` è di misura; D-12 elenca la «proiezione
+  offline» tra i fattori di RQ1a.) Quindi:
+  - RQ1a a soglia statica calibrata fissa: {statica, oracolo} × PA × `ts_agg` × scenario è un disegno **completo**;
+  - RQ1b si legge a `ts_agg = last` (proiezione canonica): politica (mobili comprese) × scoring è **completo**;
+  - il non incrocio reale è la **metrica**: le metriche senza soglia non hanno soglia né PA e le scale sono diverse,
+    quindi «metrica» non è un fattore di una somma dei quadrati; si tratta con τ di Kendall e inversioni di segno (D-73).
+  La «Conseguenza» di D-24 riguarda solo il caso, escluso da D-12, della politica di soglia come fattore di RQ1a.
+- **Decisione:** opzione (a), **somme dei quadrati classiche a blocchi bilanciati, una risposta per metrica**:
+  - blocchi RQ1a: modello × `ts_agg` × scenario × {statica canonica, oracolo} × PA per `f1`; modello × `ts_agg` ×
+    scenario per le metriche senza soglia. Blocchi RQ1b a `ts_agg = last`, scenario `primary`: modello × scoring
+    (`window_time_agg`, `sensor_agg`, `normalizer`) × politica (livello, `n_past`) (× scaler, tra analisi diverse).
+    Livelli: D-42. I blocchi modello × scoring × politica comprendono solo i modelli con la griglia di scoring
+    completa; i modelli `native` entrano in RQ1b solo con il fattore politica di soglia (e scaler), in un blocco
+    separato (fatto verificato: per i modelli `native_only` `analysis_grid.fit_scores` produce la sola combinazione
+    `none` / `native` / `none`);
+  - la macchina è un fattore di blocco; i seed sono mediati prima (unità = macchina); una sola osservazione per cella
+    e macchina; un disegno sbilanciato dato a un blocco è un errore, mai un adattamento silenzioso;
+  - **interazioni modello × fattore in evidenza** nelle uscite, non solo gli effetti principali: un fattore che sposta
+    tutti i modelli allo stesso modo (per esempio il PA) può avere una quota grande senza cambiare il confronto tra
+    modelli, che è la domanda della tesi;
+  - quote **η² = SS_fattore / SS_tot** (additive), in due versioni: con SS_tot complessivo e con SS_tot senza
+    SS_macchina; il piano statistico dichiara quale si legge come principale (nessun default);
+  - `stats.json` elenca per ogni blocco l'insieme delle macchine incluse: le esclusioni di D-44 possono far differire
+    i blocchi.
+- **Motivazione:** con la premessa sopra il disegno è completo dentro ogni metrica; la decomposizione è esatta (somma
+  al totale), trasparente e senza nuove dipendenze. (b) dà quote non additive e dipendenti dalla codifica; (c) richiede
+  statsmodels (D-18), quote non univoche per gli effetti fissi e un `(1|gruppo)` con 3 livelli non affidabile.
+- **Costo dichiarato:** un'esclusione di D-44 toglie la macchina dall'intero blocco (bilanciamento).
+- **Approvazione:** utente, 2026-11-16, su raccomandazione di Claude Project (piano F7).
+- **Collegamenti:** D-12, D-24, D-42, D-44, D-73. **Serve entro:** F7.
+- **Documenti:** piano F7; proposta §4.8 (superata su questo punto); `piano_tesi_v1.md` §2 (modello misto non adottato).
+
+### D-36 · Metodo degli intervalli di confidenza e famiglia confermativa — APPROVATA · 2026-11-16
+- **Testo della voce APERTA (storico, invariato):**
+  - *Contrasto non risolto:* `piano_tesi_v1.md` prevede bootstrap gerarchico (cluster = gruppo); la proposta raccomanda
+    bootstrap stratificato per gruppo (con 3 cluster il gerarchico ha 10 ricampionamenti distinti). Da decidere anche:
+    famiglia confermativa {Conv vs PCA, LSTM vs PCA}, α, correzione di Holm.
+  - *Serve entro:* F7 (non F10): F7 implementa il bootstrap. In alternativa F7 implementa entrambi i metodi e la scelta
+    si congela in F10.
+- **Decisione:**
+  - **metodo di RQ2: (A) bootstrap delle macchine stratificato per gruppo** (numerosità dei gruppi conservate: 6/7/9
+    fra le 22 di valutazione), statistica = media di Δ con pesi uguali per macchina, intervallo **BCa** con
+    accelerazione jackknife leave-one-machine-out;
+  - **(B) bootstrap gerarchico** (gruppi, poi macchine): implementato solo per documentare con la simulazione di
+    copertura perché è scartato. **Non è un'alternativa selezionabile dopo aver visto i risultati:** non è un valore
+    ammesso del piano statistico, si usa solo nelle simulazioni dei test;
+  - **molteplicità: (M1)**, IC di Bonferroni al livello 1 − α/m, con la regola δ (D-30) applicata a quegli IC; un solo
+    livello per i quattro esiti. Holm sui p-value (M2) non adottato. Nota: con (M1) il ramo «equivalente» richiede
+    IC al 1 − α/m ⊂ [−δ, δ], quindi un'equivalenza più conservativa del TOST classico (che userebbe un IC al 1 − 2α);
+  - **famiglia confermativa: parametro del piano statistico**, non una costante del codice; m si ricava dalla famiglia
+    dichiarata. {Conv vs PCA, LSTM vs PCA} compare solo come esempio di configurazione. Motivo: il perimetro DL è
+    aperto (D-71);
+  - **α e B:** parametri senza default, congelati in F10. «B ≥ 10.000» per la BCa è una regola di validazione di
+    `src/stats/plan.py` solo per `kind: official` (da F10); nei piani esplorativi B è un parametro libero, senza
+    default, registrato in `stats.json`;
+  - **sign-flip stratificato:** solo di supporto, verifica Δ = 0 (non δ); **non entra nella regola a quattro esiti**;
+  - **bande di copertura della simulazione (fissate ora, non si allargano dopo):** caso normale [0,93; 0,97]; code
+    pesanti e caso asimmetrico ≥ 0,90, con il valore ottenuto documentato. Se la copertura nel caso normale esce dalla
+    banda (possibile: con strati da 6 macchine la varianza dentro lo strato è distorta di un fattore (n_h − 1)/n_h),
+    è un risultato metodologico: ci si ferma e lo si riporta; né il test né il metodo si correggono senza una nuova
+    voce di registro.
+- **Limite dichiarato:** l'inferenza è condizionata ai 3 gruppi di SMD (gruppo come effetto fisso, nessuna
+  generalizzazione ad altri gruppi); vedi D-45 (secondo dataset).
+- **Motivazione:** con 3 cluster il gerarchico ha 10 multinsiemi distinti di gruppi e IC instabili; lo stratificato è
+  valido con 3 strati; Bonferroni è coerente con una regola basata sugli IC; famiglia, α e B dichiarati prima evitano
+  scelte a posteriori.
+- **Approvazione:** utente, 2026-11-16, su raccomandazione di Claude Project (piano F7).
+- **Collegamenti:** D-30, D-37, D-45, D-71, D-73. **Serve entro:** F7 (implementazione); α, B e famiglia entro F10.
+- **Documenti:** piano F7, F10; proposta §1 punto 4, §4.8, §10 (superate su questi punti); `piano_tesi_v1.md` §2
+  (bootstrap gerarchico non adottato).
 
 ---
 
@@ -1078,6 +1170,106 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
 - **Documenti:** piano F6 (testo corretto e nota); proposta §12 Fase 4 (nota), §5.1, §6, §9 (superate sui punti sopra,
   rimando di una riga in ciascuna); `CLAUDE.md` §3.4 (D-72 tra le approvate).
 
+### D-73 · Stadio di statistica e report (F7) — APPROVATA · 2026-11-16
+- **Decisione** (gli identificativi P1–P15 rimandano al piano F7):
+  - **Perimetro:** piano statistico, lettura delle analisi pubblicate, D-44 parametrica, deduplicazione della baseline
+    random, media sui seed, descrittive (media, std, mediana, ranghi), RQ2 (D-36), RQ1a/RQ1b (D-25), τ di Kendall e
+    inversioni di segno, RQ3 con i soli descrittori ricavabili dalle tabelle, RQ4, comandi `stats` e `report`, test su
+    tabelle simulate. **Fuori:** VUS-PR (D-34), descrittori dai dati (D-43), controllo E5 sulla deriva, congelamento
+    e `kind: official` (F10), dati reali, statsmodels, modifiche a `aggregate_results.py`, `main.py`, `analyze` e
+    allo schema delle tabelle, parallelizzazione.
+  - **P1 — media sui seed:** F7 non usa `table_schema.mean_over_seeds`, che salta i NaN (media di pandas) e conta
+    `n_seeds` senza considerarli, in contrasto con D-44. `src/stats` media con `skipna=False` dopo il filtro di D-44;
+    `table_schema.py` resta invariato e un test di F7 documenta la differenza; la rimozione si propone in F12.
+  - **P5 — piano statistico separato:** `configs/stats/<nome>.yaml`, validato da `src/stats/plan.py` con le regole di
+    F2 (chiave sconosciuta, campo mancante o tipo errato → errore; chiavi YAML duplicate rifiutate; nessun valore
+    predefinito), con `stats_plan_sha256` proprio. δ, α, B, seed del bootstrap, famiglia confermativa, riferimento di
+    RQ2 (D-37), regole di D-44, blocchi e livelli (D-42) stanno qui, non nel piano di analisi (il cui hash entra in
+    `analysis_id`). Ogni chiave di RQ è obbligatoria, `null` per non calcolarla. F10 congela entrambi i piani.
+  - **P6 — ingressi e uscite:**
+    - gli `analysis_id` si passano da CLI; il piano statistico dichiara gli **esperimenti attesi** per nome e, per
+      ciascuno, il `plan_sha256` dell'analisi atteso. Codice 2 per: ingresso di un esperimento non dichiarato;
+      ingresso con `plan_sha256` diverso dal dichiarato; esperimento dichiarato e non fornito. Motivo: l'insieme degli
+      ingressi è congelabile in F10, senza scelta a posteriori delle analisi da includere;
+    - per ogni esperimento atteso il piano statistico dichiara anche l'hash della config dell'esperimento
+      (`config_sha256` di `src/utils/config.py`); codice 2 se non corrisponde. Fatto verificato: oggi
+      `config_sha256` è solo nel registro (`registry.csv`), che per V13 non fa parte della garanzia di completezza.
+      Quindi `stats` lo calcola dal file dell'esperimento passato con `--input` e verifica che l'analisi derivi da
+      quella config: nome e kind uguali a quelli di `analysis.json` e insieme dei `fit_key` di `analysis.json`
+      (`components`) uguale a quello generato dalla config. Test al passo 2 (decisione dell'utente, 2026-11-16, vedi
+      la nota su D-09);
+    - si leggono solo le analisi complete (cartella pubblicata con `analysis.json`, D-72 V13); controlli bloccanti tra
+      ingressi: stesso dataset, stesso hash del manifest, stessa `labels_version` per macchina, stesso ruolo delle
+      macchine;
+    - livelli e blocchi dichiarati nel piano statistico devono esistere nelle analisi in ingresso (D-42 è divisa tra
+      i due piani: livelli calcolati nel piano di analisi, blocchi e livelli letti nel piano statistico); altrimenti
+      codice 2. Test al passo 2;
+    - uscite in `store/stats/<stats_id>/`, `stats.json` scritto per ultimo, pubblicazione atomica come D-72 B11, sotto
+      lock, riga di registro con stage `stats`; `stats_id` = hash canonico di `stats_plan_sha256`, ingressi ordinati
+      (kind, esperimento, `analysis_id`, sha256 di `analysis.json`), `STATS_CODE_VERSION` e ambiente (Python, numpy,
+      scipy, pandas), troncato a 12. Stesso id già presente e completo → rifiuto (codice 2).
+  - **P7 — baseline random:** le repliche tra `ts_agg` (D-72 V12) si verificano identiche bit a bit (altrimenti
+    errore) e se ne tiene una; nello scenario `test_context` le righe sono calcoli distinti e non si deduplicano. Il
+    random **non è un livello del fattore modello** (RQ1a, RQ1b, RQ2) e resta fuori da ranking e τ; compare solo come
+    riferimento (gonfiamento del PA, celle 2×2) e nelle descrittive.
+  - **P8 — forma operativa di D-44** (i valori restano APERTI):
+    - ordine fisso: (1) stato del fit (`fits.status`, join su `fit_key`; la baseline random non ha riga in `fits` ed è
+      trattata come «nessun fit, sempre `complete`»); (2) non finiti del fit (`nonfinite_loss`, `n_nonfinite_cal` > 0,
+      `n_nonfinite_test` > 0), solo dopo (1) perché le colonne sono nullabili; (3) righe NaN per `nan_reason`;
+      (4) macchine per numero di eventi, contato sullo scenario `primary`;
+    - azioni: `error`, `exclude_fit`, `exclude_machine_pair` (la macchina esce dal confronto per tutti i modelli
+      confrontati), `keep` (solo per i non finiti del test: il fit supera il passo 2; un'eventuale metrica NaN è poi
+      trattata dal passo 3 con la regola del suo `nan_reason`). Mai un NaN che arriva a Δ senza una regola;
+    - nessun default: il blocco delle esclusioni è obbligatorio; un caso incontrato senza regola dichiarata è un errore
+      (codice 2);
+    - `exclude_fit` può introdurre un bias di selezione se i fallimenti dipendono dal modello: colonna `n_seeds_used`
+      per (macchina, modello) nelle uscite; in `stats.json` il conteggio delle esclusioni per regola, motivo e modello;
+      se il piano dichiara `exclude_fit` deve dichiarare anche un'analisi di sensibilità con `exclude_machine_pair`,
+      calcolata e riportata accanto, altrimenti il piano è rifiutato;
+    - `detection_delay` NaN per definizione (D-72 C4) non è un'esclusione: per macchina si riportano la media sui seed
+      in cui è definito, il numero di seed con almeno un evento rilevato ed `event_recall`.
+  - **P9 — RQ3:** Spearman con IC bootstrap e interfaccia dei descrittori; in F7 solo i descrittori ricavabili dalle
+    tabelle (`prevalence`, `n_events` dello scenario `primary`). I descrittori dai dati attendono D-43.
+  - **P10 — RQ4:** decomposizione delle metriche con soglia in modello e politica (livello, `n_past`) a
+    `ts_agg = last`; **«indicatore di scostamento cal → test»** = FPR del test − quota nominale (1 − livello/100) per le
+    soglie statiche. Non è una misura di deriva: la quota su cal è esatta per costruzione (D-23). **Da fare, fuori da
+    F7:** il controllo E5 (`piano_tesi_v1.md` §5: escludere i punti vicini agli eventi), che richiede nuove righe di
+    analisi; da collocare con una voce futura prima della lettura di RQ4.
+  - **P11 — τ di Kendall:** τ-b tra il ranking dei modelli nella configurazione canonica e in ogni altra configurazione,
+    per macchina, con la **distribuzione completa** sulle macchine; τ-b sui ranking delle medie per macchina; quota di
+    macchine in cui il segno di Δ si inverte. Tutto etichettato come esplorativo.
+  - **P12 — parità con `aggregate_results.py`** (sull'esportazione legacy sintetica, in `tmp_path`, mai su `results/`):
+    (1) `per_machine_means` sulle righe rilette con `float_precision="round_trip"` contro la media sui seed di F7, a
+    tolleranza zero, sulle colonne AP, ROC_AUC, BestF1_oracle, F1 (statica, `pa` falso), EventRecall, FalseAlarmSeg;
+    (2) `aggregate_results.main(..., out_dir=tmp)`: stringhe media ± std e AP_lift identiche; MeanDelta,
+    vittorie/pareggi/sconfitte, N e p di Wilcoxon a tolleranza zero; uno scarto si diagnostica e l'unica causa
+    ammessa, da documentare (D-17), è il parser predefinito di `pd.read_csv`; (3) con NaN presenti un test documenta
+    la differenza voluta (D-44). Non si riproducono il ripiego su `raw_mean` per i modelli `native`, `AlertRate` e
+    `InferSec` (assenti dalle tabelle).
+  - **P13 — confermativo ed esplorativo:** ogni riga delle uscite ha `inference` ∈ {`confirmatory`, `exploratory`};
+    `stats` rifiuta `kind: official` fino a F10 (come `fit` e `analyze`), quindi in F7 tutto è esplorativo; vietato
+    mescolare `machine_role` dev ed eval nella stessa inferenza; le righe `diagnostic` non entrano mai negli ingressi di
+    RQ2 / RQ1b, solo nelle tabelle diagnostiche etichettate.
+  - **P14 — generatore:** B e seed del bootstrap sono parametri dichiarati senza default, registrati in `stats.json`.
+    La regola B ≥ 10.000 (D-36) si applica in `plan.py` solo per `kind: official` (da F10); nei piani esplorativi B è
+    libero.
+  - **P15 — LaTeX:** writer minimale scritto a mano in `src/reporting/tables.py`. jinja2 è nel lock solo come
+    dipendenza indiretta di torch e non è in `requirements.txt`: `DataFrame.to_latex` (e `to_markdown`, che richiede
+    tabulate) non si usano (D-18).
+  - **File:** nuovi `src/stats/{plan,inputs,aggregate,bootstrap,decisions,ranking,variance,descriptors,run}.py`,
+    `src/reporting/{tables,figures,report}.py`; aggiunte a `src/pipeline/store.py` (cartella delle statistiche,
+    completezza, pubblicazione con i tentativi di B11) e a `src/cli.py` (`stats <piano_stats.yaml> --input
+    <esperimento.yaml> <analysis_id> [...]`, `report <cartella_stats> --out <cartella_nuova>` che rifiuta una cartella
+    esistente, `status` con le statistiche pubblicate; codici di uscita 0/2/3/4/130).
+- **Motivazione:** F7 legge solo artefatti pubblicati e identificati; ogni scelta metodologica è un parametro dichiarato
+  e congelabile, nessuna esclusione o selezione implicita; le statistiche sono ripetibili e identificate dai loro
+  ingressi.
+- **Approvazione:** utente, 2026-11-16, su raccomandazione di Claude Project (piano F7, voci P1–P15 con le modifiche
+  dell'utente a P6, P8, P10, P11).
+- **Collegamenti:** D-07, D-08, D-12, D-18, D-19, D-23, D-25, D-30, D-34, D-36, D-37, D-42, D-43, D-44, D-71, D-72.
+  **Serve entro:** F7.
+- **Documenti:** piano F7; `CLAUDE.md` §3.4; proposta §5.1–5.3 (superate sui punti sopra).
+
 ### D-53 · File tracciati da git (`.pyc`, dataset) — APPROVATA · 2026-11-10
 - **Decisione:** i `.pyc` non sono tracciati: i 35 file già tracciati sono tolti dal tracciamento con
   `git rm -r --cached` sulle cartelle `__pycache__` (restano sul disco) e `.gitignore` esclude `__pycache__/` e `*.pyc`.
@@ -1089,27 +1281,15 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
 
 ## D. Decisioni aperte (metodologiche)
 
-### D-25 · Metodo di decomposizione della varianza per RQ1a — APERTA
-- **Conflitto:** `piano_tesi_v1.md` §2 prevede un modello misto
-  (`metrica ~ modello * fattori + (1|macchina) + (1|gruppo)`); la proposta §4.8 prevede somme dei quadrati su disegno
-  bilanciato, che con D-24 non è più completo.
-- **Opzioni:** (a) decomposizione a blocchi, separata per proiezione causale e offline; (b) modello lineare per disegno
-  sbilanciato (somme dei quadrati di tipo II/III) con numpy/scipy; (c) modello misto, che richiede statsmodels:
-  nuova dipendenza da approvare (D-18).
-- **Serve entro:** F7.
-
 ### D-30 · Margine δ — APERTA
 - **Opzioni:** (a) δ = 0,05 in AP normalizzata; (b) δ ricavato solo dalle macchine di sviluppo con una regola dichiarata;
   (c) altro valore motivato. Criterio scartato: δ ≥ spread del protocollo sugli stessi dati (circolare).
 - **Vincolo:** va fissato prima dei run ufficiali e congelato in `configs/analysis/official.yaml`.
 - **Serve entro:** F10. Il codice di F7 deve trattare δ come parametro, senza valore predefinito.
-
-### D-36 · Metodo degli intervalli di confidenza e famiglia confermativa — APERTA
-- **Contrasto non risolto:** `piano_tesi_v1.md` prevede bootstrap gerarchico (cluster = gruppo); la proposta raccomanda
-  bootstrap stratificato per gruppo (con 3 cluster il gerarchico ha 10 ricampionamenti distinti). Da decidere anche:
-  famiglia confermativa {Conv vs PCA, LSTM vs PCA}, α, correzione di Holm.
-- **Serve entro:** F7 (non F10): F7 implementa il bootstrap. In alternativa F7 implementa entrambi i metodi e la scelta
-  si congela in F10.
+- **Nota di rimando (2026-11-16, F7, la voce resta APERTA):** δ è una chiave obbligatoria del piano statistico (D-73
+  P5), senza default; δ ≤ 0 è un errore. La regola a quattro esiti si applica agli IC di Bonferroni al 1 − α/m
+  (D-36): l'equivalenza è più conservativa del TOST classico. Il «Vincolo» sopra va letto così: δ si congela in
+  `configs/stats/official.yaml` (D-73 P5), non in `configs/analysis/official.yaml`.
 
 ### D-37 · PCA di riferimento per RQ2 — APERTA
 - **Opzioni:** PCA a finestre (stesso input degli AE, raccomandata) oppure la migliore tra le due PCA scelta sulle
@@ -1159,8 +1339,14 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
 - **Nota (2026-11-12, F6, la voce resta APERTA):** in F6 i livelli dei fattori sono dati del piano di analisi
   (`configs/analysis/<nome>.yaml`, D-72 C8): nessun valore predefinito nel codice; le combinazioni presenti in tabella
   (scoring, soglie, `n_past`, PA) sono quelle elencate nel piano. I piani usati in F6 sono solo sintetici, nei test.
+- **Nota (2026-11-16, F7, la voce resta APERTA):** i blocchi della decomposizione (D-25), i livelli letti da RQ1a /
+  RQ1b, la configurazione canonica di riferimento per τ e la versione principale di η² sono dati del piano statistico
+  (D-73 P5), senza default.
 
 ### D-43 · Descrittori per RQ3 (massimo 4) e ipotesi — APERTA · **Serve entro:** F10.
+- **Nota (2026-11-16, F7, la voce resta APERTA):** F7 implementa Spearman con IC bootstrap e l'interfaccia dei
+  descrittori, ma solo con quelli ricavabili dalle tabelle (`prevalence`, `n_events` dello scenario `primary`);
+  i descrittori che richiedono i dati (deriva, quota fuori range, rango PCA) attendono questa voce (D-73 P9).
 ### D-44 · Regole di esclusione (fit fallito, macchina con un solo evento) — APERTA · **Serve entro:** F10.
 - **Nota (2026-11-12, F5, la voce resta APERTA):** lo stadio di fit registra senza escludere: un fit con loss non
   finita resta `complete` con `nonfinite_loss: true`, e per ogni residuo si registra `n_nonfinite`; un errore di
@@ -1178,6 +1364,10 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
   dà centro e scala finiti (mediana e quartili lo assorbono), lo storico no (media e deviazione standard non finite).
   Un confronto tra normalizer su fit con `n_nonfinite_cal` > 0 mescolerebbe la robustezza dello stimatore con il
   trattamento dei non finiti: **D-44 va decisa prima della lettura di RQ1b.**
+- **Nota (2026-11-16, F7, la voce resta APERTA):** forma operativa approvata in D-73 P8 (ordine fisso stato del fit →
+  non finiti del fit → `nan_reason` → eventi sullo scenario `primary`; azioni `error`, `exclude_fit`,
+  `exclude_machine_pair`, `keep`; nessun default; `exclude_fit` solo con sensibilità `exclude_machine_pair`). Restano
+  da decidere i valori, cioè quale azione per ogni caso e la soglia sul numero di eventi.
 
 ### D-45 · Secondo dataset — APERTA
 - **Vincolo:** deve avere più entità (PSM escluso; ASD candidato da verificare). Il piano congelato per SMD si riapplica
@@ -1240,6 +1430,9 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
 - **Proposta:** (a) in ogni caso; (b) da valutare con il relatore dopo M1.
 - **Serve entro:** F8.
 - **Collegamenti:** D-10, D-41, D-68, D-69.
+- **Nota (2026-11-16, F7, la voce resta APERTA):** la famiglia confermativa di RQ2 è un parametro del piano statistico,
+  non una costante del codice (D-36, D-73): un eventuale modello aggiunto con l'opzione (b) entra nella famiglia senza
+  modificare il codice, e m segue la famiglia dichiarata.
 
 ---
 

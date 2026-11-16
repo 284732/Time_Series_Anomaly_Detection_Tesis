@@ -38,6 +38,8 @@ Questi numeri cambiano alcune premesse di `architettura_repo_v1.md`.
    - unità = macchina; metodo degli IC **aperto** [D-36]: la proposta raccomanda il bootstrap **stratificato per gruppo** (con 3 gruppi un bootstrap gerarchico sui gruppi non funziona), mentre `piano_tesi_v1.md` prevede quello gerarchico;
    - regola di equivalenza con un δ **fissato prima** dei run ufficiali; valore e criterio aperti [D-30];
    - una famiglia confermativa minima (Conv vs PCA, LSTM vs PCA), con correzione di Holm [proposta, D-36].
+
+   > Superato (D-36, 2026-11-16): bootstrap stratificato per gruppo con BCa; IC di Bonferroni al 1 − α/m, non Holm; famiglia, α e B parametri del piano statistico.
 5. **Migrazione incrementale:** vale `piano_operativo.md` (F0–F12 + M1) [D-13]. La nuova pipeline dimostra la parità con quella attuale (snapshot sintetico, poi M1 su dati reali [D-14, D-17]) prima del cambio di protocollo (F8), che è dichiarato e misurato.
 
 ## 2. Problemi principali dell'architettura attuale
@@ -176,6 +178,8 @@ Due avvertenze da riportare nella tesi:
 
 ### 4.8 Aggregazione statistica
 
+> Superato (D-25, D-36, D-73, 2026-11-16): decomposizione a blocchi bilanciati per metrica con interazioni modello × fattore (D-25); IC stratificati BCa con Bonferroni, sign-flip solo di supporto (D-36); D-44 parametrica e random fuori dal fattore modello (D-73).
+
 1. **Per (macchina, modello, configurazione):** media sui seed, conservando la deviazione standard tra seed (che misura la componente di varianza dovuta al seed).
 2. **RQ2:** Δ_m = APnorm(DL) − APnorm(PCA di riferimento) per ciascuna delle 22 macchine di valutazione.
    - IC al 95%: metodo **aperto** [D-36]. Proposta: bootstrap delle macchine **stratificato per gruppo** (B = 10.000, BCa), sensibilità a due livelli (macchine, poi seed). `piano_tesi_v1.md` prevede invece un bootstrap gerarchico.
@@ -226,7 +230,11 @@ Due avvertenze da riportare nella tesi:
 
 > Superato (D-72 C1, C2, C3; D-34): `thresholds.py` è nuovo e non deriva da `rules.py`; niente «FA/giorno» ma falsi allarmi ogni 1.440 punti; le celle PA e oracolo non vengono da `protocols.py`.
 
+> Superato (D-73, 2026-11-16): `stats/` comprende anche `plan.py`, `inputs.py` e `run.py`; `reporting/` anche `report.py`.
+
 ### 5.2 Interazioni
+
+> Superato (D-73, 2026-11-16): `stats` legge le analisi pubblicate e un piano statistico separato (`configs/stats/`) e scrive in `store/stats/<stats_id>/`.
 
 ```
 experiment.yaml ─► config (validazione + fit_key) ─► pipeline.fit ─► store/fits/<key>/
@@ -240,6 +248,8 @@ stats ─► legge tables/* + piano ─► stats/*.csv.gz ─► reporting ─�
 Ogni stadio legge **solo** gli artefatti dello stadio precedente, mai gli oggetti in memoria dell'altro. Così si può rilanciare uno stadio senza ripetere quelli prima.
 
 ### 5.3 Configurazioni
+
+> Superato (D-73 P5, 2026-11-16): δ, famiglia confermativa, α, B e regole di esclusione stanno in `configs/stats/<nome>.yaml`, non in `configs/analysis/<nome>.yaml`.
 
 - `configs/base.yaml`: dati, split, finestre, preprocessing, default del training.
 - `configs/models/<famiglia>.yaml`: iperparametri e griglie di tuning.
@@ -351,6 +361,8 @@ Cosa salvare: le opzioni valutate.
 Marcatori pytest: `slow` e `regression`, esclusi dalla suite veloce. I test di regressione su dati reali li lanci tu.
 
 ## 10. Alternative progettuali considerate
+
+> Superato (D-25, D-36, 2026-11-16): righe «IC» e «Decomposizione RQ1» decise; la decomposizione è a blocchi bilanciati, e il disegno è completo dentro ogni metrica.
 
 | Decisione | Alternative | Raccomandazione e motivo |
 |---|---|---|

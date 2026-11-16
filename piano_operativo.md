@@ -62,8 +62,8 @@ D-53 approvata (2026-11-10): `.pyc` tolti dal tracciamento, `dataset/` resta tra
 
 **Gruppo A' — servono prima di F3 e F7:**
 8. ~~Quali segmenti ricevono il contesto nello scoring~~ — **risolta**: D-31 è sostituita da D-32; regole operative in D-20 e D-22.
-9. Metodo degli IC e famiglia confermativa [D-36] (prima di F7, oppure F7 implementa entrambi i metodi).
-9-bis. Metodo di decomposizione della varianza per RQ1a [D-25] (prima di F7): con D-24 il disegno non è più un fattoriale completo.
+9. ~~Metodo degli IC e famiglia confermativa~~ — **risolta da D-36** (approvata 2026-11-16): bootstrap stratificato per gruppo con BCa, IC di Bonferroni; famiglia, α e B parametri del piano statistico.
+9-bis. ~~Metodo di decomposizione della varianza per RQ1a~~ — **risolta da D-25** (approvata 2026-11-16): somme dei quadrati classiche a blocchi bilanciati, una risposta per metrica.
 
 **Gruppo B — prima degli esperimenti esplorativi (F8–F9):**
 10. `train_step` [D-38].
@@ -581,18 +581,54 @@ D-53 approvata (2026-11-10): `.pyc` tolti dal tracciamento, `dataset/` resta tra
 - **Nota (2026-11-13, da F6 passo 6.1):** nella tabella `fits` le colonne dei non finiti (`nonfinite_loss`,
   `n_nonfinite_cal`, `n_nonfinite_test`) sono nullabili (null per i fit `failed`, D-72 C6): filtrare prima sullo stato
   del fit, poi sui non finiti (pandas non ammette maschere booleane con valori nulli).
-- **File (tutti nuovi):** `src/stats/{aggregate,bootstrap,decisions,ranking,variance,descriptors}.py`, `src/reporting/{tables,figures}.py`, comandi `stats` e `report` in `src/cli.py`. `aggregate_results.py` resta.
-- **Dipendenze:** solo lo schema di F2 (per i test su dati simulati); F6 per l'uso reale. Si può sviluppare in parallelo a F3–F6. Metodo degli IC: D-36 va deciso prima di F7, oppure F7 implementa sia il bootstrap stratificato sia quello gerarchico e la scelta si congela in F10. δ è un parametro senza valore predefinito [D-30].
+- **File:**
+  - nuovi: `src/stats/{plan,inputs,aggregate,bootstrap,decisions,ranking,variance,descriptors,run}.py`,
+    `src/reporting/{tables,figures,report}.py`, piani statistici `configs/stats/<nome>.yaml` [D-73];
+  - da modificare, solo con aggiunte: `src/pipeline/store.py` (cartella delle statistiche, pubblicazione), `src/cli.py`
+    (comandi `stats` e `report`, `status`) [D-73];
+  - invariati: `aggregate_results.py`, `main.py`, `src/pipeline/table_schema.py`, `analyze`.
+  *(rev. 2026-11-16: prima solo `aggregate`, `bootstrap`, `decisions`, `ranking`, `variance`, `descriptors` e
+  `reporting/{tables,figures}`.)*
+- **Dipendenze:** solo lo schema di F2 (per i test su dati simulati); F6 per l'uso reale. Metodo degli IC: D-36
+  (approvata); decomposizione: D-25 (approvata). δ è un parametro senza valore predefinito [D-30]; D-44 è un blocco
+  obbligatorio del piano statistico, con valori aperti. *(rev. 2026-11-16: prima «D-36 va deciso prima di F7, oppure F7
+  implementa entrambi i metodi».)*
 - **Test:**
-  - copertura del bootstrap (metodo secondo D-36) ≈ 95% su simulazioni (marcato `slow`);
-  - regola di decisione su δ con casi noti;
-  - correzione di Holm;
-  - la decomposizione SS somma al totale;
-  - τ di Kendall su casi noti;
-  - **parità:** media ± std e confronti appaiati coincidono con `aggregate_results.py` sulla stessa tabella.
+  - copertura del bootstrap stratificato BCa [D-36] su simulazioni (marcato `slow`), con le bande fissate in D-36
+    (normale [0,93; 0,97]; code pesanti e asimmetrico ≥ 0,90, valore documentato); il gerarchico solo per documentarne
+    la copertura;
+  - regola di decisione su δ con casi noti, confini compresi;
+  - Bonferroni e Holm su casi noti (Holm implementato come funzione pura, non usato dalla regola di RQ2) *(rev.
+    2026-11-16: prima solo «correzione di Holm»)*;
+  - la decomposizione SS somma al totale; effetti noti recuperati; disegno sbilanciato rifiutato;
+  - τ di Kendall su casi noti (τ-b, pari merito, uguaglianza con scipy);
+  - deduplicazione della baseline random, filtro di D-44 nell'ordine fissato, righe `diagnostic` separate, ingressi
+    secondo D-73 P6;
+  - **parità:** media ± std e confronti appaiati coincidono con `aggregate_results.py` secondo i tre livelli di D-73 P12.
 - **Completata quando:** test verdi e report generato dalla tabella sintetica.
-- **Rischi:** troppi output. Il report produce solo ciò che il piano di analisi richiede.
+- **Rischi:** troppi output. Il report produce solo ciò che il piano statistico richiede.
 - **Impatto sui risultati:** nessuno.
+- **Nota (2026-11-16, piano F7 approvato):** decisioni D-25, D-36 e D-73 (P1–P15); note di rimando su D-24, D-30, D-42,
+  D-43, D-44, D-71.
+  - **Flusso di `stats`:** validazione del piano statistico → ingressi da CLI controllati contro gli esperimenti e i
+    `plan_sha256` dichiarati nel piano (codice 2 se non dichiarato, diverso o mancante) → solo analisi complete (V13)
+    → lettura con `read_csv_gz` → coerenza tra ingressi (dataset, manifest, `labels_version`, ruolo) → `stats_id`
+    provvisorio, rifiuto se presente → lock e `begin_run`, `stats_id` definitivo → D-44 nell'ordine stato del fit →
+    non finiti del fit → `nan_reason` → eventi (`primary`) → righe `diagnostic` separate → deduplicazione del random →
+    media sui seed (`skipna=False`, `n_seeds_used`) → solo le RQ richieste dal piano → tabelle e `stats.json`
+    (esclusioni per regola, motivo e modello; macchine per blocco; B, seed, metodi) nella cartella temporanea →
+    rinomina atomica in `store/stats/<stats_id>/` → registro.
+  - **Passi:** 0 registro e documentazione → 1 `plan.py` → 2 `inputs.py` (ingressi, coerenza, `stats_id`) → 3 D-44,
+    deduplicazione del random, `diagnostic` (test di invariante prima) → 4 `aggregate.py` e parità con
+    `aggregate_results.py` → 5 `decisions.py` → 6 `bootstrap.py` e simulazioni di copertura → 7 RQ2 → 8 `ranking.py`
+    e `variance.py`, RQ1a/RQ1b → 9 `descriptors.py`, RQ3 e RQ4 → 10 `run.py`, `store.py`, comando `stats`, `status` →
+    11 comando `report` → 12 integrazione sintetica, prova golden legata a `STATS_CODE_VERSION`, chiusura. Dopo ogni
+    passo: snapshot F1, golden T0, R1 e `analyze`, poi `python -m pytest -q`; riepilogo e stop prima di ogni commit.
+  - **Bande di copertura (D-36):** fissate ora; se il caso normale esce dalla banda ci si ferma e lo si riporta,
+    senza correggere test o metodo senza una voce di registro.
+  - **Da fare fuori da F7 (D-73 P10):** controllo E5 sulla deriva, prima della lettura di RQ4.
+  - **Decisioni APERTE toccate, stato invariato:** D-30, D-37, D-42, D-43, D-44, D-71 (parametri dichiarati, nessun
+    default).
 
 ### M1 — Parità su dati reali (validazione metodologica, la lanci tu)
 - **Obiettivo:** dimostrare che la nuova pipeline in modalità `legacy2` riproduce i run storici di riferimento identificati in D-50.
@@ -656,15 +692,34 @@ D-53 approvata (2026-11-10): `.pyc` tolti dal tracciamento, `dataset/` resta tra
 
 ### F10 — Congelamento del piano di analisi
 - **Obiettivo:** fissare RQ, δ e analisi prima di vedere i risultati ufficiali.
-- **File (nuovi):** `configs/analysis/official.yaml` (decisioni D-30, D-36, D-37, D-42, D-43, D-44, D-09), con il suo hash nel registro, più la sezione corrispondente in `docs/decisioni.md`.
+- **File (nuovi)**, ciascuno con il suo hash nel registro, più la sezione corrispondente in `docs/decisioni.md`, congelati
+  in quest'ordine: config dell'esperimento → piano di analisi → piano statistico:
+  - `configs/experiments/official.yaml` (config dell'esperimento): D-09 (`experiment.seeds`, 5 seed), modelli e
+    iperparametri selezionati in F9 (D-41), preprocessing (D-40), macchine di valutazione (D-08); hash =
+    `config_sha256`;
+  - `configs/analysis/official.yaml` (piano di analisi, D-72 C8): solo ciò che `analyze` calcola, cioè la parte di
+    D-42 sui livelli calcolati (`scenarios`, compreso `test_context` di D-20 e D-32; `window_time_aggs`; `scorings`;
+    `ts_aggs`; `thresholds` con livelli e `n_past`; `pa`), con i vincoli di D-24 e D-60 verificati dal validatore;
+    nessun `legacy_export` (solo `legacy2`);
+  - `configs/stats/official.yaml` (piano statistico, D-73 P5): D-30 (δ), D-36 (α, B ≥ 10.000, famiglia
+    confermativa), D-37 (PCA di riferimento), D-42 (blocchi e livelli letti, configurazione canonica per τ, versione
+    principale di η²), D-43 (descrittori), D-44 (regole di esclusione), più gli esperimenti attesi con il
+    `config_sha256` della config dell'esperimento e il `plan_sha256` dell'analisi (D-73 P6), quindi si congela per
+    ultimo.
+  *(rev. 2026-11-16: prima un solo file `configs/analysis/official.yaml` con D-30, D-36, D-37, D-42, D-43, D-44 e
+  D-09; la config dell'esperimento era un file nuovo di F11. Decisione dell'utente del 2026-11-16, nota su D-09.)*
 - **Dipendenze:** F9; tutte le decisioni del gruppo C; D-34 per VUS-PR.
-- **Test:** il comando `cli` con `kind: official` rifiuta di partire se il piano non è registrato, se l'albero git è modificato o se tra le macchine compare una di sviluppo.
+- **Test:** i comandi `cli` con `kind: official` rifiutano di partire se il file che li governa non è registrato: `fit`
+  la config dell'esperimento, `analyze` il piano di analisi (e la config), `stats` il piano statistico (e gli hash che
+  dichiara); inoltre se l'albero git è modificato o se tra le macchine compare una di sviluppo. *(rev. 2026-11-16: prima
+  «il piano», al singolare, senza la config dell'esperimento.)*
 - **Completata quando:** piano congelato in un commit (lo fai tu o lo chiedi tu).
 - **Impatto sui risultati:** nessuno.
 
 ### F11 — Run ufficiali (esperimenti ufficiali, li lanci tu)
 - **Obiettivo:** risultati della tesi sulle 22 macchine di valutazione.
-- **File (nuovi):** `configs/experiments/official.yaml`.
+- **File:** nessuno nuovo; si eseguono solo la config dell'esperimento e i due piani congelati in F10. *(rev.
+  2026-11-16: prima «File (nuovi): `configs/experiments/official.yaml`», ora scritta e congelata in F10, nota su D-09.)*
 - **Esecuzione:** `fit` → `analyze` → `stats` → `report`. Stima: circa 6 ore di CPU per i fit.
 - **Completata quando:** IC, decisioni RQ2 e analisi RQ1, RQ3 e RQ4 sono generati dal piano congelato e da un commit noto; il registro è aggiornato.
 - **Rischi:** un fit fallito si gestisce secondo la regola di esclusione congelata, non decidendo dopo.
@@ -686,7 +741,7 @@ F0 → F1 → F2 ─┬→ F3 → F4 → F5 → F6 ─┐
               └→ F7 (in parallelo) ──┴→ M1 → F8 → F9 → F10 → F11 → F12
 ```
 
-Vincoli aggiuntivi: F3 richiede D-51 (D-31 è sostituita da D-32); F7 richiede D-36 (oppure implementa entrambi i metodi) e D-25.
+Vincoli aggiuntivi: F3 richiede D-51 (D-31 è sostituita da D-32); F7 richiede D-36 e D-25 (entrambe approvate il 2026-11-16).
 
 - **Si può interrompere in qualunque punto:** fino a M1 nessun risultato cambia e la pipeline storica resta intatta. Ogni fase è un branch e un commit separato, su tua richiesta.
 - **`CLAUDE.md` va aggiornato tre volte:** in F0 (riconciliazione, D-02), dopo M1 (la nuova pipeline diventa quella di riferimento) e dopo F8 (il protocollo canonico cambia). Ogni nuova decisione si registra prima in `docs/decisioni.md`.
