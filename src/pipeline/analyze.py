@@ -98,6 +98,7 @@ class AnalysisReport:
     analysis_dir: Path
     counts: Dict[str, int]
     run_recorded: bool = True        # False: analisi completa, run.json o registro non aggiornati (V13)
+    nan_reasons: Optional[Dict[str, Dict[str, int]]] = None   # tabella → motivo → righe NaN (= analysis.json)
 
 
 # ---------------------------------------------------------------- ingressi
@@ -363,7 +364,7 @@ def _run(cfg, plan: ap.AnalysisPlan, datasets_dir, repo_root) -> AnalysisReport:
               "nan_rows": sum(sum(c.values()) for c in info["nan_reasons"].values()),
               "legacy_rows": 0 if legacy is None else legacy["n_rows"],
               "skipped_variants": 0 if legacy is None else len(legacy["skipped_variants"])}
-    return AnalysisReport(run.run_id, run.run_dir, aid, dest, counts, recorded)
+    return AnalysisReport(run.run_id, run.run_dir, aid, dest, counts, recorded, info["nan_reasons"])
 
 
 def _record_run(store: Store, run, aid: str, dest: Path) -> bool:

@@ -1,17 +1,26 @@
 """
-CLI dello stadio di fit (F5, D-70): ``python -m src.cli {fit,status,clean-tmp} <esperimento.yaml> [--datasets-dir]``.
+CLI degli stadi di fit (F5, D-70) e di analisi (F6, D-72):
+``python -m src.cli {fit,status,clean-tmp} <esperimento.yaml> [--datasets-dir]`` e
+``python -m src.cli analyze <esperimento.yaml> <piano.yaml> [--datasets-dir]``.
 
 Codici di uscita:
-  0 = tutto complete o skipped (status: nessun errore; clean-tmp: pulizia eseguita o niente da fare);
-  1 = almeno un fit failed (fit) o un errore di integrità (status --verify);
-  2 = config o dati non validi (validazione, controlli preliminari, ``kind: official`` prima di F10);
+  0 = tutto complete o skipped (status: nessun errore; clean-tmp: pulizia eseguita o niente da fare; analyze: analisi
+      pubblicata, anche se run.json o il registro non si sono aggiornati, V13);
+  1 = almeno un fit failed (fit; analyze: analisi pubblicata con fit failed solo in ``fits``) o un errore di
+      integrità (status --verify);
+  2 = config, piano o dati non validi (validazione, controlli preliminari compresi C15 e fit mancanti, label cambiate
+      durante l'esecuzione, analisi già presente, ``kind: official`` prima di F10);
   3 = store occupato (lock attivo, rimasto senza ``--break-stale-lock``, di un altro host, illeggibile);
+  4 = analyze: pubblicazione non riuscita, nessun risultato (rinomina fallita dopo tutti i tentativi, D-72 B11);
   130 = interruzione (KeyboardInterrupt; registro ``interrupted``).
 
 ``status`` è in sola lettura: non crea cartelle né file, nemmeno lo store se manca. ``--verify`` legge i residui con
 ``residual_cache.get_residuals`` senza lock (verifica di ``npz_sha256`` e degli sha256 contro ``meta.json``; senza
 lock non rigenera mai). ``clean-tmp`` prende il lock e rimuove le voci di ``store.orphan_tmp()``; non promuove mai un
-``tmp/`` a ``fits/<key>``. Il numero di thread non si cambia qui.
+``tmp/`` a ``fits/<key>``; dal passo 7 di F6 rimuove anche le cartelle temporanee rimaste delle analisi
+(``store.orphan_analysis_tmp()``). ``status`` elenca anche le analisi pubblicate dell'esperimento, le cartelle
+temporanee orfane e l'incongruenza «analisi pubblicata ma run non registrato come completato» (V13). Il numero di
+thread non si cambia qui.
 """
 
 import argparse
@@ -25,16 +34,20 @@ from typing import List, Optional
 import yaml
 
 from src.data.manifest import ManifestError, build_manifest, load_dataset_spec, spec_path_for
+from src.pipeline import analyze as anmod
 from src.pipeline import fit as fitmod
 from src.pipeline import residual_cache as rc
-from src.pipeline.store import Store, StoreLocked, is_stale, new_run_id
+from src.pipeline.store import (ANALYSES_DIR, ANALYSIS_JSON, AnalysisExists, AnalysisPublishError, Store, StoreLocked,
+                                is_stale, new_run_id)
 from src.utils import config as cfgmod
 from src.utils.schema import ConfigError
 
 EXIT_OK, EXIT_FAILED, EXIT_INVALID, EXIT_LOCKED, EXIT_INTERRUPTED = 0, 1, 2, 3, 130
+EXIT_PUBLISH = 4                                   # analyze: pubblicazione non riuscita (D-72 B11)
 REPO_ROOT = cfgmod._ROOT
 DEFAULT_DATASETS_DIR = REPO_ROOT / "configs" / "datasets"
 INVALID_ERRORS = (ConfigError, ManifestError, fitmod.PreflightError, fitmod.FitRefused, yaml.YAMLError)
+ANALYZE_INVALID = INVALID_ERRORS + (anmod.AnalysisRefused, anmod.AnalysisPreflightError, AnalysisExists)
 BREAK_NOTE = "break-stale-lock: "
 CLEAN_SUMMARY = "clean_summary.csv"
 CLEAN_SUMMARY_COLUMNS = ("kind", "path", "fit_key", "status", "detail")   # path relativo allo store
@@ -154,6 +167,7 @@ def cmd_status(args) -> int:
         extra = "" if e["kind"] != "fit_dir" else \
             f" fit_key={e['fit_key']} status={e['status']} dest_exists={e['dest_exists']}"
         print(f"    {e['kind']} {e['name']}{extra}")
+    _analysis_status(store, cfg, exists)
     if args.verify:
         if bad:
             print(f"verify: errori di integrità in {len(bad)} fit")
@@ -196,7 +210,7 @@ def cmd_clean_tmp(args) -> int:
         print(f"store {store.root} inesistente: niente da pulire")
         return EXIT_OK
     if args.dry_run:
-        entries = store.orphan_tmp()
+        entries = store.orphan_tmp() + store.orphan_analysis_tmp()
         print(f"clean-tmp --dry-run: {len(entries)} voci da rimuovere (nessuna cancellazione)")
         for e in entries:
             print(f"    {e['kind']} {e['name']}")
@@ -228,7 +242,7 @@ def cmd_clean_tmp(args) -> int:
                 [{"kind": "lock_broken", "path": store.lock_path.name, "detail": _lock_text(broken)}]
             entries = []
             try:
-                entries = store.orphan_tmp()            # riletto sotto lock
+                entries = store.orphan_tmp() + store.orphan_analysis_tmp()   # riletto sotto lock (F6: analisi)
                 for e in entries:
                     _remove(e)                          # mai promosso a fits/<key>
                     removed.append({"kind": e["kind"], "path": Path(e["path"]).relative_to(store.root).as_posix(),
@@ -249,16 +263,79 @@ def cmd_clean_tmp(args) -> int:
     return EXIT_OK
 
 
+# ------------------------------------------------------------------ analyze (F6, D-72)
+def cmd_analyze(args) -> int:
+    for what, path in (("esperimento", args.experiment), ("piano di analisi", args.plan)):
+        if not Path(path).is_file():
+            _err(f"config non valida: file di {what} inesistente: {path}")
+            return EXIT_INVALID
+    try:
+        report = anmod.run_analysis(args.experiment, args.plan, datasets_dir=args.datasets_dir, repo_root=REPO_ROOT)
+    except KeyboardInterrupt:
+        _err("interrotto: registro 'interrupted', lock rilasciato, cartella temporanea dell'analisi lasciata per "
+             "clean-tmp")
+        return EXIT_INTERRUPTED
+    except StoreLocked as exc:
+        _err(f"store occupato, lock: {_lock_text(exc.lock)}")
+        return EXIT_LOCKED
+    except AnalysisPublishError as exc:
+        _err(f"pubblicazione non riuscita, nessun risultato: {exc}")
+        return EXIT_PUBLISH
+    except ANALYZE_INVALID as exc:
+        _err(f"config, piano o dati non validi: {exc}")
+        return EXIT_INVALID
+    c = report.counts
+    print(f"analisi {report.analysis_id} pubblicata in {report.analysis_dir} (run {report.run_id}): righe free "
+          f"{c['free']}, thr {c['thr']}, fits {c['fits']} (failed {c['failed_fits']}); righe NaN {c['nan_rows']}; "
+          f"righe legacy {c['legacy_rows']}")
+    reasons = report.nan_reasons or {}                 # stessi conteggi di analysis.json; codice invariato (D-44)
+    if not any(reasons.get(tb) for tb in ("free", "thr")):
+        print("righe NaN per motivo: nessuna")
+    for tb in ("free", "thr"):
+        for reason, n in sorted((reasons.get(tb) or {}).items()):
+            print(f"righe NaN {tb}: {reason}={n}")
+    if not report.run_recorded:
+        print(f"avviso: run.json o il registro del run {report.run_id} non aggiornati; l'analisi è completa (V13)")
+    return EXIT_FAILED if c["failed_fits"] else EXIT_OK
+
+
+def _analysis_status(store: Store, cfg, exists: bool) -> None:
+    """Analisi pubblicate dell'esperimento, cartelle temporanee orfane, incongruenza V13 (sola lettura)."""
+    base = store.root / "runs" / cfg.kind / cfg.name / ANALYSES_DIR
+    docs = []
+    if exists and base.is_dir():
+        for p in sorted(base.glob(f"*/{ANALYSIS_JSON}")):
+            try:
+                docs.append(json.loads(p.read_text(encoding="utf-8")))
+            except (OSError, ValueError):
+                docs.append({"analysis_id": p.parent.name, "run_id": "?", "illeggibile": True})
+    completed = {r["run_id"] for r in store.read_registry() if r["status"] == "completed"} if exists else set()
+    print(f"analisi pubblicate: {len(docs)}")
+    for d in docs:
+        print(f"    {d.get('analysis_id')} run={d.get('run_id')} piano={str(d.get('plan_sha256', ''))[:12]} "
+              f"creata={d.get('created_utc')}" + (" (analysis.json illeggibile)" if d.get("illeggibile") else ""))
+        if d.get("run_id") not in completed:
+            print(f"    incongruenza: analisi {d.get('analysis_id')} pubblicata ma run {d.get('run_id')} non "
+                  "registrato come completato (V13: l'analisi è completa)")
+    orphans = store.orphan_analysis_tmp() if exists else []
+    print(f"orphan_analysis_tmp: {len(orphans)}")
+    for e in orphans:
+        print(f"    analysis_tmp run={e['run_id']} marcatore={e['has_marker']}")
+
+
 # ------------------------------------------------------------------ main
 def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(prog="python -m src.cli", description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="command", required=True)
     for name, fn, help_ in (("fit", cmd_fit, "esegue o riusa i fit"),
-                            ("status", cmd_status, "stato dei compiti (sola lettura)"),
-                            ("clean-tmp", cmd_clean_tmp, "pulisce tmp/ sotto lock")):
+                            ("status", cmd_status, "stato dei compiti e delle analisi (sola lettura)"),
+                            ("clean-tmp", cmd_clean_tmp, "pulisce tmp/ e le cartelle temporanee delle analisi sotto lock"),
+                            ("analyze", cmd_analyze, "analisi dai residui dello store (tabelle, esportazione legacy)")):
         p = sub.add_parser(name, help=help_)
         p.add_argument("experiment", help="file YAML dell'esperimento")
+        if name == "analyze":
+            p.add_argument("plan", help="file YAML del piano di analisi (configs/analysis/<nome>.yaml)")
         p.add_argument("--datasets-dir", default=str(DEFAULT_DATASETS_DIR), help="cartella degli spec dei dataset")
         p.set_defaults(func=fn)
         if name == "status":
