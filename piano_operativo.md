@@ -533,6 +533,11 @@ D-53 approvata (2026-11-10): `.pyc` tolti dal tracciamento, `dataset/` resta tra
 - **Obiettivo:** dimostrare che la nuova pipeline in modalità `legacy2` riproduce i run storici di riferimento identificati in D-50.
 - **File (nuovi):** `configs/experiments/parity_repro_{last,mean}.yaml`, `scripts/parity_report.py` (confronta `store/` con `results/` in sola lettura).
 - **Vincolo sui seed (nota 2026-11-10, da F3):** le config `parity_repro_*.yaml` hanno i seed nell'ordine storico, con 42 per primo, e un'asserzione (test o controllo all'avvio di M1) lo verifica. Motivo: in `main.py` la PCA gira solo al primo seed con `random_state` = `seeds[0]`, mentre il nuovo schema fissa `random_state: 42` con un fit condiviso tra i seed. L'equivalenza vale solo se il primo seed è 42; altrimenti, con D-57, una PCA diversa sembrerebbe una divergenza di thread. Test di riferimento: `test_pca_random_state_and_sharing_across_seeds`. Provenienza dei dati: vedi la nota di rimando su D-61.
+- **Confronto con i run storici (nota 2026-11-16, da F6 passo 6.6):** il confronto sui dati reali si fa sui CSV per
+  macchina (`per_machine/<macchina>.csv`) o sui JSON delle metriche, non su `summary_timestamp_metrics.csv`:
+  `main.run_experiment` rilegge i CSV per macchina con il parser predefinito di `pd.read_csv` e può perdere l'ultima
+  cifra (fatto verificato: AP 0,06751194113624537 → 0,0675119411362453). I CSV letti con
+  `float_precision="round_trip"` e i JSON sono esatti.
 - **Punti passati a M1 da F6 (nota 2026-11-13):** verificare con `n_nonfinite_cal` (tabella `fits`) se sui dati reali
   si presenta un residuo non finito in cal; se sì, la variante `raw_mean` dello storico aveva una soglia finita
   (NaN scartato in silenzio) e la tabella lunga una riga NaN (D-72 C15, passo 6.0): differenza attesa e dichiarata.
@@ -570,6 +575,15 @@ D-53 approvata (2026-11-10): `.pyc` tolti dal tracciamento, `dataset/` resta tra
 - **Obiettivo:** scegliere le configurazioni globali per famiglia, con budget pari, sulle 6 macchine dev.
 - **File (nuovi):** griglie in `configs/models/*.yaml`, `configs/experiments/tuning.yaml`, `configs/analysis/tuning.yaml`; ulteriori esperimenti esplorativi (preprocessing, epoche fisse, PCA su fit+es [esplorativo, D-06]) sempre sulle sole macchine dev.
 - **Dipendenze:** F8; decisioni D-41 e D-46.
+- **Nota (2026-11-16, da F6 passo 6.7, durata dell'analisi):** misura su dati sintetici e stima per l'esperimento
+  ufficiale circa 35 minuti a un thread con 5 seed (circa 22 con 3), contro i circa 15 stimati; il costo principale è
+  `roll_robust_z`. Con il primo piano di tuning si misura la durata reale e si decide allora, registrando la scelta,
+  tra:
+  - ottimizzazioni: z di `roll_robust_z` (e finestra mobile) calcolato una volta per combinazione e riusato tra i
+    livelli; verifica di `residuals.npz` una volta per fit, sotto lock, riusata per tutti i suoi array (la verifica
+    non si toglie);
+  - parallelizzazione per macchina.
+  Ogni ottimizzazione deve lasciare le tabelle identiche bit a bit (prova golden del passo 8 di F6).
 - **Test:** un test sulle config verifica che il budget sia pari per costruzione; lo stadio di fit rifiuta le macchine di valutazione negli esperimenti esplorativi, salvo un flag esplicito che viene registrato.
 - **Completata quando:** configurazioni selezionate salvate, con motivazione in `docs/decisioni.md`.
 - **Rischi:** tentazione di guardare le macchine di valutazione, impedita dal controllo sopra. Stima del costo: circa 7 ore di CPU con `train_step=5`, da verificare.
