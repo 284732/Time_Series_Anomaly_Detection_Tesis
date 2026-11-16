@@ -662,6 +662,16 @@ D-53 approvata (2026-11-10): `.pyc` tolti dal tracciamento, `dataset/` resta tra
   - `src/stats/plan.py` lo rifiuta nei blocchi con `window_time_agg` o `ts_agg` a più di un livello;
   - test per entrambi i punti.
   Gli AE non addestrati si dichiarano baseline descrittive nel piano statistico (D-73).
+- **Nota (2026-11-16, proposta di Claude Project in D-69, NON ancora approvata):** se approvata, ogni AE non
+  addestrato è l'AE addestrato selezionato in F9 con zero epoche: stessa configurazione, stessa inizializzazione,
+  stessi seed, BatchNorm con le statistiche iniziali. Si realizza con un'opzione esplicita (per esempio
+  `untrained: true`), non con `max_epochs: 0`. Le classi storiche `Untrained…` con `init_std` non si usano per i run.
+  Test da aggiungere:
+  - stesso seed → pesi identici a quelli dell'AE addestrato prima della prima epoca;
+  - il trainer gestisce zero epoche e la selezione dell'epoca su es non ha nulla da ripristinare;
+  - cambiare solo le impostazioni di addestramento (per esempio il learning rate) lascia invariato il `fit_key`
+    dell'AE non addestrato;
+  - il ruolo dichiarato nella config si riscontra con `descriptive_baselines` del piano statistico (D-73).
 - **Test (su dati sintetici):**
   - perturbare es, cal o test lascia invariati scaler e PCA;
   - perturbare il test lascia invariati normalizer e soglie;

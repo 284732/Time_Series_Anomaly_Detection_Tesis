@@ -444,6 +444,51 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
 - **Approvazione:** utente, 2026-11-16 (discussione sul perimetro della tesi, su raccomandazione di Claude Project).
 - **Collegamenti:** D-10, D-33, D-36, D-67, D-68, D-71, D-73.
 - **Documenti:** piano F8.
+- **Nota (2026-11-16, il testo sopra resta invariato): proposta di Claude Project sui punti da fissare prima di F8,
+  NON ancora approvata.**
+  - **Fatti verificati nel codice (2026-11-16):**
+    - le classi storiche `UntrainedLSTMAEDetector` e `UntrainedConvAEDetector` (`src/models/deep/untrained_ae.py`)
+      reinizializzano i pesi con una normale di deviazione `init_std` (0,02 se assente), diversa dall'inizializzazione
+      degli AE addestrati;
+    - lo schema rifiuta `training.max_epochs: 0` (intero ≥ 1, `src/utils/schema.py`);
+    - con zero epoche il ciclo di `PyTorchTrainer.fit` non viene eseguito e non c'è uno stato migliore da ripristinare;
+    - il seed entra nel `fit_key` dei modelli non deterministici (`config.fit_payload`); il blocco `training` vi entra
+      solo per i modelli con `trained` vero.
+  - **Proposta:**
+    - **stessa configurazione:** ogni AE non addestrato ha la stessa architettura, gli stessi iperparametri e lo stesso
+      preprocessing dell'AE addestrato selezionato in F9, così l'unica differenza è l'addestramento; nessun tuning
+      dedicato;
+    - **inizializzazione:** lo stesso schema dell'AE addestrato. Le classi storiche `Untrained…` con `init_std` non si
+      usano per i run;
+    - **seed:** gli stessi dell'AE addestrato (D-09). La variabilità dovuta ai pesi casuali si misura, e il confronto
+      con l'AE addestrato è appaiato per seed; il costo è trascurabile;
+    - **realizzazione, da valutare in F8:** l'AE non addestrato è l'AE addestrato con zero epoche, così i pesi
+      coincidono per costruzione con quelli iniziali dell'AE addestrato con lo stesso seed. Meglio un'opzione
+      esplicita (per esempio `untrained: true`, che imposta zero epoche) di `max_epochs: 0`: rende il ruolo leggibile
+      dalla config (riscontro con `descriptive_baselines`, D-73) ed evita conflitti con il validatore e con il tuning.
+      Da verificare:
+      - che il trainer e il modello gestiscano zero epoche da capo a fondo (storia vuota, stato `eval`);
+      - che la selezione dell'epoca su es (split3) non abbia nulla da scegliere né da ripristinare;
+      - che il seed entri nel `fit_key`;
+      - test: stesso seed → pesi identici a quelli dell'AE addestrato prima della prima epoca;
+    - **`fit_key`:** le impostazioni di addestramento (learning rate, batch, `max_epochs`…) **non** entrano nel
+      `fit_key` dell'AE non addestrato: con zero epoche non influenzano i pesi, che dipendono solo da architettura e
+      seed. È coerente con la regola esistente: il blocco `training` entra solo per i modelli con `trained` vero, e
+      l'AE non addestrato ha `trained` falso. Due AE non addestrati con pesi identici hanno la stessa chiave.
+      L'abbinamento con l'AE addestrato passa dalla config (stessa architettura, stesso seed), non dal `fit_key`. Test
+      in F8: cambiare solo il learning rate → stesso `fit_key`;
+    - **BatchNorm del Conv-AE:** raccomandate le statistiche iniziali (media 0, varianza 1), come nell'AE addestrato
+      all'epoca 0. Alternativa scartata: ricalcolare le statistiche con un passaggio sui dati di train senza aggiornare
+      i pesi, perché sarebbe già una forma di adattamento ai dati e il modello non sarebbe più «quello prima
+      dell'addestramento». Se approvata, va registrata come scelta motivata;
+    - **nella tesi:** una riga descrittiva nella tabella di RQ2 (fuori dalla famiglia confermativa, senza esito della
+      regola a quattro esiti, etichettata come tale) e un paragrafo di interpretazione.
+  - **Effetto sull'elenco «Restano da fissare prima di F8», se approvata:**
+    - `init_std` non serve più;
+    - `channels` / `hidden_dim` e `latent_dim` coincidono con quelli dell'AE addestrato selezionato;
+    - seed nel `fit_key` e BatchNorm sono risolti dai punti sopra;
+    - resta da fissare la chiave che dichiara il ruolo (per esempio `untrained: true`) e il controllo di parità
+      dedicato.
 
 ### D-71 · Perimetro dei modelli DL — APPROVATA · 2026-11-16
 - **Testo della voce APERTA (storico, invariato):**
