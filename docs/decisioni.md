@@ -1046,6 +1046,11 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
        essere stato rifatto nel frattempo); nuovo controllo della cartella definitiva (codice 2);
     4. ogni array letto passa da `get_residuals`, che lo verifica contro lo sha256 di `meta.json`; la rigenerazione
        rifiuta residui con sha256 diverso; quindi gli array letti sono esattamente quelli entrati nell'id.
+  - **`ANALYSIS_CODE_VERSION` congelata a 1 (passo 8, 2026-11-16):** prova golden delle uscite di un'analisi
+    sintetica deterministica (tabelle senza `fit_sec`, `analysis.json` senza `run_id`, `created_utc` e `git`) in
+    `tests/golden/analyze_synth.json`, legata alla versione e all'ambiente: il test fallisce se le uscite cambiano senza
+    aumentare la versione; la rigenerazione (`--write-golden`) rifiuta di sovrascrivere a parità di versione. Le analisi
+    prodotte con il codice dei passi intermedi di F6 erano solo artefatti di test sintetici.
   - **B13 — test di leakage:** perturbare il test non cambia normalizer e soglie statiche; le soglie mobili restano
     invariate fino a t (test di causalità).
   - **Codici di uscita di `analyze`:** 0 completa; 1 almeno un fit `failed` (solo righe in `fits`); 2 config, piano o

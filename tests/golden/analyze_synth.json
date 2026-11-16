@@ -1,0 +1,19 @@
+{
+ "analysis_code_version": 1,
+ "environment": {
+  "lock_sha256": "42a2e93f7e6b777d7616ae40cdaa5bf7b56156591204654a7ff62501c4301365",
+  "packages": {
+   "numpy": "2.3.4",
+   "pandas": "2.3.3",
+   "scipy": "1.16.3",
+   "sklearn": "1.9.0"
+  },
+  "python": "3.13.9"
+ },
+ "outputs": {
+  "analysis.json": "3bb512b6004c3995a79c4691af25e1fcdce981f4b5fa2798b89ec55737fce38b",
+  "fits": "548253e6ca907238534d04b2daf1ea2134ccb2c01c7d6aaf328643f1da76c079",
+  "free": "0eedf770e557385824ddab123019f574c72abc75c152f41b81bd91b24fab5eb4",
+  "thr": "22e8b42a89afd37cd1fa036945933dc6033be07d5f752dfeb35c8b680a6e2e55"
+ }
+}

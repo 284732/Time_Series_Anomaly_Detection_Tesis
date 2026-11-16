@@ -414,6 +414,71 @@ D-53 approvata (2026-11-10): `.pyc` tolti dal tracciamento, `dataset/` resta tra
 - **Completata quando:** 6a esatta; 6b verde; la tabella lunga rispetta lo schema di F2.
 - **Rischi:** numero di combinazioni della griglia (si stimano circa 15 minuti per l'esperimento ufficiale). Va misurato su dati sintetici e, se serve, parallelizzato per macchina.
 - **Impatto sui risultati:** metriche storiche invariate; metriche nuove aggiunte.
+- **Stato: completata (2026-11-16).** Commit: passo 0 `adfbcbf` (registro D-72 e piano), 1 `387b99e` (piano di
+  analisi, `analysis_id`), 2 `1a8191f` (`analyze` con esportazione legacy, pubblicazione atomica), 3 `ed0d5f7`
+  (metriche), 4 `94b1f40` (soglie), 5 `ef85d88` (normalizer robusto), 6.0 `3d19ce7` (non finiti), 6.1 `f27e92e`
+  (colonne di `fits`), 6.2 `e2459d7` (nucleo di scoring), 6.3 `8a0225a` (righe `free`/`thr`, `nan_reason`), 6.4
+  `33cec21` (tabella `fits`), 6.5 `b3c8a50` (integrazione in `analyze`), 6.6 `48c5499` (controlli incrociati), 7
+  `435efb2` (CLI), 8 chiusura (commit che contiene questa riga). Suite di chiusura: vedi il messaggio del commit del
+  passo 8.
+  - **Verificato in F6 (dati sintetici):**
+    - 6a: esportazione legacy dai residui dello store identica a tolleranza zero allo snapshot F1 (`last`/`mean`) e,
+      dal vivo, a `main.run_experiment` con `timestamp_agg` `mean` e `max` (`test_f6_analyze_legacy.py`);
+    - identità dell'analisi: componenti in chiaro, id provvisorio e definitivo sotto lock, rifiuto senza scritture,
+      `meta_sha256` per elenco esplicito, tempi fuori dall'id (`test_f6_analysis_plan.py`, `test_f6_analyze_legacy.py`);
+    - pubblicazione atomica, tentativi su `PermissionError`, `run_id` riservati, completezza V13
+      (`test_f6_store_analysis.py`, `test_f6_analyze_legacy.py`);
+    - metriche: casi a mano (ritardo, falsi allarmi, AP normalizzata, celle), uguaglianza bit a bit con
+      `evaluate_timestamps`, A ≥ D, B ≥ C, PA ≥ no-PA a tolleranza zero (20.000 serie una tantum), scarto documentato
+      con `protocols.four_cells` (`test_f6_metrics.py`);
+    - soglie: storia cal → test dei soli validi, identità con `rules.py` a storia vuota (anche 99,5), differenza sul
+      buco iniziale, C15, causalità (`test_f6_thresholds.py`);
+    - normalizer robusto, conteggi di C5, invarianza empirica rispetto a 1,349 (`test_f6_robust_normalizer.py`);
+    - non finiti: rifiutati in `metrics`/`thresholds` (6.0), controllati prima della proiezione con motivo uniforme
+      (6.2), righe NaN con `nan_reason` contate, `inf` end-to-end (`test_f6_analysis_grid.py`, `test_f6_rows.py`,
+      `test_f6_nan_reason.py`, `test_f6_analyze_tables.py`);
+    - nucleo: varianti storiche bit a bit, contesto contro forza bruta, scenari, griglia (`test_f6_analysis_grid.py`);
+      righe V10–V12 contate a mano (`test_f6_rows.py`); tabella `fits` (`test_f6_fits_table.py`);
+    - integrazione: tabelle, `analysis.json`, letture (mai es), C13, C15, rigenerazione con contesto, B10 in processo
+      separato (`test_f6_analyze_tables.py`);
+    - tabella lunga = CSV per macchina dell'esportazione legacy per chiave, causalità con `last` sui residui reali,
+      dipendenza offline di `mean`/`max` (D-24), leakage, C9 (`test_f6_crosscheck.py`);
+    - CLI: codici 0/1/2/3/4/130, riepilogo delle righe NaN, `status` (analisi, orfane, V13), `clean-tmp`
+      (`test_f6_cli_analyze.py`);
+    - prova golden delle uscite legata ad `ANALYSIS_CODE_VERSION` = 1 (`test_f6_analyze_golden.py`, golden
+      `tests/golden/analyze_synth.json`).
+  - **Non verificato in F6:**
+    - dati reali (M1, la lancia l'utente);
+    - lock e rinomina su POSIX (provati solo su Windows 10);
+    - test scritti dopo il codice e convalidati solo con prove di difetto: punti 1 (`meta_sha256` per elenco
+      esplicito) e 2 (V13) della revisione del passo 2; «NaN nel supporto statico» del passo 6.0;
+    - test del passo 2 modificati in 6.5, con il motivo (nessuno reso più permissivo): elenco nelle annotazioni sopra;
+    - durata reale (solo misura sintetica e stima, 6.7).
+  - **Suite:** 4–5,5 minuti a fine F6 (era circa 2 a inizio fase), cresciuta con i test di integrazione; i test di fumo
+    e delle proprietà sono marcati `slow` e inclusi nella suite predefinita.
+  - **Passati a M1:**
+    - confronto con i run storici sui CSV per macchina o sui JSON delle metriche, non su
+      `summary_timestamp_metrics.csv` (perde l'ultima cifra);
+    - verifica con `n_nonfinite_cal` dello scostamento dichiarato su `raw_mean` (NaN nel supporto di cal);
+    - rigenerare il lock da un ambiente dedicato (D-55) prima dei run di confronto.
+  - **Passati a F7:**
+    - D-44 da decidere prima di leggere RQ1b (nota del passo 5 su D-44);
+    - filtrare prima per stato del fit, poi sui non finiti (colonne nullabili di `fits`);
+    - `n_nonfinite_*` come indicatore (> 0), non come misura di gravità;
+    - usare `nan_reason` per applicare D-44 riga per riga;
+    - deduplicare le repliche della baseline random tra `ts_agg` (V12);
+    - ritardo sempre insieme a `events_detected`/`event_recall`, con l'avvertenza sul confronto tra scenari (C4);
+    - righe `diagnostic` (oracolo, PA) separate dalle metriche principali (D-34);
+    - analisi complete = cartelle pubblicate `analyses/<analysis_id>/` con `analysis.json` (V13);
+    - D-25, D-30, D-36 aperte.
+  - **Passati a F8:** D-69, D-71; correzioni dichiarate (conteggio per righe di `rules.py`, esclusione silenziosa dei
+    NaN su `raw_mean`, validation usata tre volte P1), da tenere separate dai fattori di protocollo da decomporre.
+  - **Passati a F9:** nota sulla durata dell'analisi e sulle ottimizzazioni (sezione F9).
+  - **Passati a F10 (non nell'elenco di chiusura richiesto, segnalati):** VUS-PR (D-34, esclusa da F6);
+    `kind: official` di `analyze` rifiutato fino a F10, come per `fit`.
+  - **Decisioni APERTE toccate e rimaste aperte:** D-42 (livelli = dati del piano, nessun default), D-44 (nessuna
+    esclusione; colonne e `nan_reason` per applicarla), D-69, D-71; non toccate D-25, D-30, D-36, D-37, D-38, D-39,
+    D-40, D-41, D-57.
 - **Nota (2026-11-12, piano F6 approvato):** decisione D-72 (perimetro, C1–C15, V10–V13, B10–B13) e note di rimando su
   D-11, D-34, D-42, D-44, D-59, D-69; nuova voce APERTA D-71.
   - **Perimetro:** 6a parità esatta con `main.py` dai residui dello store (esportazione legacy nello stesso formato,
