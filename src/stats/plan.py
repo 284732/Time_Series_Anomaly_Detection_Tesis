@@ -67,6 +67,7 @@ ETA2_VERSIONS = ("total", "without_machine")                # D-25
 TABLE_DESCRIPTORS = ("prevalence", "n_events")              # P9: solo descrittori ricavabili dalle tabelle
 OFFICIAL_MIN_N_BOOT = 10_000                                # D-36, solo kind official
 OFFICIAL_RQ2_METRIC = "ap_norm"                             # D-07, solo kind official
+MIN_MACHINES_PER_GROUP = 2      # minimo ammesso del parametro (uno strato da 1 macchina non varia, passo 6)
 
 # Colonna ``model_role`` delle uscite (D-73 P13), distinta da ``inference`` e dalle righe ``diagnostic``.
 MODEL_ROLES = ("compared", "reference", "descriptive_baseline", "random_baseline")
@@ -405,7 +406,8 @@ def _check_experiments(data: Mapping[str, Any]) -> None:
 
 
 def _rq2(v: Any, kind: str) -> Dict[str, Any]:
-    d = _keys(v, "rq2", ("metric", "reference", "family", "delta", "alpha", "ci", "sign_flip"))
+    d = _keys(v, "rq2", ("metric", "reference", "family", "delta", "alpha", "ci", "sign_flip",
+                         "min_machines_per_group"))
     metric = _choice(ts.FREE_METRICS)(d["metric"], "rq2.metric")
     if kind == OFFICIAL and metric != OFFICIAL_RQ2_METRIC:
         raise ConfigError(f"rq2.metric: con kind official la metrica è {OFFICIAL_RQ2_METRIC} (D-07), trovato "
@@ -414,13 +416,13 @@ def _rq2(v: Any, kind: str) -> Dict[str, Any]:
     family = _levels(d["family"], "rq2.family", _scored_model)
     if ref in family:
         raise ConfigError("rq2.family: il modello di riferimento non si confronta con sé stesso")
-    sf = _keys(d["sign_flip"], "rq2.sign_flip", ("n_perm", "seed"))
     return {"metric": metric, "reference": ref, "family": family,
             "delta": _real(0.0, True)(d["delta"], "rq2.delta"),
             "alpha": _real(0.0, True, 1.0, True)(d["alpha"], "rq2.alpha"),
             "ci": _ci(d["ci"], "rq2.ci", kind),
-            "sign_flip": {"n_perm": _int(1)(sf["n_perm"], "rq2.sign_flip.n_perm"),
-                          "seed": _int(0)(sf["seed"], "rq2.sign_flip.seed")}}
+            "sign_flip": _bool(d["sign_flip"], "rq2.sign_flip"),          # enumerazione esatta (passo 6)
+            "min_machines_per_group": _int(MIN_MACHINES_PER_GROUP)(d["min_machines_per_group"],
+                                                                   "rq2.min_machines_per_group")}
 
 
 def _references(block: Mapping[str, Any], out: Dict[str, Any], path: str, n_models: int,
@@ -524,10 +526,12 @@ def _rq1(v: Any, path: str, block_fn) -> Dict[str, Any]:
 
 
 def _rq3(v: Any, kind: str) -> Dict[str, Any]:
-    d = _keys(v, "rq3", ("descriptors", "alpha", "ci"))
+    d = _keys(v, "rq3", ("descriptors", "alpha", "ci", "min_machines_per_group"))
     return {"descriptors": _levels(d["descriptors"], "rq3.descriptors", _choice(TABLE_DESCRIPTORS)),
             "alpha": _real(0.0, True, 1.0, True)(d["alpha"], "rq3.alpha"),
-            "ci": _ci(d["ci"], "rq3.ci", kind)}
+            "ci": _ci(d["ci"], "rq3.ci", kind),
+            "min_machines_per_group": _int(MIN_MACHINES_PER_GROUP)(d["min_machines_per_group"],
+                                                                   "rq3.min_machines_per_group")}
 
 
 def _rq4(v: Any) -> Dict[str, Any]:

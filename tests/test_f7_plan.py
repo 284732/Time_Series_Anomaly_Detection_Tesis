@@ -81,7 +81,8 @@ def _plan():
             "delta": 0.05,
             "alpha": 0.05,
             "ci": {"method": "stratified_bca", "n_boot": 2000, "seed": 20261116},
-            "sign_flip": {"n_perm": 2000, "seed": 20261117},
+            "sign_flip": True,
+            "min_machines_per_group": 2,
         },
         "rq1a": {
             "eta2_principal": "without_machine",
@@ -126,7 +127,8 @@ def _plan():
             ],
         },
         "rq3": {"descriptors": ["prevalence", "n_events"], "alpha": 0.05,
-                "ci": {"method": "stratified_bca", "n_boot": 2000, "seed": 20261118}},
+                "ci": {"method": "stratified_bca", "n_boot": 2000, "seed": 20261118},
+                "min_machines_per_group": 2},
         "rq4": {
             "eta2_principal": "without_machine",
             "metrics": ["f1", "fpr", "false_alarms_per_1440"],
@@ -293,8 +295,9 @@ def _mutations():
         {("rq2", "alpha"): 0.1},
         {("rq2", "ci", "n_boot"): 3000},
         {("rq2", "ci", "seed"): 1},
-        {("rq2", "sign_flip", "n_perm"): 3000},
-        {("rq2", "sign_flip", "seed"): 2},
+        {("rq2", "sign_flip"): False},
+        {("rq2", "min_machines_per_group"): 3},
+        {("rq3", "min_machines_per_group"): 4},
         {("rq1a", "eta2_principal"): "total"},
         {("rq1a", "blocks", 0, "name"): "renamed"},
         {("rq1a", "blocks", 1, "name"): "renamed_1"},
@@ -546,16 +549,17 @@ def test_empty_or_missing_file_is_rejected(tmp_path):
 
 
 @pytest.mark.parametrize("path", [("rq2", "delta"), ("rq2", "alpha"), ("rq3", "alpha"), ("rq2", "ci", "n_boot"),
-                                  ("rq2", "ci", "seed"), ("rq2", "sign_flip", "n_perm"),
-                                  ("exclusions", "min_events", "n")])
+                                  ("rq2", "ci", "seed"), ("rq2", "min_machines_per_group"),
+                                  ("rq3", "min_machines_per_group"), ("exclusions", "min_events", "n")])
 def test_bool_is_never_a_number(path):
     p = _plan()
     _set(p, path, True)
     _err(p)
 
 
-@pytest.mark.parametrize("path", [("rq2", "ci", "n_boot"), ("rq2", "ci", "seed"), ("rq2", "sign_flip", "n_perm"),
-                                  ("rq3", "ci", "n_boot"), ("exclusions", "min_events", "n")])
+@pytest.mark.parametrize("path", [("rq2", "ci", "n_boot"), ("rq2", "ci", "seed"), ("rq2", "min_machines_per_group"),
+                                  ("rq3", "min_machines_per_group"), ("rq3", "ci", "n_boot"),
+                                  ("exclusions", "min_events", "n")])
 def test_float_is_not_an_integer(path):
     p = _plan()
     _set(p, path, float(_get(p, path)))
@@ -1328,3 +1332,32 @@ def test_every_input_has_a_role():
         if blk["tau_reference"] is not None:
             blk["tau_reference"]["preproc"] = EXP_P
     _err(p, r"inputs.*synth_scaler.*nessun ruolo")
+
+
+# ---------------------------------------------------------------- passo 6: gruppo minimo e sign-flip booleano
+@pytest.mark.parametrize("sec", ["rq2", "rq3"])
+@pytest.mark.parametrize("value", [1, 0, -2, 1.5, True, None, "2"])
+def test_min_machines_per_group_is_an_integer_of_at_least_two(sec, value):
+    p = _plan()
+    p[sec]["min_machines_per_group"] = value
+    _err(p, "min_machines_per_group")
+
+
+@pytest.mark.parametrize("sec", ["rq2", "rq3"])
+def test_min_machines_per_group_is_mandatory(sec):
+    p = _plan()
+    del p[sec]["min_machines_per_group"]
+    _err(p, "min_machines_per_group")
+
+
+@pytest.mark.parametrize("value", [{"n_perm": 2000, "seed": 1}, 1, "true", None])
+def test_sign_flip_is_a_boolean(value):
+    p = _plan()
+    p["rq2"]["sign_flip"] = value
+    _err(p, "sign_flip")
+
+
+def test_min_machines_per_group_and_sign_flip_in_the_normalized_plan():
+    d = sp.validate_stats_plan(_plan()).to_dict()
+    assert d["rq2"]["min_machines_per_group"] == 2 and d["rq3"]["min_machines_per_group"] == 2
+    assert d["rq2"]["sign_flip"] is True

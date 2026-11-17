@@ -411,6 +411,34 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
     specularmente, sotto lo 0;
   - un IC NaN o non finito, L > U, δ ≤ 0, α fuori da (0, 1), m < 1 sono errori, mai un esito;
   - Holm non si implementa (M2 non adottato).
+- **Nota di rimando (2026-11-17, F7 passo 6, il testo sopra resta invariato; fatto registrato su richiesta
+  dell'utente):**
+  - **Fatto (simulazione, nessun dato reale visto):** la BCa stratificata del metodo (A) non rispetta le bande di
+    copertura fissate da questa voce.
+    - Disegno: gruppi 6/7/9 (22 macchine), Δᵢ = μ + γ_g + σ_g·εᵢ, con effetti di gruppo fissi e varianza diversa per
+      gruppo (σ = 0,5 / 1 / 2). Il valore vero è θ = μ + Σₕ (nₕ/n)·γₕ.
+    - Suite: R = B = 2.000 al 95%; R = 1.000 e B = 10.000 al livello operativo 1 − 0,05/3.
+
+    | caso | 95% (banda) | 1 − 0,05/3 (senza banda) |
+    |---|---|---|
+    | normale | 0,903 (banda [0,93; 0,97]: fuori) | 0,937 |
+    | t₃ | 0,856 (banda ≥ 0,90: fuori) | 0,925 |
+    | lognormale | 0,848 (banda ≥ 0,90: fuori) | 0,901 |
+    | gerarchico (B), normale, solo documentazione | 0,976 | — |
+  - **Diagnosi** (stesso disegno, R = 20.000):
+    - un intervallo normale con la varianza nello strato distorta ((nₕ − 1)/nₕ, come il bootstrap) copre 0,907,
+      come la BCa;
+    - con la varianza corretta copre 0,926;
+    - con la varianza corretta e i gradi di libertà di Welch–Satterthwaite copre 0,949;
+    - la BCa nel caso omoschedastico copre 0,916.
+
+    Le cause sono due: la distorsione (nₕ − 1)/nₕ della varianza nello strato e i pochi gradi di libertà effettivi
+    (il gruppo più variabile domina l'errore standard). Il codice non è in errore.
+  - **Conseguenza:** il metodo (A) **non è utilizzabile così com'è**. Gli IC di RQ2 sarebbero troppo stretti e gli
+    esiti della regola a quattro esiti troppo frequenti.
+  - **Il cambio di metodo si decide solo su simulazioni**, prima dei run ufficiali: nessun dato reale è stato visto.
+    La nuova voce che rivede questa decisione si scrive dopo il confronto dei metodi candidati, con l'approvazione
+    dell'utente.
 
 ### D-45 · Secondo dataset — APPROVATA · 2026-11-16
 - **Testo della voce APERTA (storico, invariato):**
@@ -1674,6 +1702,19 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
     dopo aver visto i risultati.
   - **Riga di decisione ricontrollabile da sola:** identità del modello (model, `config_id`, terna di scoring), esito,
     L, U, livello dell'IC (1 − α/m), δ, m, α e metrica.
+- **Nota di rimando (2026-11-17, passo 6a, P5, il testo sopra resta invariato; utente, su raccomandazione di Claude
+  Project):**
+  - **`min_machines_per_group`:** chiave obbligatoria in `rq2` e in `rq3`, intera, ≥ 2, senza default. Uno strato da
+    una macchina non varia nel ricampionamento; la soglia minima potrà salire dopo la scelta del metodo degli IC
+    (nota del 2026-11-17 su D-36). Dopo i filtri, un gruppo sotto soglia è un errore, non un adattamento; il conteggio
+    per gruppo del passo 3 si riporta nelle uscite.
+  - **`sign_flip`:** booleano (calcolarlo o no). Il test è esatto, per enumerazione dei 2ⁿ vettori di segni, con
+    n ≤ 24 (altrimenti errore). È di solo supporto e non entra nella regola a quattro esiti. Le chiavi `n_perm` e
+    `seed` sono tolte. L'aggettivo «stratificato» di D-36 non si applica: con segni indipendenti per macchina gli
+    strati non entrano. Ipotesi nulla: i Δᵢ sono indipendenti e ciascuno è simmetrico attorno a 0.
+  - **Fuori da F7, registrata come possibile aggiunta:** la sensibilità a due livelli (macchine, poi seed), che viene
+    dalla proposta §5 e non dal testo di D-36. Il bootstrap gerarchico resta solo nelle simulazioni dei test, mai come
+    valore del piano.
 
 ### D-53 · File tracciati da git (`.pyc`, dataset) — APPROVATA · 2026-11-10
 - **Decisione:** i `.pyc` non sono tracciati: i 35 file già tracciati sono tolti dal tracciamento con
