@@ -560,6 +560,11 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
     - seed nel `fit_key` e BatchNorm sono risolti dai punti sopra;
     - resta da fissare la chiave che dichiara il ruolo (per esempio `untrained: true`) e il controllo di parità
       dedicato.
+- **Nota (2026-11-17, F7 passo 7, proposta di Claude Project NON ancora approvata):** quando questa voce sarà
+  realizzata, per un AE non addestrato il confronto descrittivo più informativo è con il proprio AE addestrato (stessa
+  architettura, stesso seed), non solo con il riferimento di RQ2. Oggi RQ2 riporta per le baseline descrittive solo
+  il Δ rispetto al riferimento (D-73, nota del passo 7). Il confronto appaiato «addestrato − non addestrato» si progetta
+  allora.
 
 ### D-71 · Perimetro dei modelli DL — APPROVATA · 2026-11-16
 - **Testo della voce APERTA (storico, invariato):**
@@ -618,6 +623,9 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
     strato, per uguaglianza. Non si usa la varianza calcolata, che per valori identici in float può dare un residuo
     di arrotondamento non nullo (fatto verificato da un test).
   - Δ, SE o quantili non finiti → errore.
+  - **Casi noti:** con Δ costanti in più gruppi (per esempio due modelli con risultati identici su molte macchine) il
+    bootstrap-t può incontrare repliche con SE* = 0 e dà errore per costruzione. Se accade sui dati reali, la
+    decisione su come procedere richiede una nuova voce.
 - **`min_machines_per_group`:** il minimo imposto da `plan.py` sale a **5**, la soglia di stabilità misurata. Con
   nₕ = 4 si sono avute 9 ripetizioni su 1.000 con SE* = 0; con nₕ ≥ 5, nessuna. Se dopo le esclusioni un gruppo
   scende sotto il minimo dichiarato, **RQ2 è «non calcolabile»** e si riporta come tale, con il gruppo e il
@@ -1799,6 +1807,35 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
   - **Fuori da F7, registrata come possibile aggiunta:** la sensibilità a due livelli (macchine, poi seed), che viene
     dalla proposta §5 e non dal testo di D-36. Il bootstrap gerarchico resta solo nelle simulazioni dei test, mai come
     valore del piano.
+- **Nota di rimando (2026-11-17, passo 7, il testo sopra resta invariato; utente, su raccomandazione di Claude
+  Project):**
+  - **Righe descrittive di RQ2 (P5):** due chiavi obbligatorie in `rq2`:
+    - `baselines`: lista, anche vuota, di modelli con la terna di scoring, che devono essere baseline descrittive
+      dichiarate;
+    - `random_baseline`: booleano.
+
+    Le loro righe entrano nell'unità `rq2` del passo 3 come righe di riferimento, con la regola a senso unico. In RQ2
+    sono solo descrittive: Δ medio rispetto al riferimento, mediana, conteggi dei segni, numero di macchine; nessun
+    IC, nessun esito, sempre `exploratory`.
+  - **File (P15):** si aggiunge `src/stats/rq2.py`, l'assemblaggio di RQ2. Flusso: unità `rq2` filtrata → tabella per
+    macchina → Δ per macchina e membro (solo dall'esperimento primario, appaiato per macchina, sulle macchine comuni a
+    tutti i membri) → bootstrap-t → regola a quattro esiti → righe di uscita.
+  - **Uscite di RQ2:**
+    - una riga per modello. Il riferimento ha `statistic = metric_mean`. Membri e baseline hanno
+      `statistic = delta_mean`, con θ̂, mediana e `n_pos`, `n_neg`, `n_zero` (macchine con Δ > 0, < 0, = 0 esatto,
+      come descrittive). Per i membri, anche SE, IC, livello, esito, δ, m, α, sign-flip (`support_only`), stato e
+      motivo;
+    - una **tabella lunga di Δ** per (membro o baseline, macchina): Δ, gruppo, valori di membro e riferimento, stato
+      (incluso o escluso, con il motivo). Serve a RQ3 (passo 9) e al report (passo 11). La media sulle macchine
+      incluse coincide con θ̂;
+    - il blocco RQ2 di `stats.json`: metodo, B, seed, generatore, livello, m, δ, α, metrica, riferimento, famiglia,
+      baseline, sign-flip, macchine per gruppo prima e dopo, numero di macchine, esclusioni, stato e motivo.
+  - **RQ2 «non calcolabile»:** nessuna decisione. Le righe dei membri hanno stato `not_computable`, il motivo e IC ed
+    esito vuoti; le descrittive restano.
+  - **Wilcoxon non si calcola in RQ2.** Motivo: il sign-flip esatto ha già il ruolo di supporto, e due p-value di
+    supporto sullo stesso confronto invitano a scegliere il più comodo. Wilcoxon resta solo nella parità con
+    `aggregate_results.py` (P12). La frase «Wilcoxon solo come statistica descrittiva» non è nel piano operativo:
+    compare nella proposta §5, dove è marcata come superata.
 
 ### D-53 · File tracciati da git (`.pyc`, dataset) — APPROVATA · 2026-11-10
 - **Decisione:** i `.pyc` non sono tracciati: i 35 file già tracciati sono tolti dal tracciamento con

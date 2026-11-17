@@ -185,6 +185,7 @@ Due avvertenze da riportare nella tesi:
    - IC al 95%: metodo **aperto** [D-36]. Proposta: bootstrap delle macchine **stratificato per gruppo** (B = 10.000, BCa), sensibilità a due livelli (macchine, poi seed). `piano_tesi_v1.md` prevede invece un bootstrap gerarchico.
    - Regola: superiore / equivalente / inferiore / inconcludente rispetto a δ [D-30, aperto], con IC corretti con Holm sulla famiglia {Conv, LSTM} [D-36].
    - Supporto: test di permutazione a segni casuali (sign-flip) sulla media di Δ; Wilcoxon solo come statistica descrittiva.
+     > Superato (D-73, nota del passo 7, 2026-11-17): Wilcoxon non si calcola in RQ2; resta solo nella parità con `aggregate_results.py`. Il sign-flip è esatto (D-76).
 3. **RQ1a (fattori di misura) e RQ1b (fattori di design)** [D-12, approvata]; livelli dei fattori aperti [D-42]. Per RQ1a, disegno fattoriale completo e bilanciato:
    - decomposizione della varianza con somme dei quadrati classiche. Su un disegno bilanciato è esatta, non richiede statsmodels ed è più trasparente di un modello misto. Con D-24 il disegno non è più un fattoriale completo (manca la combinazione soglia mobile × proiezione offline): il metodo è aperto [D-25];
    - stabilità del ranking con il τ di Kendall tra configurazioni;

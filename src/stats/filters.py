@@ -4,7 +4,8 @@ delle righe ``diagnostic`` (D-73 P13). Funzione pura sugli ingressi verificati d
 scrittura di file, tabelle in ingresso mai modificate.
 
 Unità di inferenza (portata di ``exclude_machine_pair``):
-  * ``rq2``: il confronto intero (riferimento e famiglia), dall'esperimento primario;
+  * ``rq2``: il confronto intero (riferimento e famiglia), dall'esperimento primario, con le righe di riferimento
+    delle baseline dichiarate in ``rq2.baselines`` e, se ``rq2.random_baseline``, della baseline random (passo 7);
   * ``rq1a/<blocco>``: il blocco, dall'esperimento primario, con la baseline random come riferimento e le righe con
     oracolo o PA vero come livelli dichiarati dei fattori di misura;
   * ``rq1b/<blocco>``: il blocco, dagli esperimenti dei suoi livelli di preproc;
@@ -149,7 +150,9 @@ def plan_units(plan: sp.StatsPlan) -> List[Unit]:
         units.append(Unit(f"descriptive/{i}", e["table"], (primary,), None, False, mask))
     if d["rq2"] is not None:
         r = d["rq2"]
-        scored = {(m["model"], m["config_id"]) + _sc(m) for m in [r["reference"]] + r["family"]}
+        scored = {(m["model"], m["config_id"]) + _sc(m) for m in [r["reference"]] + r["family"] + r["baselines"]}
+        if r["random_baseline"]:                       # righe di riferimento (passo 7), regola a senso unico
+            scored.add((RANDOM, RANDOM, "none", "native", "none"))
 
         def mask(df, r=r, scored=scored):
             return (common(df, "free", (primary,), False) & (df["metric"] == r["metric"]) &

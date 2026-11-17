@@ -252,7 +252,7 @@ def _plan(members=("conv_autoencoder", "lstm_autoencoder", "input_norm"), min_gr
     raw = raw_plan()
     raw["descriptive_baselines"] = []
     raw["rq2"].update(reference=_scored("pca"), family=[_scored(m) for m in members],
-                      min_machines_per_group=min_group, sign_flip=sign_flip,
+                      min_machines_per_group=min_group, sign_flip=sign_flip, baselines=[], random_baseline=False,
                       ci={"method": "stratified_bootstrap_t", "n_boot": n_boot, "seed": seed})
     raw["rq1a"] = raw["rq1b"] = raw["rq4"] = None
     raw["inputs"] = raw["inputs"][:1]                 # senza RQ1b l'esperimento dello scaler non ha ruolo

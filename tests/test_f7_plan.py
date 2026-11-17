@@ -82,6 +82,8 @@ def _plan():
             "alpha": 0.05,
             "ci": {"method": "stratified_bootstrap_t", "n_boot": 2000, "seed": 20261116},
             "sign_flip": True,
+            "baselines": [_untr()],                       # righe descrittive di RQ2 (passo 7)
+            "random_baseline": True,
             "min_machines_per_group": 5,
         },
         "rq1a": {
@@ -311,8 +313,12 @@ def _mutations():
         {("rq1b", "blocks", 0, "metric"): "recall"},
         {("rq4", "eta2_principal"): "total"},
         {("rq4", "offset_indicator"): False},
-        {("descriptive_baselines", 0, "model"): "lstm_autoencoder"},
-        {("descriptive_baselines", 0, "config_id"): "5123456789ab"},
+        {("descriptive_baselines", 0, "model"): "lstm_autoencoder", ("rq2", "baselines", 0, "model"): "lstm_autoencoder"},
+        {("descriptive_baselines", 0, "config_id"): "5123456789ab", ("rq2", "baselines", 0, "config_id"): "5123456789ab"},
+        {("rq2", "random_baseline"): False},
+        {("rq2", "baselines", 0, "window_time_agg"): "mean"},
+        {("rq2", "baselines", 0, "sensor_agg"): "max"},
+        {("rq2", "baselines", 0, "normalizer"): "robust"},
     ]
     for r in ts.NAN_REASONS:
         muts.append({("exclusions", "nan_rows", r): "error"})
@@ -463,6 +469,7 @@ def _structural_mutations():
     @m
     def baselines_empty(p):
         p["descriptive_baselines"] = []
+        p["rq2"]["baselines"] = []
 
     @m
     def rq3_rq4(p):
@@ -1187,6 +1194,7 @@ def test_without_rq2_m_is_zero_and_no_ci_level():
 def test_descriptive_baselines_are_mandatory_but_may_be_empty():
     p = _plan()
     p["descriptive_baselines"] = []
+    p["rq2"]["baselines"] = []
     assert sp.validate_stats_plan(p).to_dict()["descriptive_baselines"] == []
     p = _plan()
     del p["descriptive_baselines"]
@@ -1411,3 +1419,50 @@ def test_min_machines_per_group_and_sign_flip_in_the_normalized_plan():
     d = sp.validate_stats_plan(_plan()).to_dict()
     assert d["rq2"]["min_machines_per_group"] == 5 and d["rq3"] is None
     assert d["rq2"]["sign_flip"] is True
+
+
+# ---------------------------------------------------------------- passo 7: righe descrittive di RQ2
+def test_rq2_baselines_and_random_baseline_are_mandatory():
+    for key in ("baselines", "random_baseline"):
+        p = _plan()
+        del p["rq2"][key]
+        _err(p, key)
+
+
+def test_rq2_baselines_may_be_empty_and_random_baseline_is_a_boolean():
+    p = _plan()
+    p["rq2"]["baselines"] = []
+    p["rq2"]["random_baseline"] = False
+    d = sp.validate_stats_plan(p).to_dict()["rq2"]
+    assert d["baselines"] == [] and d["random_baseline"] is False
+    for v in (1, "true", None):
+        q = _plan()
+        q["rq2"]["random_baseline"] = v
+        _err(q, "random_baseline")
+
+
+def test_rq2_baselines_must_be_declared_descriptive_baselines():
+    p = _plan()
+    p["rq2"]["baselines"] = [_untr(), _m("lstm_autoencoder", "5123456789ab", "last", "mean", "none")]
+    _err(p, r"rq2\.baselines.*descriptive_baselines")
+
+
+def test_rq2_baselines_cannot_be_compared_models():
+    p = _plan()
+    p["rq2"]["baselines"] = [_conv()]                     # Conv-AE addestrato: confrontato, non baseline
+    _err(p, "rq2.baselines")
+
+
+def test_rq2_baselines_duplicates_and_random_are_rejected():
+    p = _plan()
+    p["rq2"]["baselines"] = [_untr(), _untr()]
+    _err(p, "duplicat")
+    q = _plan()
+    q["rq2"]["baselines"] = [{"model": "random_baseline", "config_id": CID_UNTR, "window_time_agg": "none",
+                              "sensor_agg": "native", "normalizer": "none"}]
+    _err(q, "D-73 P7")
+
+
+def test_rq2_baselines_in_the_normalized_plan():
+    d = sp.validate_stats_plan(_plan()).to_dict()["rq2"]
+    assert d["baselines"] == [dict(sorted(_untr().items()))] and d["random_baseline"] is True

@@ -136,7 +136,8 @@ def raw_plan(**exclusions):
         "descriptive_baselines": [{"model": "lstm_autoencoder", "config_id": CID["lstm_autoencoder"]}],
         "rq2": {"metric": "ap_norm", "reference": _scored("pca"), "family": [_scored("conv_autoencoder")],
                 "delta": 0.05, "alpha": 0.05, "ci": {"method": "stratified_bootstrap_t", "n_boot": 100, "seed": 1},
-                "sign_flip": True, "min_machines_per_group": 5},
+                "sign_flip": True, "min_machines_per_group": 5, "baselines": [],
+                "random_baseline": False},
         "rq1a": {"eta2_principal": "total", "blocks": [
             {"name": "measure", "table": "thr", "metric": "f1",
              "models": [_scored("pca"), _scored("conv_autoencoder")],

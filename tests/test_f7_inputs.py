@@ -130,7 +130,8 @@ def raw_plan(env):
         "descriptive_baselines": [],
         "rq2": {"metric": "ap_norm", "reference": pca, "family": [inorm], "delta": 0.05, "alpha": 0.05,
                 "ci": {"method": "stratified_bootstrap_t", "n_boot": 200, "seed": 1},
-                "sign_flip": True, "min_machines_per_group": 5},
+                "sign_flip": True, "min_machines_per_group": 5, "baselines": [],
+                "random_baseline": False},
         "rq1a": {"eta2_principal": "without_machine", "blocks": [
             {"name": "measure", "table": "thr", "metric": "f1", "models": [pca, inorm, rz],
              "factors": {"ts_agg": ["last", "mean"], "scenario": ["primary", "test_context"],

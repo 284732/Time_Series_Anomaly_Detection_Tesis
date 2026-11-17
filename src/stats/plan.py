@@ -418,7 +418,7 @@ def _check_experiments(data: Mapping[str, Any]) -> None:
 
 def _rq2(v: Any, kind: str) -> Dict[str, Any]:
     d = _keys(v, "rq2", ("metric", "reference", "family", "delta", "alpha", "ci", "sign_flip",
-                         "min_machines_per_group"))
+                         "min_machines_per_group", "baselines", "random_baseline"))
     metric = _choice(ts.FREE_METRICS)(d["metric"], "rq2.metric")
     if kind == OFFICIAL and metric != OFFICIAL_RQ2_METRIC:
         raise ConfigError(f"rq2.metric: con kind official la metrica è {OFFICIAL_RQ2_METRIC} (D-07), trovato "
@@ -433,7 +433,21 @@ def _rq2(v: Any, kind: str) -> Dict[str, Any]:
             "ci": _ci(d["ci"], "rq2.ci", kind),
             "sign_flip": _bool(d["sign_flip"], "rq2.sign_flip"),          # enumerazione esatta (passo 6)
             "min_machines_per_group": _int(MIN_MACHINES_PER_GROUP)(d["min_machines_per_group"],
-                                                                   "rq2.min_machines_per_group")}
+                                                                   "rq2.min_machines_per_group"),
+            # righe descrittive di RQ2 (passo 7): baseline descrittive con la loro terna di scoring, e la random
+            "baselines": _levels(d["baselines"], "rq2.baselines", _scored_model, nonempty=False),
+            "random_baseline": _bool(d["random_baseline"], "rq2.random_baseline")}
+
+
+def _check_rq2_baselines(data: Mapping[str, Any]) -> None:
+    """Le righe descrittive di RQ2 (``rq2.baselines``) sono baseline descrittive dichiarate (D-73, passo 7)."""
+    if data["rq2"] is None:
+        return
+    declared = {_pair(b) for b in data["descriptive_baselines"]}
+    missing = sorted({_pair(b) for b in data["rq2"]["baselines"]} - declared)
+    if missing:
+        raise ConfigError(f"rq2.baselines: {missing} non sono in descriptive_baselines (righe descrittive di RQ2 "
+                          "solo per baseline dichiarate, D-73)")
 
 
 def _references(block: Mapping[str, Any], out: Dict[str, Any], path: str, n_models: int,
@@ -592,6 +606,7 @@ def validate_stats_plan(raw: Any) -> StatsPlan:
         "rq4": None if d["rq4"] is None else _rq4(d["rq4"]),
     }
     _check_experiments(data)
+    _check_rq2_baselines(data)
     _check_baselines(data)
     return StatsPlan(data)
 
