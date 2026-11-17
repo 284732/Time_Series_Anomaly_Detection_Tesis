@@ -26,8 +26,11 @@ Fissati per definizione (nessuna chiave; un cambiamento è un cambiamento del co
 
 Regole principali: il random non è mai un livello del fattore modello (P7); ``rq2.ci.method`` ammette solo
 ``stratified_bootstrap_t`` (D-76; ``stratified_bca`` e il gerarchico sono rifiutati); ``min_machines_per_group`` ≥ 5
-(D-76); con ``machine_role: dev`` ``rq2`` e ``rq3`` devono essere null (2 macchine per gruppo, D-76); ``rq3`` non nulla
-è rifiutata fino al passo 9 (metodo dell'IC di Spearman da decidere, D-76); con ``kind: official`` ``rq2.metric`` = ``ap_norm`` (D-07) e ``n_boot`` ≥ 10.000 (D-36); ``detection_delay`` non
+(D-76); con ``machine_role: dev`` ``rq2`` e ``rq3`` devono essere null (2 macchine per gruppo, D-76); ``rq3`` usa ρ
+entro gruppo (``statistic: within_group``) con IC di Fisher z e errore standard di Bonett–Wright
+(``ci: {method: fisher_bonett_wright}``, nessun bootstrap: ``n_boot`` e ``seed`` rifiutate; D-73 nota del passo 9);
+``rq4.offset_indicator`` richiede ``fpr`` tra le metriche di rq4; con ``kind: official`` ``rq2.metric`` = ``ap_norm``
+(D-07) e ``n_boot`` ≥ 10.000 (D-36); ``detection_delay`` non
 è mai una risposta decomposta (C4) e compare solo in forma descrittiva insieme a ``event_recall``; i modelli
 ``native`` (attributo di classe ``native_only``) hanno lo scoring none/native/none e in RQ1b stanno in blocchi senza
 fattore ``scoring`` (D-25).
@@ -65,7 +68,8 @@ EVENT_ACTIONS = ("error", "exclude_machine_pair")           # regola a livello d
 EXCLUDE_FIT, KEEP = "exclude_fit", "keep"
 
 CI_METHODS = ("stratified_bootstrap_t",)                    # D-76 (rivede D-36 A); il gerarchico non è ammesso
-RQ3_CI_METHODS: Tuple[str, ...] = ()                        # D-76: il metodo dell'IC di Spearman si decide al passo 9
+RQ3_CI_METHODS = ("fisher_bonett_wright",)                  # passo 9: scelto con la simulazione (D-73)
+RQ3_STATISTICS = ("within_group",)                          # passo 9: ρ entro gruppo (D-73)
 RETIRED_CI_METHODS = {"stratified_bca": "D-76: la BCa stratificata non rispetta le bande di copertura di D-36"}
 ETA2_VERSIONS = ("total", "without_machine")                # D-25
 TABLE_DESCRIPTORS = ("prevalence", "n_events")              # P9: solo descrittori ricavabili dalle tabelle
@@ -279,9 +283,6 @@ def _ci(v: Any, path: str, kind: str, methods: Tuple[str, ...] = CI_METHODS) -> 
     if method in RETIRED_CI_METHODS:
         raise ConfigError(f"{path}.method: {method!r} non è più ammesso ({RETIRED_CI_METHODS[method]}); ammesso "
                           f"{list(methods)}")
-    if not methods:
-        raise ConfigError(f"{path}.method: il metodo dell'IC di Spearman si decide al passo 9 (D-76); rq3 non è "
-                          "ancora calcolabile")
     return {"method": _choice(methods)(method, f"{path}.method"), "n_boot": n_boot, "seed": seed}
 
 
@@ -551,12 +552,20 @@ def _rq1(v: Any, path: str, block_fn) -> Dict[str, Any]:
 
 
 def _rq3(v: Any, kind: str) -> Dict[str, Any]:
-    d = _keys(v, "rq3", ("descriptors", "alpha", "ci", "min_machines_per_group"))
+    d = _keys(v, "rq3", ("descriptors", "alpha", "statistic", "ci", "min_machines_per_group"))
+    ci = d["ci"]
+    if isinstance(ci, Mapping):
+        extra = sorted(set(ci) & {"n_boot", "seed"})
+        if extra:
+            raise ConfigError(f"rq3.ci: {extra} non ammesse: l'IC di Fisher (Bonett–Wright) non usa nessun bootstrap, "
+                              "e un piano congelabile non contiene parametri senza effetto (D-73, passo 9)")
+    ci = _keys(ci, "rq3.ci", ("method",))
     return {"descriptors": _levels(d["descriptors"], "rq3.descriptors", _choice(TABLE_DESCRIPTORS)),
             "alpha": _real(0.0, True, 1.0, True)(d["alpha"], "rq3.alpha"),
+            "statistic": _choice(RQ3_STATISTICS)(d["statistic"], "rq3.statistic"),
             "min_machines_per_group": _int(MIN_MACHINES_PER_GROUP)(d["min_machines_per_group"],
                                                                    "rq3.min_machines_per_group"),
-            "ci": _ci(d["ci"], "rq3.ci", kind, RQ3_CI_METHODS)}
+            "ci": {"method": _choice(RQ3_CI_METHODS)(ci["method"], "rq3.ci.method")}}
 
 
 def _rq4(v: Any) -> Dict[str, Any]:
@@ -573,6 +582,8 @@ def _rq4(v: Any) -> Dict[str, Any]:
     offset = _bool(d["offset_indicator"], "rq4.offset_indicator")
     if offset and not any(t["policy"] == STATIC for t in thresholds):
         raise ConfigError("rq4.offset_indicator: richiede almeno una soglia static_pct (D-73 P10)")
+    if offset and "fpr" not in metrics + desc:
+        raise ConfigError("rq4.offset_indicator: richiede fpr tra metrics o descriptive_metrics di rq4 (D-73 P10)")
     return {"eta2_principal": _choice(ETA2_VERSIONS)(d["eta2_principal"], "rq4.eta2_principal"),
             "metrics": metrics, "descriptive_metrics": desc, "models": models, "thresholds": thresholds,
             "offset_indicator": offset}

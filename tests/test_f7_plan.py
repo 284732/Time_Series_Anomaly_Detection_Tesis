@@ -50,6 +50,12 @@ def _untr(**scoring):
     return d
 
 
+def _rq3():
+    """Sezione rq3 (passo 9): ρ entro gruppo con IC di Fisher (Bonett–Wright), nessun bootstrap."""
+    return {"descriptors": ["prevalence", "n_events"], "alpha": 0.05, "statistic": "within_group",
+            "ci": {"method": "fisher_bonett_wright"}, "min_machines_per_group": 5}
+
+
 def _plan():
     """Piano valido con tutte le sezioni (esplorativo)."""
     return {
@@ -128,7 +134,7 @@ def _plan():
                  "delta_reference": None},
             ],
         },
-        "rq3": None,                            # rifiutata fino al passo 9 (D-76): test sulla sezione
+        "rq3": _rq3(),
         "rq4": {
             "eta2_principal": "without_machine",
             "metrics": ["f1", "fpr", "false_alarms_per_1440"],
@@ -139,13 +145,6 @@ def _plan():
             "offset_indicator": True,
         },
     }
-
-
-def _rq3():
-    """Sezione rq3 (validata da sola con ``sp._rq3``: nel piano è rifiutata fino al passo 9, D-76)."""
-    return {"descriptors": ["prevalence", "n_events"], "alpha": 0.05,
-            "ci": {"method": "spearman_method_step9", "n_boot": 2000, "seed": 20261118},
-            "min_machines_per_group": 5}
 
 
 def _official():
@@ -289,7 +288,7 @@ def _mutations():
     muts = [
         {("stats", "name"): "other_name"},
         {("stats", "kind"): "official", ("rq2", "ci", "n_boot"): 10_000},
-        {("stats", "machine_role"): "dev", ("rq2",): None},                    # su dev niente RQ2 (D-76)
+        {("stats", "machine_role"): "dev", ("rq2",): None, ("rq3",): None},   # su dev niente RQ2 e RQ3 (D-76)
         {("exclusions", "failed_fit"): "error"},
         {("exclusions", "nonfinite_loss"): "exclude_machine_pair"},
         {("exclusions", "nonfinite_cal"): "error", ("exclusions", "exclude_fit_sensitivity"): False},
@@ -313,6 +312,8 @@ def _mutations():
         {("rq1b", "blocks", 0, "metric"): "recall"},
         {("rq4", "eta2_principal"): "total"},
         {("rq4", "offset_indicator"): False},
+        {("rq3", "alpha"): 0.1},
+        {("rq3", "min_machines_per_group"): 6},
         {("descriptive_baselines", 0, "model"): "lstm_autoencoder", ("rq2", "baselines", 0, "model"): "lstm_autoencoder"},
         {("descriptive_baselines", 0, "config_id"): "5123456789ab", ("rq2", "baselines", 0, "config_id"): "5123456789ab"},
         {("rq2", "random_baseline"): False},
@@ -473,8 +474,9 @@ def _structural_mutations():
 
     @m
     def rq3_rq4(p):
+        p["rq3"]["descriptors"] = ["n_events"]
         p["rq4"]["metrics"] = ["precision", "recall", "fa_segments"]
-        p["rq4"]["descriptive_metrics"] = ["f1", "event_recall"]
+        p["rq4"]["descriptive_metrics"] = ["f1", "event_recall", "fpr"]           # fpr per l'indicatore (P10)
         p["rq4"]["models"] = [_m("input_norm", "2" * 12, "mean", "top5", "none"),
                               _m("lstm_autoencoder", "1" * 12, "mean", "max", "robust")]
         p["rq4"]["thresholds"] = [{"policy": "roll_quantile", "level": 95.0, "n_past": 360},
@@ -505,10 +507,10 @@ def test_mutations_cover_every_leaf():
                     covered.add(path)
             except (KeyError, IndexError, TypeError):
                 covered.add(path)
-    single_choice = {("rq2", "ci", "method"),                                   # D-76: unico metodo ammesso
+    single_choice = {("rq2", "ci", "method"), ("rq3", "ci", "method"),          # D-76, passo 9: metodi unici
+                     ("rq3", "statistic"),
                      ("rq1b", "blocks", 1, "models", 0, "model")}               # unico modello native
-    nulls = {("rq1b", "blocks", 1, "tau_reference"), ("rq1b", "blocks", 1, "delta_reference"),
-             ("rq3",)}                                                  # rq3 null fino al passo 9 (D-76)
+    nulls = {("rq1b", "blocks", 1, "tau_reference"), ("rq1b", "blocks", 1, "delta_reference")}
     missing = sorted(set(_leaf_paths(base)) - covered - single_choice - nulls, key=str)
     assert not missing, f"foglie senza mutazione: {missing}"
 
@@ -602,10 +604,6 @@ def test_n_boot_must_be_a_positive_integer(n_boot):
     p = _plan()
     p["rq2"]["ci"]["n_boot"] = n_boot
     _err(p)
-    s = _rq3()
-    s["ci"]["n_boot"] = n_boot
-    with pytest.raises(ConfigError, match="rq3.ci.n_boot"):
-        sp._rq3(s, "exploratory")
 
 
 def test_official_requires_at_least_10000_bootstrap_replicates():
@@ -613,10 +611,6 @@ def test_official_requires_at_least_10000_bootstrap_replicates():
     p["rq2"]["ci"]["n_boot"] = 9_999
     _err(p, "10")
     sp.validate_stats_plan(_official())                     # 10.000: accettato
-    s = _rq3()
-    s["ci"]["n_boot"] = 9_999
-    with pytest.raises(ConfigError, match="10000"):
-        sp._rq3(s, "official")
 
 
 def test_exploratory_accepts_fewer_than_10000_replicates():
@@ -810,17 +804,53 @@ def test_plan_with_all_rq_null_is_rejected():
     _err(p, "RQ")
 
 
-def test_rq3_is_rejected_until_step_9():
+def test_rq3_requires_rq2():
     p = _plan()
-    p["rq3"] = _rq3()
-    _err(p, "passo 9")
     p["rq2"] = None
-    _err(p)
+    _err(p, "rq2")
 
 
-def test_rq3_ci_method_is_undecided_until_step_9():
-    with pytest.raises(ConfigError, match="passo 9"):
-        sp._rq3(_rq3(), "exploratory")
+@pytest.mark.parametrize("method", ["stratified_bootstrap_t", "stratified_bca", "bootstrap", "fisher", None])
+def test_rq3_ci_method_is_only_fisher_bonett_wright(method):
+    p = _plan()
+    p["rq3"]["ci"]["method"] = method
+    _err(p, "rq3.ci.method")
+
+
+@pytest.mark.parametrize("key,value", [("n_boot", 2000), ("seed", 1)])
+def test_rq3_ci_rejects_bootstrap_keys(key, value):
+    p = _plan()
+    p["rq3"]["ci"][key] = value
+    _err(p, "nessun bootstrap")
+
+
+@pytest.mark.parametrize("value", ["overall", "by_group", None, 1])
+def test_rq3_statistic_is_within_group(value):
+    p = _plan()
+    p["rq3"]["statistic"] = value
+    _err(p, "rq3.statistic")
+    q = _plan()
+    del q["rq3"]["statistic"]
+    _err(q, "statistic")
+
+
+def test_rq3_normalized_section():
+    d = sp.validate_stats_plan(_plan()).to_dict()["rq3"]
+    assert d == {"descriptors": ["n_events", "prevalence"], "alpha": 0.05, "statistic": "within_group",
+                 "ci": {"method": "fisher_bonett_wright"}, "min_machines_per_group": 5}
+
+
+def test_offset_indicator_requires_fpr_among_the_rq4_metrics():
+    p = _plan()
+    p["rq4"]["metrics"] = ["f1", "false_alarms_per_1440"]
+    _err(p, "fpr")
+    q = _plan()
+    q["rq4"]["metrics"] = ["f1"]
+    q["rq4"]["descriptive_metrics"] = ["fpr"]
+    sp.validate_stats_plan(q)
+    q["rq4"]["offset_indicator"] = False
+    q["rq4"]["descriptive_metrics"] = []
+    sp.validate_stats_plan(q)
 
 
 @pytest.mark.parametrize("sec", ["rq1a", "rq1b", "rq4"])
@@ -1396,7 +1426,7 @@ def test_rq2_on_development_machines_is_rejected():
     p = _plan()
     p["stats"]["machine_role"] = "dev"
     _err(p, "2 macchine per gruppo")
-    p["rq2"] = None
+    p["rq2"] = p["rq3"] = None
     sp.validate_stats_plan(p)                              # descrittive, RQ1 e RQ4 restano ammesse su dev
 
 
@@ -1417,7 +1447,7 @@ def test_sign_flip_is_a_boolean(value):
 
 def test_min_machines_per_group_and_sign_flip_in_the_normalized_plan():
     d = sp.validate_stats_plan(_plan()).to_dict()
-    assert d["rq2"]["min_machines_per_group"] == 5 and d["rq3"] is None
+    assert d["rq2"]["min_machines_per_group"] == 5 and d["rq3"]["min_machines_per_group"] == 5
     assert d["rq2"]["sign_flip"] is True
 
 

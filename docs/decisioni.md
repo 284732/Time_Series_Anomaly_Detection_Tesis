@@ -1883,6 +1883,83 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
     inversione.
   - **Uscite di RQ1a e RQ1b:** tutte `exploratory`. `stats.json` riporta per blocco fattori e livelli, η² principale,
     stati, R, macchine incluse e numero per gruppo, c₀.
+- **Nota (2026-11-17, passo 9, scritta PRIMA di eseguire la simulazione; utente, su raccomandazione di Claude
+  Project):**
+  - **RQ3, statistica principale: ρ entro gruppo aggregata (ρ_W).**
+    - Ranghi calcolati dentro ogni gruppo, con ranghi medi per i pari merito.
+    - uₕᵢ = rangoₕᵢ/(nₕ + 1) − 1/2.
+    - ρ_W = correlazione di Pearson degli u su tutte le macchine.
+    - Chiave obbligatoria `rq3.statistic: within_group`.
+    - ρ su tutte le macchine e ρ per gruppo sono solo descrittivi.
+    - Motivo: con 6/7/9 macchine, se descrittore e Δ si spostano insieme tra gruppi, la ρ su tutte le macchine misura
+      soprattutto 3 medie di gruppo (paradosso di Simpson); ρ_W misura l'associazione tra macchine a parità di
+      gruppo, coerente con l'inferenza condizionata ai gruppi (D-36, D-76).
+  - **Metodo dell'IC di ρ_W: criterio di scelta fissato prima di eseguire.**
+    - Candidati:
+      - (1) Fisher z con l'errore standard di Bonett–Wright e n_eff = n − G = 19 (22 macchine, 3 gruppi):
+        z = atanh(ρ̂), SE = √((1 + ρ̂²/2)/(n_eff − 3)), IC = [tanh(z − z₁₋q·SE), tanh(z + z₁₋q·SE)];
+      - (3) bootstrap percentile stratificato per gruppo (stesso generatore di D-76), con ρ_W ricalcolata su ogni
+        replica.
+
+      Il bootstrap non stratificato (2) è escluso per ρ_W, perché mescolerebbe i gruppi. Per documentazione si
+      simula anche la ρ su tutte le macchine con (1) a n = 22, (2) e (3).
+    - Script `scripts/sim_spearman_ci.py` (autonomo, seed fissi); risultati in `docs/sim_spearman_ci.json`.
+    - Disegno: n = 22 (6/7/9), una coppia (X, Y) per macchina, livello 95%, R = 2.000, B = 2.000. Casi:
+      - (a) indipendenza;
+      - (b) copula gaussiana con ρ_S = 0,5 dentro i gruppi, r = 2·sin(π·0,5/6);
+      - (c) come (b) con marginali t₃ (ρ_S non cambia, perché dipende solo dalla copula);
+      - (d) X discreta con molti pari merito (8 classi, come `n_events`), Y latente correlata come in (b);
+      - (e) solo confondimento di gruppo: spostamenti di gruppo in X e in Y, indipendenza dentro il gruppo.
+    - **Valore vero = ρ_S di popolazione** (la quantità di interesse), non l'atteso della statistica:
+      - per ρ_W, il ρ_S dentro il gruppo: 0 in (a) ed (e); 0,5 esatto in (b) e (c); stimato su 10⁶ punti in (d);
+      - per la ρ su tutte le macchine, il ρ_S della miscela con le quote 6/7/9, stimato su 10⁶ punti.
+
+      La Spearman su pochi punti è distorta verso 0: con ρ_S = 0,5 l'atteso entro gruppo è circa 0,44–0,45 con
+      nₕ = 6–9. La distorsione pesa sulla copertura ed è parte di ciò che si misura.
+    - Per ogni caso si riportano copertura, errore MC √(c(1 − c)/R), distorsione media della stima e larghezza
+      media.
+    - **Criterio** (applicato a ρ_W):
+      - a) bande al 95%: caso (a) in [0,93; 0,97]; casi (b)–(e) ≥ 0,90;
+      - b) tra i metodi che le rispettano vince la copertura più vicina a 0,95 nel caso peggiore, max |c − 0,95|;
+      - c) a parità (differenza tra le distanze ≤ 2·√(SE₁² + SE₂²)) vince il più semplice: (1), poi (3).
+    - **Se nessun metodo rispetta le bande:** RQ3 riporta la stima puntuale entro gruppo e i ρ per gruppo SENZA IC,
+      con stato e avviso espliciti; nessun cambio di statistica dopo i risultati. In quel caso ci si ferma e si
+      riporta prima di implementare.
+    - **Esito (2026-11-17, dopo l'esecuzione; approvato dall'utente):** `docs/sim_spearman_ci.json`, R = B = 2.000.
+      Valori veri: 0; 0,5; 0,5; 0,493; 0 (entro gruppo). Errore MC circa 0,004.
+
+      | caso | (1) Fisher, n_eff = 19: copertura / distorsione / larghezza | (3) bootstrap stratificato: copertura / distorsione / larghezza |
+      |---|---|---|
+      | a) indipendenza | 0,962 / −0,004 / 0,878 | 0,966 / −0,004 / 0,922 |
+      | b) gaussiana, ρ_S = 0,5 | 0,958 / −0,054 / 0,761 | 0,967 / −0,054 / 0,816 |
+      | c) t₃, ρ_S = 0,5 | 0,958 / −0,054 / 0,761 | 0,967 / −0,054 / 0,816 |
+      | d) pari merito | 0,962 / −0,044 / 0,759 | 0,965 / −0,044 / 0,799 |
+      | e) confondimento di gruppo | 0,962 / −0,004 / 0,878 | 0,966 / −0,004 / 0,922 |
+
+      - (c) coincide con (b) e, per ρ_W, (e) con (a): è atteso, perché i ranghi non cambiano con le trasformazioni
+        monotone e con gli spostamenti di gruppo.
+      - a) Entrambi i metodi rispettano le bande.
+      - b) Caso peggiore, max |c − 0,95|: Fisher 0,012, bootstrap stratificato 0,0165.
+      - c) Differenza 0,0045 ≤ 2·√(0,0043² + 0,0040²) = 0,0117: parità, vince il più semplice.
+      - **Scelta: (1) Fisher z con l'errore standard di Bonett–Wright e n_eff = n − G.**
+      - Per documentazione: la ρ su tutte le macchine, nel caso (e), stima 0,62 con IC lontani da 0, mentre
+        l'associazione dentro i gruppi è nulla (paradosso di Simpson).
+    - **Potenza (avvertenza da riportare nel report del passo 11, accanto ai risultati di RQ3):** con n = 22 e G = 3
+      le larghezze medie degli IC sono circa 0,76–0,88. Quindi |ρ_W| < ~0,4 avrà tipicamente un IC che comprende 0, e
+      un IC che comprende 0 non è prova di assenza di associazione.
+    - **Piano:** `rq3.ci` contiene solo `method: fisher_bonett_wright`; `n_boot` e `seed` sono rifiutate (nessun
+      parametro senza effetto in un piano congelabile). `rq3.statistic: within_group` è obbligatoria.
+  - **Molteplicità di RQ3:** numero di correlazioni = membri della famiglia × descrittori; nessuna correzione, perché
+    esplorativo; il numero è scritto nelle uscite. Si riporta anche la correlazione tra i due descrittori.
+  - **File (P15):** si aggiungono `src/stats/descriptors.py` (descrittori per macchina e correlazioni),
+    `src/stats/rq3.py` e `src/stats/rq4.py` (assemblaggi).
+  - **P10, indicatore di scostamento cal → test:** per macchina, modello e soglia statica di livello L, FPR del test
+    − (1 − L/100). L'FPR è quello della riga `thr` (scenario `primary`, `ts_agg = last`, `pa` falso), cioè i falsi
+    positivi diviso i punti normali della regione valutata (`metrics.thr_metrics`). È descrittivo.
+    - `plan.py`: `offset_indicator: true` richiede `fpr` tra le metriche di `rq4`.
+    - **Limite:** la quota nominale 1 − L/100 si riferisce a tutti i punti di cal (senza label, possono contenere
+      anomalie); l'FPR del test si riferisce ai soli punti normali. L'indicatore è quindi uno scostamento
+      approssimato, da leggere insieme al limite E5 (`piano_tesi_v1.md` §5).
 
 ### D-53 · File tracciati da git (`.pyc`, dataset) — APPROVATA · 2026-11-10
 - **Decisione:** i `.pyc` non sono tracciati: i 35 file già tracciati sono tolti dal tracciamento con
