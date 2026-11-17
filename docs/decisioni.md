@@ -350,6 +350,28 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
 - **Approvazione:** utente, 2026-11-16, su raccomandazione di Claude Project (piano F7).
 - **Collegamenti:** D-12, D-24, D-42, D-44, D-73. **Serve entro:** F7.
 - **Documenti:** piano F7; proposta §4.8 (superata su questo punto); `piano_tesi_v1.md` §2 (modello misto non adottato).
+- **Nota di rimando (2026-11-17, F7 passo 8, il testo sopra resta invariato; utente, su raccomandazione di Claude
+  Project):**
+  - **Termini:** macchina come fattore di blocco; tutti gli effetti principali dei fattori fissi e tutte le loro
+    interazioni fino all'ordine massimo; residuo = interazioni con la macchina (macchina × trattamento), accorpate.
+    Nel disegno bilanciato i termini sono ortogonali: SS_tot = SS_macchina + Σ SS_termini + SS_residuo esattamente, e
+    le quote non dipendono dalla codifica. Nelle uscite vengono prima le interazioni modello × fattore di primo ordine,
+    poi gli effetti principali, poi le interazioni di ordine superiore. Un fattore con un solo livello nel blocco non
+    ha termini.
+  - **Nessuna inferenza sulle somme dei quadrati:** niente test F né p-value. Ogni macchina è misurata in tutte le
+    celle (disegno a misure ripetute), quindi l'F con il residuo macchina × trattamento richiede sfericità e
+    omogeneità non plausibili; i test sarebbero decine per blocco; tutto è esplorativo. Solo quote descrittive, con i
+    gradi di libertà come informazione sul disegno.
+  - **Indice R** (decisione dell'utente), per ogni blocco con almeno 2 modelli: R = Σ SS(termini fissi che contengono
+    il modello e almeno un altro fattore) / [SS(modello) + Σ SS(termini fissi che contengono il modello e almeno un
+    altro fattore)]. È la quota della variabilità legata ai modelli che dipende dai fattori del blocco. Esclude
+    macchina e residuo. È descrittivo ed esplorativo, e si riporta accanto alla tabella dei termini.
+  - **Stati espliciti, con criteri esatti** (la SS calcolata di valori identici può essere un residuo di
+    arrotondamento non nullo):
+    - η² non definite (`zero_total`) se tutti i valori del blocco sono identici;
+    - η²_without_machine non definita se ogni macchina è costante;
+    - R `zero_denominator` se i valori sono identici tra i livelli del modello in ogni cella; R `single_model` se il
+      blocco ha un solo modello.
 
 ### D-36 · Metodo degli intervalli di confidenza e famiglia confermativa — APPROVATA · 2026-11-16
 - **Testo della voce APERTA (storico, invariato):**
@@ -1836,6 +1858,31 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
     supporto sullo stesso confronto invitano a scegliere il più comodo. Wilcoxon resta solo nella parità con
     `aggregate_results.py` (P12). La frase «Wilcoxon solo come statistica descrittiva» non è nel piano operativo:
     compare nella proposta §5, dove è marcata come superata.
+- **Nota di rimando (2026-11-17, passo 8, P11 e P15, il testo sopra resta invariato; utente, su raccomandazione di
+  Claude Project):**
+  - **File (P15):** si aggiunge `src/stats/rq1.py`, l'assemblaggio dei blocchi di RQ1a e RQ1b. `variance.py`
+    contiene la decomposizione (D-25, nota del passo 8) e servirà anche a RQ4; `ranking.py` contiene τ-b e
+    inversioni.
+  - **Righe dei blocchi:** solo i modelli `compared` e `reference`; baseline random e descrittive escluse (P7).
+    Bilanciamento verificato: ogni combinazione macchina × modello × livelli compare esattamente una volta, altrimenti
+    errore. In RQ1b il fattore preproc ha come livelli gli esperimenti (colonna `experiment`).
+  - **τ-b (P11):**
+    - per macchina, tra il ranking dei modelli nella configurazione canonica c₀ (`tau_reference`) e in ogni altra
+      configurazione, con `scipy.stats.kendalltau(variant="b")`, che tratta i pari merito;
+    - distribuzione completa sulle macchine in tabella, con riassunti (media, mediana, minimo, quartili, numero di
+      macchine definite e non definite);
+    - τ-b sui ranking delle medie sulle macchine;
+    - un ranking tutto in pari merito dà lo stato `undefined_all_tied`, mai scartato;
+    - una configurazione è una combinazione dei livelli dei fattori del blocco con almeno 2 livelli, modello escluso.
+  - **Inversioni di segno:** Δ(c) = valore(modello, c) − valore(`delta_reference`, c) per macchina.
+    - Inversione se segno(Δ(c₀)) · segno(Δ(c)) < 0, cioè segni strettamente opposti.
+    - Δ = 0 esatto in c₀ o in c = pareggio, contato a parte; altrimenti segno conservato.
+    - Uscite: per (modello, configurazione) i conteggi e le quote di macchine; per modello la quota di
+      configurazioni in cui si inverte il segno del Δ medio.
+  - **Blocchi con un solo modello (RQ1b):** nessun termine del modello, R `single_model`, nessun τ e nessuna
+    inversione.
+  - **Uscite di RQ1a e RQ1b:** tutte `exploratory`. `stats.json` riporta per blocco fattori e livelli, η² principale,
+    stati, R, macchine incluse e numero per gruppo, c₀.
 
 ### D-53 · File tracciati da git (`.pyc`, dataset) — APPROVATA · 2026-11-10
 - **Decisione:** i `.pyc` non sono tracciati: i 35 file già tracciati sono tolti dal tracciamento con
