@@ -598,8 +598,9 @@ D-53 approvata (2026-11-10): `.pyc` tolti dal tracciamento, `dataset/` resta tra
     (normale [0,93; 0,97]; code pesanti e asimmetrico ≥ 0,90, valore documentato); il gerarchico solo per documentarne
     la copertura;
   - regola di decisione su δ con casi noti, confini compresi;
-  - Bonferroni e Holm su casi noti (Holm implementato come funzione pura, non usato dalla regola di RQ2) *(rev.
-    2026-11-16: prima solo «correzione di Holm»)*;
+  - livello di Bonferroni 1 − α/m su casi noti (m da 1 a 3) *(rev. 2026-11-17: prima «Bonferroni e Holm su casi noti
+    (Holm implementato come funzione pura, non usato dalla regola di RQ2)», e prima ancora solo «correzione di Holm».
+    Holm non si implementa: D-36 l'ha scartato (M2 non adottato) e la nota su D-71 lo conferma per m = 3)*;
   - la decomposizione SS somma al totale; effetti noti recuperati; disegno sbilanciato rifiutato;
   - τ di Kendall su casi noti (τ-b, pari merito, uguaglianza con scipy);
   - deduplicazione della baseline random, filtro di D-44 nell'ordine fissato, righe `diagnostic` separate, ingressi

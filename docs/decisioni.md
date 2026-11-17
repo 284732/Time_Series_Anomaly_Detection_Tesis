@@ -397,6 +397,20 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
     modelli» (D-71, unità delle conclusioni); la correzione è unica sui tre confronti, non una per famiglia di modelli;
   - **limite aggiornato:** l'inferenza è condizionata ai 3 gruppi di SMD e non c'è un secondo dataset (D-45): RQ2 è
     confermativa rispetto al protocollo congelato, su dati già osservati con altri protocolli.
+- **Nota di rimando (2026-11-17, F7 passo 5, il testo sopra resta invariato; utente):**
+  - **regola a quattro esiti** (`piano_tesi_v1.md` §2, con gli IC di questa voce), con Δ = metrica(modello) −
+    metrica(riferimento) e [L, U] l'IC al 1 − α/m:
+    - superiore se L > δ;
+    - equivalente se −δ ≤ L e U ≤ δ (IC ⊂ [−δ, δ], estremi compresi);
+    - inferiore se U < −δ;
+    - inconcludente altrimenti.
+
+    I confini di superiore e inferiore sono stretti;
+  - **un Δ con IC tutto sopra 0 che attraversa δ (0 < L ≤ δ < U) è *inconcludente*:** è una scelta voluta, perché la
+    regola chiede rilevanza pratica (più di δ), non solo una differenza diversa da zero. Lo stesso vale,
+    specularmente, sotto lo 0;
+  - un IC NaN o non finito, L > U, δ ≤ 0, α fuori da (0, 1), m < 1 sono errori, mai un esito;
+  - Holm non si implementa (M2 non adottato).
 
 ### D-45 · Secondo dataset — APPROVATA · 2026-11-16
 - **Testo della voce APERTA (storico, invariato):**
@@ -1647,6 +1661,19 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
     - con lo scaler standard misura la distanza dalla media del train; con lo scaler min-max misura la vicinanza al
       massimo del train. Nel fattore scaler di RQ1b la sua sensibilità è quindi attesa: dipende dalla definizione
       dello score, non dal protocollo.
+- **Nota di rimando (2026-11-17, passo 5, il testo sopra resta invariato; utente, su raccomandazione di Claude
+  Project):**
+  - **`src/stats/decisions.py`:** regola a quattro esiti come nella nota del 2026-11-17 su D-36 (estremi compresi per
+    «equivalente», confini stretti per superiore e inferiore, codici `superior`, `equivalent`, `inferior`,
+    `inconclusive`). Errore, non `inconclusive`, per IC NaN o non finiti.
+  - **Verso della metrica verificato:** la regola si applica solo a metriche «più alto è meglio» (`HIGHER_IS_BETTER`,
+    che contiene tutte le metriche ammesse in RQ2); un'altra metrica → errore.
+  - **m dal piano, non dalle righe:** m è la dimensione della famiglia dichiarata nel piano statistico. Un membro
+    dichiarato e assente dalle righe → errore; una riga di un modello non dichiarato → errore; un IC calcolato a un
+    livello diverso da 1 − α/m → errore. Motivo: se m si ricavasse dai dati, un membro mancante restringerebbe gli IC
+    dopo aver visto i risultati.
+  - **Riga di decisione ricontrollabile da sola:** identità del modello (model, `config_id`, terna di scoring), esito,
+    L, U, livello dell'IC (1 − α/m), δ, m, α e metrica.
 
 ### D-53 · File tracciati da git (`.pyc`, dataset) — APPROVATA · 2026-11-10
 - **Decisione:** i `.pyc` non sono tracciati: i 35 file già tracciati sono tolti dal tracciamento con
