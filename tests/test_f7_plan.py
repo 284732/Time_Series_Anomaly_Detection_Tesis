@@ -53,7 +53,7 @@ def _untr(**scoring):
 def _plan():
     """Piano valido con tutte le sezioni (esplorativo)."""
     return {
-        "stats": {"name": "synth_example", "kind": "exploratory", "machine_role": "dev"},
+        "stats": {"name": "synth_example", "kind": "exploratory", "machine_role": "eval"},   # RQ2 non su dev (D-76)
         "inputs": [{"experiment": EXP_P, "config_sha256": SHA_A, "plan_sha256": SHA_B},
                    {"experiment": EXP_S, "config_sha256": SHA_C, "plan_sha256": SHA_D}],
         "primary_experiment": EXP_P,
@@ -80,9 +80,9 @@ def _plan():
             "family": [_conv(), _lstm()],
             "delta": 0.05,
             "alpha": 0.05,
-            "ci": {"method": "stratified_bca", "n_boot": 2000, "seed": 20261116},
+            "ci": {"method": "stratified_bootstrap_t", "n_boot": 2000, "seed": 20261116},
             "sign_flip": True,
-            "min_machines_per_group": 2,
+            "min_machines_per_group": 5,
         },
         "rq1a": {
             "eta2_principal": "without_machine",
@@ -126,9 +126,7 @@ def _plan():
                  "delta_reference": None},
             ],
         },
-        "rq3": {"descriptors": ["prevalence", "n_events"], "alpha": 0.05,
-                "ci": {"method": "stratified_bca", "n_boot": 2000, "seed": 20261118},
-                "min_machines_per_group": 2},
+        "rq3": None,                            # rifiutata fino al passo 9 (D-76): test sulla sezione
         "rq4": {
             "eta2_principal": "without_machine",
             "metrics": ["f1", "fpr", "false_alarms_per_1440"],
@@ -141,11 +139,17 @@ def _plan():
     }
 
 
+def _rq3():
+    """Sezione rq3 (validata da sola con ``sp._rq3``: nel piano è rifiutata fino al passo 9, D-76)."""
+    return {"descriptors": ["prevalence", "n_events"], "alpha": 0.05,
+            "ci": {"method": "spearman_method_step9", "n_boot": 2000, "seed": 20261118},
+            "min_machines_per_group": 5}
+
+
 def _official():
     p = _plan()
     p["stats"]["kind"] = "official"
-    for sec in ("rq2", "rq3"):
-        p[sec]["ci"]["n_boot"] = 10_000
+    p["rq2"]["ci"]["n_boot"] = 10_000
     return p
 
 
@@ -192,7 +196,7 @@ def test_example_plan_is_valid_and_normalized_form_is_stable():
     again = sp.validate_stats_plan(plan.to_dict())
     assert again.to_dict() == plan.to_dict()
     assert sp.stats_plan_sha256(again) == sp.stats_plan_sha256(plan)
-    assert plan.kind == "exploratory" and plan.machine_role == "dev"
+    assert plan.kind == "exploratory" and plan.machine_role == "eval"
 
 
 def test_m_is_the_number_of_declared_comparisons():
@@ -282,8 +286,8 @@ def test_non_adjacent_duplicates_are_rejected_before_sorting():
 def _mutations():
     muts = [
         {("stats", "name"): "other_name"},
-        {("stats", "kind"): "official", ("rq2", "ci", "n_boot"): 10_000, ("rq3", "ci", "n_boot"): 10_000},
-        {("stats", "machine_role"): "eval"},
+        {("stats", "kind"): "official", ("rq2", "ci", "n_boot"): 10_000},
+        {("stats", "machine_role"): "dev", ("rq2",): None},                    # su dev niente RQ2 (D-76)
         {("exclusions", "failed_fit"): "error"},
         {("exclusions", "nonfinite_loss"): "exclude_machine_pair"},
         {("exclusions", "nonfinite_cal"): "error", ("exclusions", "exclude_fit_sensitivity"): False},
@@ -296,8 +300,7 @@ def _mutations():
         {("rq2", "ci", "n_boot"): 3000},
         {("rq2", "ci", "seed"): 1},
         {("rq2", "sign_flip"): False},
-        {("rq2", "min_machines_per_group"): 3},
-        {("rq3", "min_machines_per_group"): 4},
+        {("rq2", "min_machines_per_group"): 6},
         {("rq1a", "eta2_principal"): "total"},
         {("rq1a", "blocks", 0, "name"): "renamed"},
         {("rq1a", "blocks", 1, "name"): "renamed_1"},
@@ -306,9 +309,6 @@ def _mutations():
         {("rq1b", "blocks", 1, "name"): "renamed_n"},
         {("rq1b", "blocks", 1, "metric"): "f1"},
         {("rq1b", "blocks", 0, "metric"): "recall"},
-        {("rq3", "alpha"): 0.1},
-        {("rq3", "ci", "n_boot"): 3000},
-        {("rq3", "ci", "seed"): 3},
         {("rq4", "eta2_principal"): "total"},
         {("rq4", "offset_indicator"): False},
         {("descriptive_baselines", 0, "model"): "lstm_autoencoder"},
@@ -466,7 +466,6 @@ def _structural_mutations():
 
     @m
     def rq3_rq4(p):
-        p["rq3"]["descriptors"] = ["n_events"]
         p["rq4"]["metrics"] = ["precision", "recall", "fa_segments"]
         p["rq4"]["descriptive_metrics"] = ["f1", "event_recall"]
         p["rq4"]["models"] = [_m("input_norm", "2" * 12, "mean", "top5", "none"),
@@ -499,9 +498,10 @@ def test_mutations_cover_every_leaf():
                     covered.add(path)
             except (KeyError, IndexError, TypeError):
                 covered.add(path)
-    single_choice = {("rq2", "ci", "method"), ("rq3", "ci", "method"),          # D-36: unico metodo ammesso
+    single_choice = {("rq2", "ci", "method"),                                   # D-76: unico metodo ammesso
                      ("rq1b", "blocks", 1, "models", 0, "model")}               # unico modello native
-    nulls = {("rq1b", "blocks", 1, "tau_reference"), ("rq1b", "blocks", 1, "delta_reference")}
+    nulls = {("rq1b", "blocks", 1, "tau_reference"), ("rq1b", "blocks", 1, "delta_reference"),
+             ("rq3",)}                                                  # rq3 null fino al passo 9 (D-76)
     missing = sorted(set(_leaf_paths(base)) - covered - single_choice - nulls, key=str)
     assert not missing, f"foglie senza mutazione: {missing}"
 
@@ -548,9 +548,9 @@ def test_empty_or_missing_file_is_rejected(tmp_path):
         sp.load_stats_plan(tmp_path / "missing.yaml")
 
 
-@pytest.mark.parametrize("path", [("rq2", "delta"), ("rq2", "alpha"), ("rq3", "alpha"), ("rq2", "ci", "n_boot"),
+@pytest.mark.parametrize("path", [("rq2", "delta"), ("rq2", "alpha"), ("rq2", "ci", "n_boot"),
                                   ("rq2", "ci", "seed"), ("rq2", "min_machines_per_group"),
-                                  ("rq3", "min_machines_per_group"), ("exclusions", "min_events", "n")])
+                                  ("exclusions", "min_events", "n")])
 def test_bool_is_never_a_number(path):
     p = _plan()
     _set(p, path, True)
@@ -558,7 +558,6 @@ def test_bool_is_never_a_number(path):
 
 
 @pytest.mark.parametrize("path", [("rq2", "ci", "n_boot"), ("rq2", "ci", "seed"), ("rq2", "min_machines_per_group"),
-                                  ("rq3", "min_machines_per_group"), ("rq3", "ci", "n_boot"),
                                   ("exclusions", "min_events", "n")])
 def test_float_is_not_an_integer(path):
     p = _plan()
@@ -581,32 +580,41 @@ def test_delta_missing_is_rejected():
 
 
 @pytest.mark.parametrize("alpha", [0, 1, 1.0, -0.1, 1.5, float("nan")])
-@pytest.mark.parametrize("sec", ["rq2", "rq3"])
-def test_alpha_must_be_in_open_unit_interval(sec, alpha):
+def test_alpha_must_be_in_open_unit_interval(alpha):
     p = _plan()
-    p[sec]["alpha"] = alpha
+    p["rq2"]["alpha"] = alpha
     _err(p)
+    s = _rq3()
+    s["alpha"] = alpha
+    with pytest.raises(ConfigError, match="rq3.alpha"):
+        sp._rq3(s, "exploratory")
 
 
 @pytest.mark.parametrize("n_boot", [0, -1, 10.5, 2000.0])
-@pytest.mark.parametrize("sec", ["rq2", "rq3"])
-def test_n_boot_must_be_a_positive_integer(sec, n_boot):
+def test_n_boot_must_be_a_positive_integer(n_boot):
     p = _plan()
-    p[sec]["ci"]["n_boot"] = n_boot
+    p["rq2"]["ci"]["n_boot"] = n_boot
     _err(p)
+    s = _rq3()
+    s["ci"]["n_boot"] = n_boot
+    with pytest.raises(ConfigError, match="rq3.ci.n_boot"):
+        sp._rq3(s, "exploratory")
 
 
-@pytest.mark.parametrize("sec", ["rq2", "rq3"])
-def test_official_requires_at_least_10000_bootstrap_replicates(sec):
+def test_official_requires_at_least_10000_bootstrap_replicates():
     p = _official()
-    p[sec]["ci"]["n_boot"] = 9_999
+    p["rq2"]["ci"]["n_boot"] = 9_999
     _err(p, "10")
     sp.validate_stats_plan(_official())                     # 10.000: accettato
+    s = _rq3()
+    s["ci"]["n_boot"] = 9_999
+    with pytest.raises(ConfigError, match="10000"):
+        sp._rq3(s, "official")
 
 
 def test_exploratory_accepts_fewer_than_10000_replicates():
     p = _plan()
-    p["rq2"]["ci"]["n_boot"] = p["rq3"]["ci"]["n_boot"] = 9_999
+    p["rq2"]["ci"]["n_boot"] = 9_999
     sp.validate_stats_plan(p)
 
 
@@ -641,12 +649,17 @@ def test_random_baseline_is_never_a_model_level(where):
     _err(p, "D-73 P7")
 
 
-@pytest.mark.parametrize("method", ["hierarchical", "percentile", "bca", "", None])
-@pytest.mark.parametrize("sec", ["rq2", "rq3"])
-def test_only_the_stratified_bca_method_is_admitted(sec, method):
+@pytest.mark.parametrize("method", ["hierarchical", "percentile", "bca", "stratified_bca", "", None])
+def test_only_the_stratified_bootstrap_t_method_is_admitted_for_rq2(method):
     p = _plan()
-    p[sec]["ci"]["method"] = method
-    _err(p)
+    p["rq2"]["ci"]["method"] = method
+    _err(p, "rq2.ci.method")
+
+
+def test_the_old_bca_method_is_rejected_with_a_pointer_to_d76():
+    p = _plan()
+    p["rq2"]["ci"]["method"] = "stratified_bca"
+    _err(p, "D-76")
 
 
 @pytest.mark.parametrize("metric", ["roc_auc", "ap", "ap_over_p"])
@@ -790,10 +803,17 @@ def test_plan_with_all_rq_null_is_rejected():
     _err(p, "RQ")
 
 
-def test_rq3_requires_rq2():
+def test_rq3_is_rejected_until_step_9():
     p = _plan()
+    p["rq3"] = _rq3()
+    _err(p, "passo 9")
     p["rq2"] = None
-    _err(p, "rq2")
+    _err(p)
+
+
+def test_rq3_ci_method_is_undecided_until_step_9():
+    with pytest.raises(ConfigError, match="passo 9"):
+        sp._rq3(_rq3(), "exploratory")
 
 
 @pytest.mark.parametrize("sec", ["rq1a", "rq1b", "rq4"])
@@ -806,9 +826,10 @@ def test_eta2_principal_must_be_declared(sec, value):
 
 @pytest.mark.parametrize("descriptor", ["drift", "out_of_range", "pca_rank", "prevalence_test"])
 def test_rq3_only_table_descriptors(descriptor):
-    p = _plan()
-    p["rq3"]["descriptors"] = ["prevalence", descriptor]
-    _err(p, descriptor)
+    s = _rq3()
+    s["descriptors"] = ["prevalence", descriptor]
+    with pytest.raises(ConfigError, match=descriptor):
+        sp._rq3(s, "exploratory")
 
 
 def test_rq4_detection_delay_is_never_decomposed():
@@ -1335,19 +1356,48 @@ def test_every_input_has_a_role():
 
 
 # ---------------------------------------------------------------- passo 6: gruppo minimo e sign-flip booleano
-@pytest.mark.parametrize("sec", ["rq2", "rq3"])
-@pytest.mark.parametrize("value", [1, 0, -2, 1.5, True, None, "2"])
-def test_min_machines_per_group_is_an_integer_of_at_least_two(sec, value):
+@pytest.mark.parametrize("value", [4, 2, 1, 0, -2, 5.5, True, None, "5"])
+def test_min_machines_per_group_is_an_integer_of_at_least_five(value):
     p = _plan()
-    p[sec]["min_machines_per_group"] = value
-    _err(p, "min_machines_per_group")
+    p["rq2"]["min_machines_per_group"] = value
+    _err(p, "rq2.min_machines_per_group")
+    s = _rq3()
+    s["min_machines_per_group"] = value
+    with pytest.raises(ConfigError, match="rq3.min_machines_per_group"):
+        sp._rq3(s, "exploratory")
 
 
-@pytest.mark.parametrize("sec", ["rq2", "rq3"])
-def test_min_machines_per_group_is_mandatory(sec):
+def test_min_machines_per_group_five_is_admitted():
     p = _plan()
-    del p[sec]["min_machines_per_group"]
+    p["rq2"]["min_machines_per_group"] = 5
+    sp.validate_stats_plan(p)
+    assert sp.MIN_MACHINES_PER_GROUP == 5
+
+
+def test_min_machines_per_group_is_mandatory():
+    p = _plan()
+    del p["rq2"]["min_machines_per_group"]
     _err(p, "min_machines_per_group")
+    s = _rq3()
+    del s["min_machines_per_group"]
+    with pytest.raises(ConfigError, match="min_machines_per_group"):
+        sp._rq3(s, "exploratory")
+
+
+def test_rq2_on_development_machines_is_rejected():
+    p = _plan()
+    p["stats"]["machine_role"] = "dev"
+    _err(p, "2 macchine per gruppo")
+    p["rq2"] = None
+    sp.validate_stats_plan(p)                              # descrittive, RQ1 e RQ4 restano ammesse su dev
+
+
+def test_rq3_on_development_machines_is_rejected_with_the_dev_message():
+    p = _plan()
+    p["stats"]["machine_role"] = "dev"
+    p["rq2"] = None
+    p["rq3"] = _rq3()
+    _err(p, "2 macchine per gruppo")
 
 
 @pytest.mark.parametrize("value", [{"n_perm": 2000, "seed": 1}, 1, "true", None])
@@ -1359,5 +1409,5 @@ def test_sign_flip_is_a_boolean(value):
 
 def test_min_machines_per_group_and_sign_flip_in_the_normalized_plan():
     d = sp.validate_stats_plan(_plan()).to_dict()
-    assert d["rq2"]["min_machines_per_group"] == 2 and d["rq3"]["min_machines_per_group"] == 2
+    assert d["rq2"]["min_machines_per_group"] == 5 and d["rq3"] is None
     assert d["rq2"]["sign_flip"] is True

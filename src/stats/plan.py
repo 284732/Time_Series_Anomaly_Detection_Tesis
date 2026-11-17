@@ -24,8 +24,10 @@ File ``configs/stats/<nome>.yaml``, validato con le regole di F2: chiave sconosc
 Fissati per definizione (nessuna chiave; un cambiamento è un cambiamento del codice): RQ2 scenario ``primary`` e
 ``ts_agg = last``; RQ1b e RQ4 scenario ``primary``, ``ts_agg = last``, ``pa`` falso (``FIXED``).
 
-Regole principali: il random non è mai un livello del fattore modello (P7); ``hierarchical`` non è un metodo ammesso
-(D-36); con ``kind: official`` ``rq2.metric`` = ``ap_norm`` (D-07) e ``n_boot`` ≥ 10.000 (D-36); ``detection_delay`` non
+Regole principali: il random non è mai un livello del fattore modello (P7); ``rq2.ci.method`` ammette solo
+``stratified_bootstrap_t`` (D-76; ``stratified_bca`` e il gerarchico sono rifiutati); ``min_machines_per_group`` ≥ 5
+(D-76); con ``machine_role: dev`` ``rq2`` e ``rq3`` devono essere null (2 macchine per gruppo, D-76); ``rq3`` non nulla
+è rifiutata fino al passo 9 (metodo dell'IC di Spearman da decidere, D-76); con ``kind: official`` ``rq2.metric`` = ``ap_norm`` (D-07) e ``n_boot`` ≥ 10.000 (D-36); ``detection_delay`` non
 è mai una risposta decomposta (C4) e compare solo in forma descrittiva insieme a ``event_recall``; i modelli
 ``native`` (attributo di classe ``native_only``) hanno lo scoring none/native/none e in RQ1b stanno in blocchi senza
 fattore ``scoring`` (D-25).
@@ -62,12 +64,14 @@ TEST_ACTIONS = FIT_ACTIONS + ("keep",)                      # keep solo per i no
 EVENT_ACTIONS = ("error", "exclude_machine_pair")           # regola a livello di macchina
 EXCLUDE_FIT, KEEP = "exclude_fit", "keep"
 
-CI_METHODS = ("stratified_bca",)                            # D-36: il gerarchico non è un valore ammesso
+CI_METHODS = ("stratified_bootstrap_t",)                    # D-76 (rivede D-36 A); il gerarchico non è ammesso
+RQ3_CI_METHODS: Tuple[str, ...] = ()                        # D-76: il metodo dell'IC di Spearman si decide al passo 9
+RETIRED_CI_METHODS = {"stratified_bca": "D-76: la BCa stratificata non rispetta le bande di copertura di D-36"}
 ETA2_VERSIONS = ("total", "without_machine")                # D-25
 TABLE_DESCRIPTORS = ("prevalence", "n_events")              # P9: solo descrittori ricavabili dalle tabelle
 OFFICIAL_MIN_N_BOOT = 10_000                                # D-36, solo kind official
 OFFICIAL_RQ2_METRIC = "ap_norm"                             # D-07, solo kind official
-MIN_MACHINES_PER_GROUP = 2      # minimo ammesso del parametro (uno strato da 1 macchina non varia, passo 6)
+MIN_MACHINES_PER_GROUP = 5      # minimo ammesso del parametro: soglia di stabilità del bootstrap-t (D-76)
 
 # Colonna ``model_role`` delle uscite (D-73 P13), distinta da ``inference`` e dalle righe ``diagnostic``.
 MODEL_ROLES = ("compared", "reference", "descriptive_baseline", "random_baseline")
@@ -264,14 +268,21 @@ def _decomposed_metric(table: str, v: Any, path: str) -> str:
     return _choice(ts.FREE_METRICS if table == "free" else ts.THR_METRICS)(v, path)
 
 
-def _ci(v: Any, path: str, kind: str) -> Dict[str, Any]:
+def _ci(v: Any, path: str, kind: str, methods: Tuple[str, ...] = CI_METHODS) -> Dict[str, Any]:
     d = _keys(v, path, ("method", "n_boot", "seed"))
     n_boot = _int(1)(d["n_boot"], f"{path}.n_boot")
     if kind == OFFICIAL and n_boot < OFFICIAL_MIN_N_BOOT:
         raise ConfigError(f"{path}.n_boot: con kind official serve n_boot >= {OFFICIAL_MIN_N_BOOT} (D-36), trovato "
                           f"{n_boot}")
-    return {"method": _choice(CI_METHODS)(d["method"], f"{path}.method"), "n_boot": n_boot,
-            "seed": _int(0)(d["seed"], f"{path}.seed")}
+    seed = _int(0)(d["seed"], f"{path}.seed")
+    method = d["method"]
+    if method in RETIRED_CI_METHODS:
+        raise ConfigError(f"{path}.method: {method!r} non è più ammesso ({RETIRED_CI_METHODS[method]}); ammesso "
+                          f"{list(methods)}")
+    if not methods:
+        raise ConfigError(f"{path}.method: il metodo dell'IC di Spearman si decide al passo 9 (D-76); rq3 non è "
+                          "ancora calcolabile")
+    return {"method": _choice(methods)(method, f"{path}.method"), "n_boot": n_boot, "seed": seed}
 
 
 # ---------------------------------------------------------------- sezioni
@@ -529,9 +540,9 @@ def _rq3(v: Any, kind: str) -> Dict[str, Any]:
     d = _keys(v, "rq3", ("descriptors", "alpha", "ci", "min_machines_per_group"))
     return {"descriptors": _levels(d["descriptors"], "rq3.descriptors", _choice(TABLE_DESCRIPTORS)),
             "alpha": _real(0.0, True, 1.0, True)(d["alpha"], "rq3.alpha"),
-            "ci": _ci(d["ci"], "rq3.ci", kind),
             "min_machines_per_group": _int(MIN_MACHINES_PER_GROUP)(d["min_machines_per_group"],
-                                                                   "rq3.min_machines_per_group")}
+                                                                   "rq3.min_machines_per_group"),
+            "ci": _ci(d["ci"], "rq3.ci", kind, RQ3_CI_METHODS)}
 
 
 def _rq4(v: Any) -> Dict[str, Any]:
@@ -562,6 +573,9 @@ def validate_stats_plan(raw: Any) -> StatsPlan:
     kind = stats["kind"]
     if all(d[k] is None for k in RQ_KEYS):
         raise ConfigError(f"piano statistico: nessuna RQ richiesta (tutte null tra {list(RQ_KEYS)})")
+    if stats["machine_role"] == "dev" and (d["rq2"] is not None or d["rq3"] is not None):
+        raise ConfigError("machine_role 'dev': rq2 e rq3 devono essere null. Le macchine di sviluppo hanno 2 macchine "
+                          "per gruppo (D-51): nessuna inferenza è possibile; valgono le descrittive (D-76)")
     if d["rq3"] is not None and d["rq2"] is None:
         raise ConfigError("rq3: richiede rq2 (descrittori contro il Δ di RQ2)")
     data = {

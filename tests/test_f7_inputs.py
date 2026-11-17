@@ -51,7 +51,7 @@ def analysis_plan():
 def experiment(name, scaler="minmax", **windows):
     raw = synth_spec(DATA, STORE, mode="split3", step=1, seeds=[42, 43], run_models=MODELS)
     raw["experiment"]["name"] = name
-    raw["data"]["machines"] = "dev"
+    raw["data"]["machines"] = "eval"              # RQ2 non ammessa su dev (D-76)
     raw["preprocessing"]["scaler_type"] = scaler
     raw["windows"].update(windows)
     return raw
@@ -115,7 +115,7 @@ def raw_plan(env):
                           "analysis.json").read_text(encoding="utf-8"))
         return doc["plan_sha256"]
     return {
-        "stats": {"name": "synth_stats", "kind": "exploratory", "machine_role": "dev"},
+        "stats": {"name": "synth_stats", "kind": "exploratory", "machine_role": "eval"},
         "inputs": [{"experiment": e, "config_sha256": cfgmod.config_sha256(_cfg(env["specs"][e])),
                     "plan_sha256": plan_sha(e)} for e in (PRIMARY, SCALER)],
         "primary_experiment": PRIMARY,
@@ -129,8 +129,8 @@ def raw_plan(env):
                          "threshold": STATIC}],
         "descriptive_baselines": [],
         "rq2": {"metric": "ap_norm", "reference": pca, "family": [inorm], "delta": 0.05, "alpha": 0.05,
-                "ci": {"method": "stratified_bca", "n_boot": 200, "seed": 1},
-                "sign_flip": True, "min_machines_per_group": 2},
+                "ci": {"method": "stratified_bootstrap_t", "n_boot": 200, "seed": 1},
+                "sign_flip": True, "min_machines_per_group": 5},
         "rq1a": {"eta2_principal": "without_machine", "blocks": [
             {"name": "measure", "table": "thr", "metric": "f1", "models": [pca, inorm, rz],
              "factors": {"ts_agg": ["last", "mean"], "scenario": ["primary", "test_context"],
@@ -210,7 +210,7 @@ def test_valid_inputs_are_accepted(env):
     assert out.inputs[PRIMARY].preproc != out.inputs[SCALER].preproc
     for i in out.inputs.values():
         assert set(i.tables) == {"free", "thr", "fits"} and set(i.table_sha256) == {"free", "thr", "fits"}
-        assert i.machines == ("machine-9-1",)
+        assert i.machines == ("machine-9-2",)
 
 
 def test_inputs_order_does_not_matter(env):
@@ -293,7 +293,7 @@ def test_analysis_json_with_another_id_or_altered_components(env, work):
     edit_json(d, lambda doc: doc.update(analysis_id="f" * 12))
     fails(env, "registra analysis_id")
     edit_json(d, lambda doc: doc.update(analysis_id=env["aids"][PRIMARY]))
-    edit_json(d, lambda doc: doc["components"]["labels_versions"].update({"machine-9-1": "x"}))
+    edit_json(d, lambda doc: doc["components"]["labels_versions"].update({"machine-9-2": "x"}))
     fails(env, "hash dei components")
 
 
@@ -382,9 +382,10 @@ def test_registry_mismatch_is_an_error_and_missing_row_a_warning(env, work):
 
 def test_machine_role_must_match_the_plan(env):
     raw = raw_plan(env)
-    raw["stats"]["machine_role"] = "eval"
-    fails(env, "ruolo diverso da machine_role 'eval'", raw=raw)
-    fails(env, "machine_role \\['dev'\\]", raw=raw)
+    raw["stats"]["machine_role"] = "dev"
+    raw["rq2"] = None                                   # su dev niente RQ2 (D-76)
+    fails(env, "ruolo diverso da machine_role 'dev'", raw=raw)
+    fails(env, "machine_role \\['eval'\\]", raw=raw)
 
 
 # ---------------------------------------------------------------- tabelle
@@ -610,7 +611,7 @@ def test_invalid_config_of_an_input(env):
 
 def test_components_not_serializable(env, work):
     edit_json(adir(work, PRIMARY, env["aids"][PRIMARY]) / "analysis.json",
-              lambda doc: doc["components"]["labels_versions"].update({"machine-9-1": float("inf")}))
+              lambda doc: doc["components"]["labels_versions"].update({"machine-9-2": float("inf")}))
     fails(env, "components di analysis.json non validi")
 
 
@@ -635,7 +636,7 @@ def test_two_data_versions_for_one_machine_inside_an_analysis(env, work):
         f["fit_key"] = key
         doc["components"]["fits"].append(f)
     edit_json(adir(work, PRIMARY, env["aids"][PRIMARY]) / "analysis.json", add)
-    fails(env, "data_version diversi per la macchina machine-9-1 tra i fit")
+    fails(env, "data_version diversi per la macchina machine-9-2 tra i fit")
 
 
 def test_machines_not_resolvable(env):
@@ -646,7 +647,7 @@ def test_machines_not_resolvable(env):
 
 def test_config_machine_without_fits(env):
     raw, inputs = _changed_spec(env, lambda s: s["data"].update(machines=["machine-9-1", "machine-9-2"]))
-    fails(env, r"nessun fit dell'analisi per le macchine \['machine-9-2'\]", raw=raw, inputs=inputs)
+    fails(env, r"nessun fit dell'analisi per le macchine \['machine-9-1'\]", raw=raw, inputs=inputs)
     fails(env, "macchine dell'analisi .* diverse da quelle della config", raw=raw, inputs=inputs)
 
 

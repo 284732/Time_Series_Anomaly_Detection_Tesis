@@ -46,7 +46,7 @@ def _base(exp, machine, model, seed, sc, scenario, ts_agg, metric):
     rnd = model == "random_baseline"
     ident = (exp, machine, model, seed, sc, scenario, metric) + (() if rnd else (ts_agg,))
     return {"analysis_id": ("a" if exp == P else "b") * 12, "dataset": "synth", "machine": machine,
-            "group": MACHINES[machine], "machine_role": "dev", "model": model,
+            "group": MACHINES[machine], "machine_role": "eval", "model": model,
             "config_id": CID.get(model, "random_baseline"), "preproc": ("c" if exp == P else "d") * 12,
             "fit_key": fit_key(exp, model, machine, seed), "seed": seed, "deterministic": model == "pca",
             "split_mode": "split3", "scenario": scenario, "window_time_agg": sc[0], "sensor_agg": sc[1],
@@ -125,7 +125,7 @@ def raw_plan(**exclusions):
     flat = [excl[k] for k in ("failed_fit", "nonfinite_loss", "nonfinite_cal", "nonfinite_test")]
     excl["exclude_fit_sensitivity"] = "exclude_fit" in flat + list(excl["nan_rows"].values())
     return {
-        "stats": {"name": "filters", "kind": "exploratory", "machine_role": "dev"},
+        "stats": {"name": "filters", "kind": "exploratory", "machine_role": "eval"},
         "inputs": [{"experiment": e, "config_sha256": "a" * 64, "plan_sha256": "b" * 64} for e in (P, S)],
         "primary_experiment": P,
         "exclusions": excl,
@@ -135,8 +135,8 @@ def raw_plan(**exclusions):
                          "threshold": STATIC}],
         "descriptive_baselines": [{"model": "lstm_autoencoder", "config_id": CID["lstm_autoencoder"]}],
         "rq2": {"metric": "ap_norm", "reference": _scored("pca"), "family": [_scored("conv_autoencoder")],
-                "delta": 0.05, "alpha": 0.05, "ci": {"method": "stratified_bca", "n_boot": 100, "seed": 1},
-                "sign_flip": True, "min_machines_per_group": 2},
+                "delta": 0.05, "alpha": 0.05, "ci": {"method": "stratified_bootstrap_t", "n_boot": 100, "seed": 1},
+                "sign_flip": True, "min_machines_per_group": 5},
         "rq1a": {"eta2_principal": "total", "blocks": [
             {"name": "measure", "table": "thr", "metric": "f1",
              "models": [_scored("pca"), _scored("conv_autoencoder")],
@@ -607,7 +607,7 @@ def test_filters_on_real_inputs_of_step_2(env, monkeypatch):
     monkeypatch.chdir(env["root"])
     out = flt.apply_filters(load(env))
     assert set(out.units) == {"descriptive/0", "descriptive/1", "rq1a/measure", "rq1b/design", "rq2", "rq4"}
-    assert all(u.machines == ("machine-9-1",) for u in out.units.values())
+    assert all(u.machines == ("machine-9-2",) for u in out.units.values())
     assert out.dedup_removed["stats_primary"] > 0 and out.register == []
 
 

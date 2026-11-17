@@ -439,6 +439,35 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
   - **Il cambio di metodo si decide solo su simulazioni**, prima dei run ufficiali: nessun dato reale è stato visto.
     La nuova voce che rivede questa decisione si scrive dopo il confronto dei metodi candidati, con l'approvazione
     dell'utente.
+- **Nota (2026-11-17, F7 passo 6, criterio di scelta fissato PRIMA di eseguire le simulazioni dei metodi candidati;
+  utente, dettagli marcati «[Claude]» fissati da Claude Project e da confermare):**
+  - **Metodi candidati:**
+    - (1) **BCa stratificata riscalata:** in ogni strato xᵢ′ = x̄ₕ + √(nₕ/(nₕ − 1))·(xᵢ − x̄ₕ), poi la BCa
+      stratificata invariata su x′; il jackknife si calcola su x′ [Claude];
+    - (2) **bootstrap-t stratificato:** SE² = Σₕ (nₕ/n)² sₕ²/nₕ, con sₕ² corretta (ddof = 1); t*_b = (θ*_b − θ̂)/SE*_b;
+      IC = [θ̂ − q₁₋q(t*)·SE, θ̂ − q_q(t*)·SE], con i quantili lineari di `np.percentile`. Una replica con SE*_b = 0 →
+      errore, mai un ripiego; nella simulazione si conta come mancata copertura e si riporta il numero di casi.
+      Repliche con SE* quasi nullo: nessuna soglia e nessuno scarto (sarebbe un ripiego silenzioso); l'instabilità si
+      misura. Stabilità: simulazione aggiuntiva con 3 gruppi di uguale numerosità nₕ ∈ {2, 3, 4, 5, 6}, caso normale
+      eteroschedastico, 95%, R = 1.000, B = 2.000, riportando copertura, larghezza media e numero di repliche con
+      SE* = 0 [Claude];
+    - (3) **intervallo t di Welch–Satterthwaite** sulla media stratificata, con varianza corretta per strato:
+      θ̂ ± t_{ν, 1−q}·SE, con ν = (Σ cₕ)² / Σ (cₕ²/(nₕ − 1)) e cₕ = (nₕ/n)² sₕ²/nₕ. Nessun bootstrap.
+  - **Disegno:** quello della nota precedente (6/7/9, eteroschedastico, casi normale, t₃ e lognormale, θ = μ +
+    Σₕ (nₕ/n)γₕ), con gli stessi seed per tutti i metodi (stessi dati; stessi indici per (1) e (2)).
+    - Al 95%: R = B = 2.000.
+    - A 1 − 0,05/3: R = 1.000 e B = 10.000 (B non conta per (3)).
+    - Si riportano copertura, errore Monte Carlo √(c(1 − c)/R) e larghezza media.
+  - **Criterio:**
+    - a) bande di questa voce al 95%: normale in [0,93; 0,97]; t₃ e lognormale ≥ 0,90;
+    - b) tra i metodi che le rispettano vince la copertura più vicina a 0,9833 al livello operativo. [Claude]
+      Distanza di un metodo = il **caso peggiore** sui tre casi, max |c − 0,9833|;
+    - c) a parità vince il più semplice: (3), poi (1), poi (2). [Claude] «Parità»: differenza tra le distanze
+      ≤ 2·√(SE₁² + SE₂²), con SE l'errore Monte Carlo del caso che determina ciascuna distanza;
+    - se nessun metodo rispetta le bande: ci si ferma e si riporta.
+  - **Esito (2026-11-17):** solo il metodo (2), bootstrap-t stratificato, rispetta le bande, nella suite e nella prova
+    una tantum (R = B = 10.000). È adottato con D-76, che rivede il metodo (A). I dettagli marcati «[Claude]» non
+    hanno influito: un solo metodo superava il punto a).
 
 ### D-45 · Secondo dataset — APPROVATA · 2026-11-16
 - **Testo della voce APERTA (storico, invariato):**
@@ -565,6 +594,61 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
 - **Approvazione:** utente, 2026-11-16 (discussione sul perimetro della tesi, su raccomandazione di Claude Project).
 - **Collegamenti:** D-10, D-36, D-41, D-68, D-69, D-73, D-74, D-75.
 - **Documenti:** piano F8.
+
+### D-76 · Metodo degli IC di RQ2: bootstrap-t stratificato — APPROVATA · 2026-11-17
+- **Rivede:** D-36 per il solo metodo (A). Il resto di D-36 resta invariato: Bonferroni 1 − α/m, m dalla famiglia
+  dichiarata, α e B parametri del piano, B ≥ 10.000 per `kind: official`, gerarchico solo nelle simulazioni, sign-flip
+  di supporto.
+- **Metodo di RQ2: bootstrap-t stratificato.**
+  - Δᵢ per macchina; θ̂ = media di Δ con pesi uguali.
+  - SE² = Σₕ (nₕ/n)²·sₕ²/nₕ, con sₕ² la varianza nello strato con `ddof = 1`.
+  - Repliche: in ogni strato nₕ macchine con reinserimento. Indici generati una sola volta da `rq2.ci.seed` e
+    condivisi da tutti i membri della famiglia: `np.random.default_rng(seed)`, gruppi in ordine di etichetta,
+    macchine in ordine di nome, `rng.integers(0, nₕ, size=(B, nₕ))` per gruppo.
+  - Per ogni replica θ*_b e SE*_b, con la stessa formula; t*_b = (θ*_b − θ̂)/SE*_b.
+  - IC a code uguali: [θ̂ − t*₍₁₋q₎·SE, θ̂ − t*₍q₎·SE], con q = α/(2m). I quantili usano l'interpolazione lineare di
+    `np.percentile`.
+- **Nessun ripiego silenzioso:**
+  - **SE osservato = 0** (Δ costanti dentro ogni strato, compreso il caso di Δ tutti uguali): IC degenere [θ̂, θ̂],
+    stato `degenerate`, registrato. In questo caso tutte le repliche sono identiche e ogni SE* = 0, per costruzione.
+    È l'effetto concreto del limite dello stratificato, che ignora la variabilità tra gruppi.
+  - **SE osservato > 0 e almeno una replica con SE*_b = 0** → errore. Nessuna soglia e nessuno scarto delle repliche
+    con SE* piccolo.
+  - «SE = 0» (osservato o di una replica) si riconosce con il criterio esatto equivalente: valori identici dentro ogni
+    strato, per uguaglianza. Non si usa la varianza calcolata, che per valori identici in float può dare un residuo
+    di arrotondamento non nullo (fatto verificato da un test).
+  - Δ, SE o quantili non finiti → errore.
+- **`min_machines_per_group`:** il minimo imposto da `plan.py` sale a **5**, la soglia di stabilità misurata. Con
+  nₕ = 4 si sono avute 9 ripetizioni su 1.000 con SE* = 0; con nₕ ≥ 5, nessuna. Se dopo le esclusioni un gruppo
+  scende sotto il minimo dichiarato, **RQ2 è «non calcolabile»** e si riporta come tale, con il gruppo e il
+  conteggio. Nessun esito, nessun cambio di metodo dopo.
+- **Macchine di sviluppo:** hanno 2 macchine per gruppo (D-51), quindi nessuna inferenza è possibile. `rq2` e `rq3`
+  non nulle con `machine_role: dev` → errore in `plan.py`. Sulle macchine di sviluppo valgono le descrittive.
+- **Valore del piano:** `rq2.ci.method` ammette solo `stratified_bootstrap_t`; `stratified_bca` è rifiutato, con un
+  messaggio che rimanda a questa voce.
+- **Evidenza:** `scripts/sim_ci_methods.py` e `docs/sim_ci_methods.json` (profili `suite` e `once`, con ambiente e
+  data). Evidenza rigenerata con lo stesso criterio del codice per «SE* = 0»: le coperture del disegno 6/7/9 sono
+  identiche; nello studio di stabilità cambia solo nₕ = 3 (947 ripetizioni su 1.000 con SE* = 0 invece di 726);
+  nₕ = 4, 5, 6 restano 9, 0, 0 e la soglia 5 resta valida.
+  - Disegno 6/7/9 eteroschedastico; casi normale, t₃ e lognormale; θ = μ + Σ(nₕ/n)γₕ.
+  - Il criterio di scelta è stato fissato prima di eseguire (nota del 2026-11-17 su D-36): bande al 95%; poi la
+    vicinanza a 1 − 0,05/3; a parità, il più semplice.
+  - Solo (2) rispetta le bande. Prova una tantum (R = B = 10.000, larghezza media tra parentesi):
+
+    | metodo | 95% normale | 95% t₃ | 95% lognormale | bande | 98,3% normale | 98,3% t₃ | 98,3% lognormale |
+    |---|---|---|---|---|---|---|---|
+    | (A) BCa | 0,895 (1,10) | 0,862 (1,03) | 0,846 (1,05) | no | 0,942 (1,34) | 0,920 (1,26) | 0,905 (1,29) |
+    | (1) BCa riscalata | 0,913 (1,17) | 0,885 (1,10) | 0,868 (1,12) | no | 0,956 (1,43) | 0,940 (1,35) | 0,920 (1,38) |
+    | (2) bootstrap-t | 0,951 (1,35) | 0,932 (1,33) | 0,917 (1,85) | sì | 0,982 (1,76) | 0,976 (1,68) | 0,956 (2,46) |
+    | (3) Welch | 0,950 (1,30) | 0,958 (1,18) | 0,865 (1,13) | no | 0,984 (1,67) | 0,987 (1,52) | 0,915 (1,46) |
+- **Limite dichiarato:**
+  - nel caso asimmetrico la copertura resta sotto il nominale: 0,917 al 95% e 0,956 a 1 − 0,05/3;
+  - gli intervalli sono più larghi (lognormale 1,85 contro 1,13 di Welch al 95%);
+  - l'inferenza resta condizionata ai 3 gruppi di SMD.
+- **RQ3:** non eredita il metodo. Il metodo dell'IC della correlazione di Spearman si decide al passo 9, con una
+  propria simulazione; fino ad allora `plan.py` rifiuta `rq3` non nulla, con un messaggio che rimanda al passo 9.
+- **Approvazione:** utente, 2026-11-17, su raccomandazione di Claude Project, con il criterio fissato prima.
+- **Collegamenti:** D-36, D-44, D-51, D-73.
 
 ---
 
@@ -1814,6 +1898,10 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
   non finiti del fit → `nan_reason` → eventi sullo scenario `primary`; azioni `error`, `exclude_fit`,
   `exclude_machine_pair`, `keep`; nessun default; `exclude_fit` solo con sensibilità `exclude_machine_pair`). Restano
   da decidere i valori, cioè quale azione per ogni caso e la soglia sul numero di eventi.
+- **Nota (2026-11-17, D-76, la voce resta APERTA):** le azioni che tolgono macchine intere (`exclude_machine_pair`, e
+  `exclude_fit` per i modelli deterministici) riducono la possibilità di calcolare RQ2. Con il minimo a 5 macchine per
+  gruppo (D-76), il gruppo da 6 delle macchine di valutazione ne può perdere una sola. Da considerare quando si
+  fissano i valori di questa voce.
 
 ### D-46 · Sensibilità delle proporzioni dello split — APERTA
 - **Opzioni:** nessuna; oppure una sola variante (es. 70/15/15) sulle macchine di sviluppo in F9. **Serve entro:** F9.
