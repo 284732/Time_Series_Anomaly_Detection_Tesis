@@ -1599,6 +1599,54 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
     riga.
   - **Conteggi:** il filtro restituisce il numero di macchine per unità e per gruppo, prima e dopo le esclusioni, da
     registrare in `stats.json`. La soglia minima per gruppo del bootstrap stratificato si fissa al passo 6.
+- **Nota di rimando (2026-11-17, passo 4, P1, P8, P12, P13, il testo sopra resta invariato; utente, su raccomandazione
+  di Claude Project):**
+  - **Deviazione standard sui seed:** `ddof = 1`. Lo stato `seed_sd_status` vale:
+    - `computed`;
+    - `not_applicable` per i modelli deterministici;
+    - `single_seed` per un modello non deterministico rimasto con un solo seed dopo le esclusioni.
+
+    La tabella per macchina ha la colonna `deterministic`.
+  - **`detection_delay`:** media sui seed in cui è definito, `n_seeds_defined`. Senza eventi rilevati il valore è vuoto
+    con stato `no_detected_event`: non è un'esclusione né un errore.
+  - **`model_role` nelle descrittive:** si usano i ruoli di RQ2, oppure `compared` per tutti se il piano non ha RQ2.
+    `reference` vale solo per l'identità completa del riferimento di RQ2 (model, `config_id` e terna di scoring); le
+    altre varianti di scoring dello stesso modello sono `compared` (correzione dell'utente). Random e baseline
+    descrittive tengono il loro ruolo. RQ4 non ha `delta_reference`, quindi i suoi modelli sono tutti `compared`.
+  - **`inference`:** `confirmatory` solo per le righe di RQ2 con ruolo `compared` o `reference` e `kind: official`;
+    tutto il resto è `exploratory`.
+  - **Uscite:** una tabella lunga per macchina (unità, `rq`, `block`, `model_role`, `inference`, identità, cella,
+    `value_mean`, `n_seeds_used`, `n_seeds_defined`, `seed_sd`, `seed_sd_status`, `delay_status`, `prevalence`,
+    `n_events`), più le descrittive. Sono gli ingressi dei passi 5–9.
+  - **Descrittive complete** (perimetro di F7, `piano_tesi_v1` §3.6), per voce e per modello (variante di scoring
+    compresa):
+    - media, deviazione standard (`ddof = 1`), mediana, `n_machines`;
+    - ranghi per macchina, solo tra i modelli `compared` e `reference` (random e baseline descrittive esclusi, P7);
+      rango medio per i pari merito, pareggi esatti; riassunto con il rango medio sulle macchine e
+      `n_machines_ranked`;
+    - verso dei ranghi: più basso è meglio per `fpr`, `false_alarms_per_1440`, `fa_segments`, `detection_delay`; più
+      alto è meglio per le altre metriche.
+  - **`detection_delay` nelle descrittive:** nessuna esclusione implicita delle macchine senza eventi rilevati.
+    Accanto alla media sulle macchine in cui il ritardo è definito si riportano `n_machines_defined` su `n_machines`
+    e la media di `event_recall` della voce con le stesse condizioni.
+  - **Parità di livello 2 (P12):**
+    - MeanDelta, vittorie/pareggi/sconfitte, N e Wilcoxon si confrontano solo sui modelli non `native`: il ripiego
+      storico su `raw_mean` è una differenza voluta;
+    - la tolleranza 1e-4 sui pareggi esiste solo nelle funzioni di parità `legacy_*`, etichettate come tali; non entra
+      in nessuna uscita metodologica di F7 (verificato da un test sul sorgente).
+  - **Fatto verificato (P12):** `aggregate_results.main` rilegge i CSV per macchina con il parser predefinito di
+    `pd.read_csv`, che può perdere l'ultima cifra. MeanDelta coincide a tolleranza zero con le funzioni di
+    `aggregate_results` applicate alle righe lette con `round_trip`. L'uscita di `main` coincide a tolleranza zero con
+    le stesse funzioni applicate alle righe lette con il parser predefinito. Lo scarto residuo è quindi attribuito al
+    solo parser (D-17), non tollerato.
+  - **Fatto verificato e avvertenza di interpretazione: `input_norm`** (`src/models/traditional/input_norm.py:38-52`):
+    - il residuo per sensore è `x²` sui dati scalati, cioè l'errore di un modello che ricostruisce sempre zero:
+      l'ultimo istante della finestra con `window_time_agg = last`, la media sulla finestra con `mean`.
+      L'aggregazione sui sensori e il normalizer sono quelli dello scoring della pipeline;
+    - ha la griglia completa di `window_time_agg`, quindi in RQ1 sta nei blocchi normali (non è `native`);
+    - con lo scaler standard misura la distanza dalla media del train; con lo scaler min-max misura la vicinanza al
+      massimo del train. Nel fattore scaler di RQ1b la sua sensibilità è quindi attesa: dipende dalla definizione
+      dello score, non dal protocollo.
 
 ### D-53 · File tracciati da git (`.pyc`, dataset) — APPROVATA · 2026-11-10
 - **Decisione:** i `.pyc` non sono tracciati: i 35 file già tracciati sono tolti dal tracciamento con
