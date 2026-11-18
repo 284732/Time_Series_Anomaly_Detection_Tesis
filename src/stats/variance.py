@@ -28,6 +28,8 @@ import pandas as pd
 MODEL = "model"
 R_STATUSES = ("defined", "zero_denominator", "single_model")
 ETA2_STATUSES = ("defined", "zero_total")
+R_DEFINED, R_ZERO_DENOMINATOR, R_SINGLE_MODEL = R_STATUSES
+ETA2_DEFINED, ETA2_ZERO_TOTAL = ETA2_STATUSES
 
 
 class VarianceError(ValueError):
@@ -132,33 +134,33 @@ def decompose(rows: pd.DataFrame, factors: Sequence[str], *, eta2_principal: str
     terms.insert(0, "term", ["×".join(f) for f in terms["factors"]])
     den_nm = ss_total - ss_machine
     if ss_total > 0:
-        eta2_status = "defined"
+        eta2_status = ETA2_DEFINED
         terms["eta2_total"] = terms["ss"] / ss_total
         terms["eta2_without_machine"] = np.where(terms["kind"] == "machine", np.nan,
                                                  terms["ss"] / den_nm if den_nm > 0 else np.nan)
     else:
-        eta2_status = "zero_total"
+        eta2_status = ETA2_ZERO_TOTAL
         terms["eta2_total"] = np.nan
         terms["eta2_without_machine"] = np.nan
     terms["principal"] = eta2_principal
     # criteri esatti (la SS calcolata di valori identici può essere un residuo di arrotondamento non nullo)
     if (Y == Y.flat[0]).all():
-        eta2_status = "zero_total"
+        eta2_status = ETA2_ZERO_TOTAL
         terms["eta2_total"] = np.nan
         terms["eta2_without_machine"] = np.nan
     elif (Y == Y[(slice(None),) + (slice(0, 1),) * (Y.ndim - 1)]).all():
         terms["eta2_without_machine"] = np.nan                         # ogni macchina costante
 
     if MODEL not in fx:
-        r, r_status = float("nan"), "single_model"
+        r, r_status = float("nan"), R_SINGLE_MODEL
     else:
         ss_m = next(t["ss"] for t in rows_out if t["factors"] == (MODEL,))
         num = sum(t["ss"] for t in rows_out if t["kind"] == "fixed" and MODEL in t["factors"] and t["order"] >= 2)
         den = ss_m + num
         ax = fx.index(MODEL) + 1
         no_model_effect = (Y == Y.take([0], axis=ax)).all()           # valori identici tra i modelli (esatto)
-        r, r_status = (num / den, "defined") if den > 0 and not no_model_effect else (float("nan"),
-                                                                                       "zero_denominator")
+        r, r_status = (num / den, R_DEFINED) if den > 0 and not no_model_effect else (float("nan"),
+                                                                                      R_ZERO_DENOMINATOR)
     return Decomposition(terms=terms, factors=fx, levels={f: levels[f] for f in fx}, ss_total=ss_total,
                          ss_machine=ss_machine, ss_residual=ss_residual, df_total=df_total, df_machine=df_machine,
                          df_residual=df_residual, eta2_status=eta2_status, r=r, r_status=r_status)

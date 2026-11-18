@@ -629,7 +629,109 @@ D-53 approvata (2026-11-10): `.pyc` tolti dal tracciamento, `dataset/` resta tra
     senza correggere test o metodo senza una voce di registro.
   - **Da fare fuori da F7 (D-73 P10):** controllo E5 sulla deriva, prima della lettura di RQ4.
   - **Decisioni APERTE toccate, stato invariato:** D-30, D-37, D-42, D-43, D-44, D-71 (parametri dichiarati, nessun
-    default).
+    default). *(rev. 2026-11-18, chiusura: D-71 è stata approvata al passo 0-bis; elenchi aggiornati sotto.)*
+- **Stato: completata (2026-11-18).** Commit:
+  - passi 0 `a637ced` (registro e documentazione), 0-bis `48a691e` (D-45, D-69, D-71), 1 `30e815d` (`plan.py`),
+    1-bis `94e56b8` (baseline descrittive, livello degli IC), nota D-69 `71a4115`, 1-ter `2959201` (esperimento
+    primario, livelli di preproc);
+  - passi 2 `5887ce3` (`inputs.py`), 3 `2b74709` (D-44, deduplicazione, `diagnostic`), 4 `69831a0` (media sui seed,
+    parità), 5 `11aa88b` (quattro esiti), 6a `8227813`, 6 `bfdce3b` (bootstrap-t, D-76), 7 `0153222` (RQ2),
+    8 `f69fd35` (varianza, τ-b, RQ1), 9 `865120f` (RQ3, RQ4);
+  - passi 10 `6bd21ad` (`run.py`, `stats`), 11 `ca8d8c0` (`report`), 11-bis `c3d75b1` (correzioni dal report
+    d'esempio), 12 A+B `1334aef` (golden, prova completa), 12 C chiusura (commit che contiene questa riga).
+
+  Suite di chiusura: vedi il messaggio del commit di chiusura.
+  - **Corrispondenza tra test previsti e file:**
+    - copertura del bootstrap: `test_f7_bootstrap.py` (bande del bootstrap-t stratificato; «BCa» superato da D-76,
+      che ha rivisto D-36 A dopo il fallimento delle bande);
+    - regola su δ con i confini e livello 1 − α/m: `test_f7_decisions.py`, `test_f7_plan.py`;
+    - decomposizione SS (somma al totale, effetti noti, disegno sbilanciato rifiutato): `test_f7_variance.py`;
+    - τ-b, pari merito, uguaglianza con scipy, inversioni: `test_f7_ranking.py`;
+    - D-44 nell'ordine fissato, deduplicazione del random, righe `diagnostic`: `test_f7_filters.py`;
+    - ingressi secondo D-73 P6, `stats_id`: `test_f7_inputs.py`;
+    - parità con `aggregate_results.py` a tre livelli (P12), media sui seed, descrittive: `test_f7_aggregate.py`;
+    - piano statistico, chiavi, hash, nomi brevi: `test_f7_plan.py`;
+    - assemblaggio di RQ1a/RQ1b, RQ2, RQ3, RQ4: `test_f7_rq1.py`, `test_f7_rq2.py`, `test_f7_rq3.py`,
+      `test_f7_rq4.py`;
+    - descrittori e ρ_W con IC di Fisher–Bonett–Wright: `test_f7_descriptors.py`; coerenza con lo script di evidenza:
+      `test_f7_spearman_sim.py`;
+    - stadio completo, determinismo, sensibilità P8, `n_exclude_fit_cases`: `test_f7_run.py`;
+    - cartella delle statistiche nello store, pubblicazione, percorsi lunghi: `test_f7_store_stats.py`;
+    - comando `stats`, codici di uscita, `status`, `clean-tmp`, flussi della CLI: `test_f7_cli_stats.py`;
+    - nessuna operazione BLAS in `src/stats`: `test_f7_no_blas.py`;
+    - vocabolari degli stati (`DELAY_STATUSES`, `FIT_RULES`, `TAU_STATUSES`, `R_STATUSES`, `ETA2_STATUSES`,
+      `FORMATS`): valori nelle uscite dentro l'elenco e stati scritti tramite le costanti (`test_f7_status_vocab.py`);
+    - integrazione fit → analyze → stats: `test_f7_integration.py`;
+    - report: `test_f7_report_inputs.py`, `test_f7_report_tables.py`, `test_f7_report_notices.py`,
+      `test_f7_report_no_stats.py`, `test_f7_report_figures.py`, `test_f7_cli_report.py`;
+    - «report generato dalla tabella sintetica» e golden: `test_f7_cli_e2e.py`, `test_f7_golden.py`.
+  - **Scostamenti dal piano:**
+    - nessun piano in `configs/stats/` in F7: un piano reale richiede δ (D-30) e i valori di D-44, senza default;
+    - file in più rispetto a D-73 P15: `src/stats/{rq1,rq2,rq3,rq4,run}.py`, `src/pipeline/fit_plan.py` (parti di
+      `fit.py` senza torch), `src/reporting/{source,notices}.py`.
+  - **Non verificato in F7:**
+    - dati reali;
+    - lock e rinomina su POSIX (provati solo su Windows 10);
+    - durata su 22 macchine (solo misura sintetica);
+    - impaginazione LaTeX (rimandata al formato della tesi);
+    - prova completa da riga di comando solo in `legacy2` (vedi «Passati a F8»);
+    - test scritti dopo il codice: nei passi 1–4 i test sono stati scritti insieme al codice (la regola «test
+      prima» vale dal passo 5, su indicazione dell'utente). Dal passo 5 in poi, sono stati scritti o rinforzati dopo
+      il codice i test per le prove di difetto non rilevate al primo tentativo, con il motivo nelle note dei passi:
+      - passi 3–9: condizione `pa` ridondante (rimossa, poi ripristinata come controllo), test del filtro dei
+        descrittori diviso in due, test di m dalle righe reso esplicito, messaggi di RQ3;
+      - passo 11: P8 in `applicable`, `matplotlibrc` dell'utente;
+      - passo 11, aggiunte: percorso pubblicato, nomi degli esperimenti;
+      - passo 12: `--write-golden`.
+
+      L'elenco è ricostruito dai riepiloghi dei passi; dove la ricostruzione è incerta lo dicono le note;
+    - un fallimento non identificato: una volta, 1 test su 147 nell'insieme snapshot F1 + golden, durante il
+      passo 12, con il nome del test non registrato. Non è ricomparso in 3 esecuzioni manuali, in 10 esecuzioni
+      con log completo (153 su 153) e in 2 suite complete. Ipotesi, non verificata: un test con sottoprocesso
+      sensibile al carico.
+  - **Suite:** da circa 264 s a inizio F7 a circa 480 s a fine F7 (misure tra 427 e 588 s secondo il carico). Una
+    misura isolata di 929 s, durante la verifica di chiusura, non si è ripetuta: la suite successiva, con
+    `--durations=20`, ha impiegato 480 s, e i test più lenti erano quelli attesi (prova completa, ambiente del
+    report, `test_f6_metrics`, integrazione). Cause principali:
+    - simulazioni di copertura del bootstrap (`slow`);
+    - ambienti sintetici costruiti con fit e analisi veri (integrazione, report, golden);
+    - prova completa da riga di comando, con sottoprocessi.
+
+    In F8–F9 valutare se separare i test lenti dalla suite predefinita.
+  - **Passati ad altre fasi:**
+    - **F8:**
+      - un esperimento `split3` scritto su file non si carica: `base.yaml` è `legacy2` con `split.val_ratio`,
+        l'unione profonda dei livelli non toglie chiavi e lo schema di `split3` la rifiuta. È un prerequisito per
+        `test_context` e per le analisi esplorative; la prova completa da riga di comando copre solo `legacy2`, e
+        un test documenta il limite;
+      - modello di previsione (D-71, D-74).
+    - **M1** (da F6, ancora validi):
+      - rigenerare il lock da un ambiente dedicato (D-55);
+      - confronto con i run storici sui CSV per macchina o sui JSON delle metriche, non sul summary;
+      - verifica con `n_nonfinite_cal` dello scostamento dichiarato su `raw_mean`.
+    - **M1 e run ufficiali (F11):** le tabelle diagnostiche (PCA) dipendono nelle ultime cifre dal numero di thread
+      BLAS. La golden usa `single_thread`; per M1 e F11 va fissato un thread, o registrato il numero, perché
+      l'identità byte per byte valga.
+    - **F10:**
+      - `kind: official` e `configs/stats/official.yaml`;
+      - VUS-PR (D-34);
+      - proposta di Claude Project, approvata come voce da trattare: rifiutare i percorsi assoluti negli esperimenti
+        `official` (oggi lo schema accetta `paths.store_root` assoluto; con percorsi relativi `config_sha256` non
+        cambia spostando il repository, verificato).
+    - **Prima dei run ufficiali:**
+      - D-30 (δ) e i valori di D-44. Vincolo da ricordare: con il minimo di 5 macchine per gruppo (D-76), il gruppo
+        da 6 macchine può perderne una sola;
+      - controllo E5 sulla deriva prima di leggere RQ4 (D-73 P10).
+    - **Formato della tesi:** impaginazione LaTeX delle tabelle larghe e delle etichette lunghe.
+    - **Proposte di Claude Project non ancora decise dall'utente:**
+      - PCA a finestre come riferimento di RQ2 (D-37);
+      - budget di tuning pari anche per PCA puntuale, `input_norm` e `rolling_zscore` (D-41);
+      - confronti esplorativi DL contro `input_norm` e DL contro `rolling_zscore` (RQ2-bis);
+      - ruoli dei modelli in RQ1 e RQ4;
+      - proposta su D-69 (AE non addestrati con zero epoche).
+  - **Decisioni approvate durante F7:** D-25, D-36, D-45, D-69 (dettagli aperti, proposta registrata in nota), D-71,
+    D-73, D-76.
+  - **Decisioni toccate e rimaste aperte:** D-30, D-37, D-41, D-42, D-43, D-44, D-74, D-75.
 
 ### M1 — Parità su dati reali (validazione metodologica, la lanci tu)
 - **Obiettivo:** dimostrare che la nuova pipeline in modalità `legacy2` riproduce i run storici di riferimento identificati in D-50.

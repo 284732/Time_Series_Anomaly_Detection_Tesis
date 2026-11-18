@@ -208,6 +208,9 @@ Comandi (Windows, dalla root):
 - Run (solo se richiesto): `python main.py configs/config_tests/repro_last.yaml`.
 - Confronto run: `python scripts/confronta_run.py <dir_A> <dir_B>`.
 - Aggregazione: `python aggregate_results.py --results-dir <cartella_run>`.
+- Statistiche (F7, solo se richiesto): `python -m src.cli stats <piano_stats.yaml> --input <esperimento.yaml> <analysis_id> [--input ...]`.
+- Report (F7): `python -m src.cli report <store/stats/<stats_id>> --out <cartella_nuova> [--decimal comma|point]`; i report d'esempio vanno in `reports_local/` (esclusa da git).
+- Golden di statistiche e report: `python tests/test_f7_golden.py --write-golden`, solo dopo aver aumentato `STATS_CODE_VERSION` o `REPORT_CODE_VERSION`.
 
 Flusso per ogni compito:
 1. Leggere il codice coinvolto, i test esistenti e le voci pertinenti di `docs/decisioni.md` prima di proporre modifiche.

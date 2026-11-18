@@ -154,4 +154,4 @@ def test_unencodable_characters_never_crash_the_command(tmp_path):
     r = subprocess.run([sys.executable, "-c", code], cwd=Path(__file__).resolve().parents[1], env=env,
                        capture_output=True)
     assert r.returncode == 0, r.stderr
-    assert b"\u03c1" in r.stdout and b"\u03c1" in r.stderr
+    assert rb"\u03c1" in r.stdout and rb"\u03c1" in r.stderr       # sequenza di escape scritta al posto di \u00ab\u03c1\u00bb

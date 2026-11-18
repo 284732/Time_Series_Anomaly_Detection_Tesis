@@ -2173,6 +2173,25 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
   - **Difetto trovato e corretto** (`src/cli.py`): su una pipe cp1252 di Windows, un avviso con «ρ» faceva uscire
     `stats` con codice 1 dopo la pubblicazione. Ora `main` imposta `errors="backslashreplace"` su stdout e stderr,
     con la stessa codifica. Test e prova di difetto.
+- **Nota di chiusura (2026-11-18, F7 completata, il testo sopra resta invariato):** riepilogo in
+  `piano_operativo.md`, sezione F7, «Stato: completata».
+  - **File effettivi:**
+    - `src/stats/{plan,inputs,filters,aggregate,decisions,bootstrap,rq2,variance,ranking,rq1,descriptors,rq3,rq4,
+      run}.py`;
+    - `src/pipeline/fit_plan.py`, più aggiunte a `src/pipeline/store.py` e `src/cli.py`;
+    - `src/reporting/{source,tables,notices,figures,report}.py`.
+
+    Rispetto a P15 ci sono in più `rq1`–`rq4`, `run`, `fit_plan`, `source` e `notices`.
+  - **Versioni finali:** `STATS_CODE_VERSION` = 4, `STATS_FORMAT` = 1, `REPORT_CODE_VERSION` = 1. Golden in
+    `tests/golden/{stats,report}_synth.json`.
+  - **Decisioni approvate durante F7:** D-25, D-36, D-45, D-69 (dettagli aperti, proposta registrata in nota), D-71,
+    D-73, D-76.
+  - **Decisioni toccate e rimaste aperte:** D-30, D-37, D-41, D-42, D-43, D-44, D-74, D-75.
+
+    Stato di ogni voce verificato sul registro alla chiusura. Nessuna voce APERTA è risolta da un default implicito:
+    δ, i livelli dei fattori, i descrittori e le regole di esclusione sono parametri dichiarati nel piano statistico,
+    senza valori predefiniti.
+  - **Scostamento:** nessun piano in `configs/stats/` in F7; un piano reale richiede δ (D-30) e i valori di D-44.
 
 ### D-53 · File tracciati da git (`.pyc`, dataset) — APPROVATA · 2026-11-10
 - **Decisione:** i `.pyc` non sono tracciati: i 35 file già tracciati sono tolti dal tracciamento con

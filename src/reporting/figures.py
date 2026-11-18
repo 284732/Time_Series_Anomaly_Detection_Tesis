@@ -324,7 +324,8 @@ def render_bytes(sp: FigureSpec, decimal: str) -> Dict[str, bytes]:
     with _styled():
         fig = _figure(sp, decimal)
         out = {}
-        for fmt, meta in (("pdf", PDF_METADATA), ("png", PNG_METADATA)):
+        for fmt in FORMATS:
+            meta = {"pdf": PDF_METADATA, "png": PNG_METADATA}[fmt]
             buf = io.BytesIO()
             fig.savefig(buf, format=fmt, metadata=dict(meta))
             out[fmt] = buf.getvalue()

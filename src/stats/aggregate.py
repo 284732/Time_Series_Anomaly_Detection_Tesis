@@ -32,6 +32,7 @@ from src.stats import plan as sp
 MODEL_ROLES = sp.MODEL_ROLES
 SEED_SD_STATUSES = ("computed", "not_applicable", "single_seed")
 DELAY_STATUSES = ("defined", "no_detected_event")
+DELAY_DEFINED, DELAY_NO_EVENT = DELAY_STATUSES
 DELAY = sp.DELAY
 LOWER_IS_BETTER = ("fpr", "false_alarms_per_1440", "fa_segments", "detection_delay")
 RANKED_ROLES = ("compared", "reference")
@@ -70,7 +71,7 @@ def seed_means(rows: pd.DataFrame, table: str) -> pd.DataFrame:
     single = out["n_seeds_used"] == 1
     out["seed_sd_status"] = np.where(det, "not_applicable", np.where(single, "single_seed", "computed"))
     out["seed_sd"] = sd.where(~det & ~single & (delay | ~has_nan), np.nan)
-    out["delay_status"] = [(("defined" if n > 0 else "no_detected_event") if d else None)
+    out["delay_status"] = [((DELAY_DEFINED if n > 0 else DELAY_NO_EVENT) if d else None)
                            for d, n in zip(delay, out["n_seeds_defined"])]
     out.loc[delay & (out["n_seeds_defined"] == 0), "value_mean"] = np.nan
     return out.drop(columns=["n_rows"])

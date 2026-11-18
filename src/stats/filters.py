@@ -336,9 +336,8 @@ def apply_filters(inputs, *, sensitivity: bool = False) -> Filtered:
             if f["status"] == "failed":
                 act(1, "failed_fit", None, excl["failed_fit"], *ident, units_of_model(exp, pair), 0, what)
                 continue
-            found = [r for r, hit in (("nonfinite_loss", bool(f["nonfinite_loss"])),
-                                      ("nonfinite_cal", int(f["n_nonfinite_cal"]) > 0),
-                                      ("nonfinite_test", int(f["n_nonfinite_test"]) > 0)) if hit]
+            hits = (bool(f["nonfinite_loss"]), int(f["n_nonfinite_cal"]) > 0, int(f["n_nonfinite_test"]) > 0)
+            found = [r for r, hit in zip(FIT_RULES, hits) if hit]          # ordine di FIT_RULES (D-73 P8)
             if found:
                 rule = found[0]
                 uids = [] if excl[rule] == "keep" else units_of_model(exp, pair)

@@ -20,6 +20,7 @@ import pandas as pd
 from scipy.stats import kendalltau
 
 TAU_STATUSES = ("defined", "undefined_all_tied")
+TAU_DEFINED, TAU_ALL_TIED = TAU_STATUSES
 
 
 class RankingError(ValueError):
@@ -33,8 +34,8 @@ def _check(df: pd.DataFrame, c0: Any) -> None:
 
 def _tau(x: np.ndarray, y: np.ndarray):
     if np.all(x == x[0]) or np.all(y == y[0]):
-        return float("nan"), "undefined_all_tied"
-    return float(kendalltau(x, y, variant="b").statistic), "defined"
+        return float("nan"), TAU_ALL_TIED
+    return float(kendalltau(x, y, variant="b").statistic), TAU_DEFINED
 
 
 def _pivot(df: pd.DataFrame) -> pd.DataFrame:
@@ -65,7 +66,7 @@ def tau_summary(tau: pd.DataFrame) -> pd.DataFrame:
         rows.append({"config": c, "mean": d.mean() if len(d) else np.nan, "median": d.median() if len(d) else np.nan,
                      "min": d.min() if len(d) else np.nan, "q25": d.quantile(0.25) if len(d) else np.nan,
                      "q75": d.quantile(0.75) if len(d) else np.nan, "n_defined": int(len(d)),
-                     "n_undefined": int((g["status"] != "defined").sum())})
+                     "n_undefined": int((g["status"] != TAU_DEFINED).sum())})
     return pd.DataFrame(rows)
 
 
