@@ -673,3 +673,29 @@ def test_input_without_fits_is_rejected(env, work):
     edit_json(adir(work, SCALER, env["aids"][SCALER]) / "analysis.json",
               lambda doc: doc["components"].update(fits=[]))
     fails(env, f"{SCALER}.*nessun fit nell'analisi")
+
+
+# ---------------------------------------------------------------- passo 10: righe di registro dello stadio stats
+def test_analyze_stage_constant_matches_analyze():
+    from src.pipeline import analyze
+    assert si.ANALYZE_STAGE == analyze.STAGE
+
+
+def test_a_stats_registry_row_is_never_read_as_an_analysis_row(env, work):
+    path = work / STORE / "registry.csv"
+    with open(path, encoding="utf-8", newline="") as fh:
+        rows = list(csv.DictReader(fh))
+    doc = json.loads((adir(work, PRIMARY, env["aids"][PRIMARY]) / "analysis.json").read_text(encoding="utf-8"))
+    run_id = doc["run_id"]
+    stats_row = dict(rows[-1], run_id=run_id, stage="stats", config_sha256="", experiment="synth_stats")
+
+    def write(rs):
+        with open(path, "w", encoding="utf-8", newline="") as fh:
+            w = csv.DictWriter(fh, fieldnames=REGISTRY_COLUMNS)
+            w.writeheader()
+            w.writerows(rs)
+    write(rows + [stats_row])                         # stessa run_id, stage stats, config_sha256 vuoto
+    assert load(env).warnings == []
+    write([r for r in rows if not (r["stage"] == "analyze" and r["experiment"] == PRIMARY)] + [stats_row])
+    out = load(env)
+    assert len(out.warnings) == 1 and "nessuna riga del registro" in out.warnings[0]

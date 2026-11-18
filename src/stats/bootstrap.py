@@ -141,7 +141,8 @@ def sign_flip_p(delta: np.ndarray, margin: Optional[float] = None) -> float:
     for start in range(0, total, _CHUNK):
         k = np.arange(start, min(start + _CHUNK, total), dtype=np.uint32)
         signs = 1.0 - 2.0 * ((k[:, None] >> shifts) & 1).astype(np.float64)
-        hits += int((np.abs(signs @ d) >= obs - margin).sum())
+        sums = (signs * d).sum(axis=1)                                   # niente BLAS (F7 passo 10)
+        hits += int((np.abs(sums) >= obs - margin).sum())
     return hits / total
 
 

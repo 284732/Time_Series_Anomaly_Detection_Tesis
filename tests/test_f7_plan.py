@@ -1496,3 +1496,10 @@ def test_rq2_baselines_duplicates_and_random_are_rejected():
 def test_rq2_baselines_in_the_normalized_plan():
     d = sp.validate_stats_plan(_plan()).to_dict()["rq2"]
     assert d["baselines"] == [dict(sorted(_untr().items()))] and d["random_baseline"] is True
+
+
+# ---------------------------------------------------------------- passo 10: nome del piano
+def test_stats_name_differs_from_the_input_experiments():
+    p = _plan()
+    p["stats"]["name"] = p["inputs"][0]["experiment"]
+    _err(p, r"stats\.name")

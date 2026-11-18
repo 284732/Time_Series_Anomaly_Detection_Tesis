@@ -35,6 +35,14 @@ Aggiunte di F6 (D-72 V13, B11, elenco chiuso; nessun metodo esistente cambia per
     parziale nella destinazione; la cartella temporanea resta per ``clean-tmp``;
   * ``orphan_analysis_tmp``: elenco in sola lettura delle cartelle temporanee rimaste (``status`` e ``clean-tmp`` le
     useranno al passo 7).
+
+Aggiunte di F7 (D-73 P6, stesse regole di B11; nessun metodo esistente cambia):
+  * cartella temporanea delle statistiche ``runs/<kind>/<nome>/<run_id>/stats_tmp`` (``new_stats_tmp``,
+    ``write_stats_file``);
+  * ``publish_stats``: rinomina atomica in ``stats/<stats_id>/`` solo con il gettone del lock, solo se ``stats.json``
+    (marcatore di completamento, scritto per ultimo) c'è e la destinazione non esiste; tentativi su
+    ``PermissionError`` come B11, poi ``StatsPublishError``; mai una copia di ripiego;
+  * ``orphan_stats_tmp``: elenco in sola lettura delle cartelle temporanee rimaste.
 """
 
 import csv
@@ -76,6 +84,11 @@ _ANALYSIS_ID_RE = re.compile(r"^[0-9a-f]{12}$")
 # Attese crescenti tra i tentativi di rinomina (circa 3 s in tutto): i blocchi temporanei di antivirus e
 # indicizzatore su Windows durano di solito meno di un secondo; il raddoppio copre quelli più lunghi senza
 # aumentare i tentativi (D-72 B11, scelta motivata al passo 2).
+# Statistiche (F7, D-73 P6)
+STATS_DIR = "stats"                        # stats/<stats_id>/
+STATS_TMP = "stats_tmp"                    # dentro la cartella del run
+STATS_JSON = "stats.json"                  # marcatore di completamento, scritto per ultimo
+RUN_INFO_JSON = "run_info.json"            # identità del run (fuori dal confronto byte per byte)
 PUBLISH_RENAME_WAITS_S = (0.2, 0.4, 0.8, 1.6)
 PUBLISH_RENAME_ATTEMPTS = len(PUBLISH_RENAME_WAITS_S) + 1
 _sleep = time.sleep                        # sostituibile nei test
@@ -103,6 +116,14 @@ class AnalysisExists(StoreError):
 
 class AnalysisPublishError(StoreError):
     """Rinomina della cartella temporanea fallita dopo tutti i tentativi (D-72 B11, codice di uscita 4)."""
+
+
+class StatsExists(StoreError):
+    """Statistiche con lo stesso ``stats_id`` già presenti: mai sovrascritte (D-73 P6, codice di uscita 2)."""
+
+
+class StatsPublishError(StoreError):
+    """Rinomina della cartella temporanea delle statistiche fallita dopo tutti i tentativi (codice di uscita 4)."""
 
 
 class StoreLocked(StoreError):
@@ -578,3 +599,81 @@ class Store:
                 out.append({"path": p, "name": p.name, "kind": "analysis_tmp", "run_id": p.parent.name,
                             "has_marker": (p / ANALYSIS_JSON).is_file()})
         return out
+
+    # ------------------------------------------------------------ statistiche (F7, D-73 P6; regole di B11)
+    def stats_dir(self, stats_id: str) -> Path:
+        if not isinstance(stats_id, str) or not _ANALYSIS_ID_RE.match(stats_id):
+            raise ValueError(f"stats_id non valido: {stats_id!r} (attesi 12 caratteri esadecimali)")
+        return self.root / STATS_DIR / stats_id
+
+    def stats_complete(self, stats_id: str) -> bool:
+        return (self.stats_dir(stats_id) / STATS_JSON).is_file()
+
+    def new_stats_tmp(self, run: RunHandle) -> Path:
+        """Cartella temporanea delle statistiche nel run (una per run; ``FileExistsError`` se c'è già)."""
+        tmp = run.run_dir / STATS_TMP
+        tmp.mkdir(exist_ok=False)
+        return tmp
+
+    def write_stats_file(self, tmp_dir: Union[str, Path], relpath: str, data: bytes) -> Path:
+        """Scrive un file nella cartella temporanea delle statistiche (stesse regole di ``write_analysis_file``)."""
+        tmp_dir = Path(tmp_dir)
+        if tmp_dir.name != STATS_TMP:
+            raise StoreError(f"{tmp_dir} non è una cartella temporanea delle statistiche")
+        rel = Path(relpath)
+        if not relpath or rel.is_absolute() or rel.anchor or not rel.parts or ".." in rel.parts:
+            raise StoreError(f"percorso non ammesso nella cartella delle statistiche: {relpath!r}")
+        dest = tmp_dir / rel
+        if dest.exists():
+            raise StoreError(f"file già scritto: {dest}")
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        part = dest.with_name(f".{dest.name}.{uuid.uuid4().hex}.part")
+        try:
+            with open(part, "wb") as fh:
+                fh.write(data)
+                fh.flush()
+                os.fsync(fh.fileno())
+            os.replace(part, dest)
+        except BaseException:
+            if part.exists():
+                part.unlink()
+            raise
+        return dest
+
+    def publish_stats(self, run: RunHandle, tmp_dir: Union[str, Path], stats_id: str,
+                      lock: Optional[Dict[str, Any]]) -> Path:
+        """Rinomina atomica della cartella temporanea del run in ``stats/<stats_id>/`` (regole di B11)."""
+        self._check_token(lock)
+        tmp_dir = Path(tmp_dir)
+        if tmp_dir != run.run_dir / STATS_TMP or not tmp_dir.is_dir():
+            raise StoreError(f"{tmp_dir} non è la cartella temporanea delle statistiche del run {run.run_id}")
+        if not (tmp_dir / STATS_JSON).is_file():
+            raise StoreError(f"{tmp_dir}: manca {STATS_JSON} (marcatore di completamento): pubblicazione rifiutata")
+        dest = self.stats_dir(stats_id)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        last: Optional[BaseException] = None
+        for attempt in range(PUBLISH_RENAME_ATTEMPTS):
+            if dest.exists():
+                state = "complete" if (dest / STATS_JSON).is_file() else "incomplete"
+                raise StatsExists(f"statistiche {stats_id} già presenti ({state}) in {dest}: mai sovrascritte")
+            try:
+                os.rename(tmp_dir, dest)
+                _log.info("statistiche %s pubblicate in %s", stats_id, dest)
+                return dest
+            except PermissionError as exc:
+                last = exc
+                if attempt < len(PUBLISH_RENAME_WAITS_S):
+                    _log.warning("rinomina di %s rifiutata (%s): nuovo tentativo tra %.1f s", tmp_dir, exc,
+                                 PUBLISH_RENAME_WAITS_S[attempt])
+                    _sleep(PUBLISH_RENAME_WAITS_S[attempt])
+        raise StatsPublishError(f"rinomina di {tmp_dir} in {dest} fallita dopo {PUBLISH_RENAME_ATTEMPTS} tentativi "
+                                f"({last}): nessuna statistica pubblicata, cartella temporanea lasciata per clean-tmp")
+
+    def orphan_stats_tmp(self) -> List[Dict[str, Any]]:
+        """Cartelle temporanee delle statistiche rimaste nei run (sola lettura, non crea cartelle)."""
+        base = self.root / "runs"
+        if not base.is_dir():
+            return []
+        return [{"path": p, "name": p.name, "kind": "stats_tmp", "run_id": p.parent.name,
+                 "has_marker": (p / STATS_JSON).is_file()}
+                for p in sorted(base.glob(f"*/*/*/{STATS_TMP}")) if p.is_dir()]

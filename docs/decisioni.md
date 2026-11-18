@@ -1960,6 +1960,58 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
     - **Limite:** la quota nominale 1 − L/100 si riferisce a tutti i punti di cal (senza label, possono contenere
       anomalie); l'FPR del test si riferisce ai soli punti normali. L'indicatore è quindi uno scostamento
       approssimato, da leggere insieme al limite E5 (`piano_tesi_v1.md` §5).
+- **Nota di rimando (2026-11-18, passo 10, P6, P8, P13, il testo sopra resta invariato; utente, su raccomandazione di
+  Claude Project):**
+  - **Flusso di `stats` (`src/stats/run.py`):**
+    1. validazione del piano;
+    2. rifiuto di `kind: official` fino a F10;
+    3. `load_inputs`;
+    4. `stats_id` provvisorio, con rifiuto se già pubblicato (prima del lock, senza scritture);
+    5. lock, ingressi riletti e `stats_id` definitivo sotto lock;
+    6. `begin_run` con stage `stats` e `config_sha256` vuoto (gli esperimenti sono più di uno; gli hash delle config
+       sono in `stats.json`);
+    7. filtri, tabella per macchina, descrittive e RQ secondo il piano (`null` = saltata);
+    8. tabelle, `run_info.json` e per ultimo `stats.json` (marcatore);
+    9. rinomina atomica in `store/stats/<stats_id>/` con i tentativi di B11;
+    10. `finish_run`.
+
+    Su eccezione: registro `failed`, oppure `interrupted` per un'interruzione; nessuna pubblicazione; cartella
+    temporanea lasciata per `clean-tmp`.
+  - **Codici di uscita di `stats`:**
+    - 0: statistiche pubblicate, anche con RQ «non calcolabili» (la CLI stampa un messaggio per ciascuna, con il
+      motivo);
+    - 2: piano, ingressi o dati non validi per il piano (tutti gli errori dei moduli di `src/stats`), statistiche già
+      presenti, `official` prima di F10;
+    - 3: store occupato; 4: pubblicazione non riuscita; 130: interruzione;
+    - 1 non si usa.
+  - **Determinismo:** stessi ingressi, piano e ambiente danno lo stesso `stats_id` e file pubblicati identici byte per
+    byte, salvo `run_info.json` (`run_id`, data, git, cartella dello store), che resta escluso dal confronto e da
+    `stats_id`.
+    - Fine riga `\n` esplicito in tutti i CSV e JSON; gzip con `mtime = 0`; JSON canonico; float scritti nella forma
+      più corta che si rilegge esatta.
+    - Nessun timestamp né percorso assoluto nei file confrontati.
+  - **Thread:** lo stadio di statistica non importa torch, quindi il numero di thread di torch non si registra; le
+    analisi in ingresso non lo registrano (`analysis_environment`).
+    - Per non importare torch, `FitTask`, `set_seed_value`, `plan_tasks` e `validated_config` sono stati spostati in
+      `src/pipeline/fit_plan.py` (senza torch); `fit.py` li reimporta con gli stessi nomi; nessun cambiamento
+      numerico (snapshot F1 e golden invariati).
+  - **Sensibilità P8:** nello stesso run, in `sensitivity/`. Tutte le sue uscite hanno `analysis_variant =
+    sensitivity` e sono sempre `exploratory`, anche con `kind: official`: mai due esiti confermativi per lo stesso
+    confronto. Le uscite principali hanno `analysis_variant = main`.
+  - **Registro:** le righe `stats` hanno `config_sha256` vuoto. Il riscontro di `inputs.py` e `status` filtrano per
+    stage e non leggono mai una riga `stats` come una riga di analisi.
+  - **`plan.py`:** `stats.name` è diverso dai nomi degli esperimenti di `inputs`, perché i run di statistica stanno
+    in `runs/<kind>/<stats.name>/`.
+  - **Test d'integrazione** fit → analyze → stats con 15 macchine di valutazione (5 per gruppo) e due esperimenti:
+    circa 23 s (fit 3, analyze 15, stats 5). Sta nella suite predefinita, marcato `slow`.
+  - **Niente BLAS:** nei moduli di `src/stats` non ci sono `@`, `dot`, `matmul`, `einsum`, `inner`, `tensordot`,
+    `vdot` o `np.linalg`. Il loro risultato può cambiare nell'ultimo bit con il numero di thread o con la libreria
+    BLAS della macchina; somme e medie di numpy non dipendono dai thread.
+    - L'unica occorrenza trovata era il prodotto `signs @ d` del sign-flip esatto (`bootstrap.py`), ora
+      `(signs * d).sum(axis=1)`.
+    - Un test sul sorgente (`tests/test_f7_no_blas.py`, via `ast`) lo verifica; `lstsq` resta solo nei test.
+  - **Test del run** (`tests/test_f7_run.py`): i test che leggono soltanto il risultato condividono un run di modulo;
+    a fine modulo l'hash della sua cartella deve essere invariato. I test che scrivono lavorano su copie proprie.
 
 ### D-53 · File tracciati da git (`.pyc`, dataset) — APPROVATA · 2026-11-10
 - **Decisione:** i `.pyc` non sono tracciati: i 35 file già tracciati sono tolti dal tracciamento con

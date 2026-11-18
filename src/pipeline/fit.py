@@ -96,9 +96,6 @@ def prepare_machine(train: np.ndarray, test: np.ndarray, labels: np.ndarray, spl
                            score)
 
 
-def set_seed_value(deterministic: bool, seed: int, seeds: Sequence[int]) -> int:
-    """Valore passato a ``set_seed``: per i modelli deterministici ``seeds[0]``, come ``main.py:321``."""
-    return int(seeds[0]) if deterministic else int(seed)
 
 
 def fit_inputs(model_cls: type, prepared: PreparedMachine):
@@ -136,6 +133,7 @@ from src.utils import config as cfgmod  # noqa: E402
 from src.utils import provenance  # noqa: E402
 from src.utils.log import close_run_logging, get_logger, setup_run_logging  # noqa: E402
 from src.utils.schema import ExperimentConfig, model_kwargs, validate_experiment  # noqa: E402
+from src.pipeline.fit_plan import FitTask, plan_tasks, set_seed_value, validated_config  # noqa: E402,F401  (F7: senza torch)
 
 META_FORMAT = 1
 CHECKPOINT_DIR = "checkpoint"
@@ -168,14 +166,6 @@ class DeviceMismatch(RuntimeError):
     """Device effettivo diverso da quello richiesto nel fit_key: il compito non entra in cache (nota su D-70)."""
 
 
-@dataclass(frozen=True)
-class FitTask:
-    machine: str
-    model: str
-    seed: Optional[int]              # seed della chiave; None per i modelli deterministici
-    set_seed_value: int              # valore passato a set_seed (seeds[0] per i deterministici, main.py:321)
-    fit_key: str
-    payload: Dict[str, Any]
 
 
 @dataclass(frozen=True)
@@ -196,23 +186,6 @@ def plan_fits(cfg: ExperimentConfig, manifest) -> List[FitTask]:
     return plan_tasks(cfg, machines, {m: manifest.data_version(m) for m in machines})
 
 
-def plan_tasks(cfg: ExperimentConfig, machines: Sequence[str], data_versions: Mapping[str, str]) -> List[FitTask]:
-    """Compiti per macchine e ``data_version`` dati (funzione pura, nessuna lettura dei dati): la usano ``plan_fits``
-    e lo stadio di statistica, che ricostruisce i ``fit_key`` di un'analisi dalla config (D-73 P6)."""
-    tasks: List[FitTask] = []
-    for machine in machines:
-        dv = data_versions[machine]
-        for name in cfg.run_models:
-            det = cfg.models[name].deterministic
-            for seed in (cfg.seeds[:1] if det else cfg.seeds):
-                tasks.append(FitTask(machine, name, None if det else int(seed),
-                                     set_seed_value(det, seed, cfg.seeds),
-                                     cfgmod.fit_key(cfg, machine, name, seed, dv),
-                                     cfgmod.fit_payload(cfg, machine, name, seed, dv)))
-    keys = [t.fit_key for t in tasks]
-    if len(set(keys)) != len(keys):
-        raise RuntimeError("fit_key duplicati nella pianificazione")
-    return tasks
 
 
 def meta_hashable(meta: Dict[str, Any]) -> Dict[str, Any]:
@@ -379,18 +352,6 @@ def _summary_csv(rows: List[Dict[str, Any]]) -> str:
     return buf.getvalue()
 
 
-def validated_config(spec: Union[Mapping[str, Any], str, Path]) -> ExperimentConfig:
-    """Specifica grezza (mappa già unita) → ``validate_experiment``; percorso YAML → ``config.load_experiment``
-    (base + modelli + esperimento, poi validazione). Una ``ExperimentConfig`` già costruita è rifiutata: la
-    validazione non si salta (nota su D-70, passo 4). Errore di validazione: ``ConfigError``."""
-    if isinstance(spec, ExperimentConfig):
-        raise TypeError("run_fit riceve la specifica grezza (mappa) o il percorso YAML, non una ExperimentConfig: "
-                        "la validazione avviene dentro run_fit (nota su D-70)")
-    if isinstance(spec, (str, Path)):
-        return cfgmod.load_experiment(spec)
-    if isinstance(spec, Mapping):
-        return validate_experiment(copy.deepcopy(dict(spec)))
-    raise TypeError(f"specifica non valida: {type(spec).__name__} (attesa una mappa o un percorso YAML)")
 
 
 def run_fit(spec: Union[Mapping[str, Any], str, Path], datasets_dir: Union[str, Path], repo_root: Union[str, Path],

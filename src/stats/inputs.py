@@ -43,10 +43,9 @@ from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Set, 
 import pandas as pd
 
 from src.data.manifest import Manifest, load_dataset_spec, load_role_split, spec_path_for
-from src.pipeline import fit as fitmod
+from src.pipeline import fit_plan as fitmod                 # senza torch (F7 passo 10)
 from src.pipeline import table_schema as ts
-from src.pipeline.analyze import ANALYSIS_JSON, STAGE as ANALYZE_STAGE
-from src.pipeline.store import Store
+from src.pipeline.store import ANALYSIS_JSON, Store
 from src.stats import plan as sp
 from src.utils import analysis_plan as ap
 from src.utils import config as cfgmod
@@ -54,6 +53,7 @@ from src.utils.config import canonical_hash
 from src.utils.schema import ConfigError
 
 TABLES = ("free", "thr", "fits")
+ANALYZE_STAGE = "analyze"                  # = analyze.STAGE (verificato da un test; analyze importa torch)
 RANDOM = sp.RANDOM
 STATS_ID_LEN = 12
 

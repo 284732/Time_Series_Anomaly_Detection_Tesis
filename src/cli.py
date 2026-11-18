@@ -1,7 +1,8 @@
 """
 CLI degli stadi di fit (F5, D-70) e di analisi (F6, D-72):
 ``python -m src.cli {fit,status,clean-tmp} <esperimento.yaml> [--datasets-dir]`` e
-``python -m src.cli analyze <esperimento.yaml> <piano.yaml> [--datasets-dir]``.
+``python -m src.cli analyze <esperimento.yaml> <piano.yaml> [--datasets-dir]`` e (F7, D-73)
+``python -m src.cli stats <piano_stats.yaml> --input <esperimento.yaml> <analysis_id> [--input ...] [--datasets-dir]``.
 
 Codici di uscita:
   0 = tutto complete o skipped (status: nessun errore; clean-tmp: pulizia eseguita o niente da fare; analyze: analisi
@@ -11,8 +12,11 @@ Codici di uscita:
   2 = config, piano o dati non validi (validazione, controlli preliminari compresi C15 e fit mancanti, label cambiate
       durante l'esecuzione, analisi già presente, ``kind: official`` prima di F10);
   3 = store occupato (lock attivo, rimasto senza ``--break-stale-lock``, di un altro host, illeggibile);
-  4 = analyze: pubblicazione non riuscita, nessun risultato (rinomina fallita dopo tutti i tentativi, D-72 B11);
+  4 = analyze e stats: pubblicazione non riuscita, nessun risultato (rinomina fallita dopo tutti i tentativi, B11);
   130 = interruzione (KeyboardInterrupt; registro ``interrupted``).
+``stats`` (F7): 0 = statistiche pubblicate, anche con RQ «non calcolabili» (un messaggio per ciascuna, con il motivo);
+2 = piano, ingressi o dati non validi per il piano (``STATS_INVALID``), statistiche già presenti, ``kind: official``
+prima di F10; 3, 4 e 130 come sopra; 1 non si usa.
 
 ``status`` è in sola lettura: non crea cartelle né file, nemmeno lo store se manca. ``--verify`` legge i residui con
 ``residual_cache.get_residuals`` senza lock (verifica di ``npz_sha256`` e degli sha256 contro ``meta.json``; senza
@@ -37,8 +41,12 @@ from src.data.manifest import ManifestError, build_manifest, load_dataset_spec, 
 from src.pipeline import analyze as anmod
 from src.pipeline import fit as fitmod
 from src.pipeline import residual_cache as rc
-from src.pipeline.store import (ANALYSES_DIR, ANALYSIS_JSON, AnalysisExists, AnalysisPublishError, Store, StoreLocked,
-                                is_stale, new_run_id)
+from src.pipeline.store import (ANALYSES_DIR, ANALYSIS_JSON, RUN_INFO_JSON, STATS_DIR, STATS_JSON, AnalysisExists,
+                                AnalysisPublishError, StatsExists, StatsPublishError, Store, StoreLocked, is_stale,
+                                new_run_id)
+from src.stats import aggregate as _agg, bootstrap as _bs, decisions as _dc, descriptors as _ds
+from src.stats import filters as _flt, inputs as _si, ranking as _rk, rq1 as _rq1, variance as _vr
+from src.stats import run as runmod
 from src.utils import config as cfgmod
 from src.utils.schema import ConfigError
 
@@ -48,6 +56,9 @@ REPO_ROOT = cfgmod._ROOT
 DEFAULT_DATASETS_DIR = REPO_ROOT / "configs" / "datasets"
 INVALID_ERRORS = (ConfigError, ManifestError, fitmod.PreflightError, fitmod.FitRefused, yaml.YAMLError)
 ANALYZE_INVALID = INVALID_ERRORS + (anmod.AnalysisRefused, anmod.AnalysisPreflightError, AnalysisExists)
+STATS_INVALID = (ConfigError, yaml.YAMLError, runmod.StatsRefused, StatsExists, _si.StatsInputError, _flt.FilterError,
+                 _agg.AggregateError, _bs.BootstrapError, _dc.DecisionError, _vr.VarianceError, _rk.RankingError,
+                 _rq1.Rq1Error, _ds.DescriptorError)
 BREAK_NOTE = "break-stale-lock: "
 CLEAN_SUMMARY = "clean_summary.csv"
 CLEAN_SUMMARY_COLUMNS = ("kind", "path", "fit_key", "status", "detail")   # path relativo allo store
@@ -168,6 +179,7 @@ def cmd_status(args) -> int:
             f" fit_key={e['fit_key']} status={e['status']} dest_exists={e['dest_exists']}"
         print(f"    {e['kind']} {e['name']}{extra}")
     _analysis_status(store, cfg, exists)
+    _stats_status(store, cfg.name, exists)
     if args.verify:
         if bad:
             print(f"verify: errori di integrità in {len(bad)} fit")
@@ -210,7 +222,7 @@ def cmd_clean_tmp(args) -> int:
         print(f"store {store.root} inesistente: niente da pulire")
         return EXIT_OK
     if args.dry_run:
-        entries = store.orphan_tmp() + store.orphan_analysis_tmp()
+        entries = _orphans(store)
         print(f"clean-tmp --dry-run: {len(entries)} voci da rimuovere (nessuna cancellazione)")
         for e in entries:
             print(f"    {e['kind']} {e['name']}")
@@ -242,7 +254,7 @@ def cmd_clean_tmp(args) -> int:
                 [{"kind": "lock_broken", "path": store.lock_path.name, "detail": _lock_text(broken)}]
             entries = []
             try:
-                entries = store.orphan_tmp() + store.orphan_analysis_tmp()   # riletto sotto lock (F6: analisi)
+                entries = _orphans(store)                   # riletto sotto lock (F6: analisi, F7: statistiche)
                 for e in entries:
                     _remove(e)                          # mai promosso a fits/<key>
                     removed.append({"kind": e["kind"], "path": Path(e["path"]).relative_to(store.root).as_posix(),
@@ -309,7 +321,7 @@ def _analysis_status(store: Store, cfg, exists: bool) -> None:
                 docs.append(json.loads(p.read_text(encoding="utf-8")))
             except (OSError, ValueError):
                 docs.append({"analysis_id": p.parent.name, "run_id": "?", "illeggibile": True})
-    completed = {r["run_id"] for r in store.read_registry() if r["status"] == "completed"} if exists else set()
+    completed = _completed_runs(store.read_registry(), anmod.STAGE) if exists else set()
     print(f"analisi pubblicate: {len(docs)}")
     for d in docs:
         print(f"    {d.get('analysis_id')} run={d.get('run_id')} piano={str(d.get('plan_sha256', ''))[:12]} "
@@ -323,11 +335,95 @@ def _analysis_status(store: Store, cfg, exists: bool) -> None:
         print(f"    analysis_tmp run={e['run_id']} marcatore={e['has_marker']}")
 
 
+def _completed_runs(rows, stage: str) -> set:
+    """Run completati di uno stage: una riga ``stats`` non si legge mai come una riga di analisi (e viceversa)."""
+    return {r["run_id"] for r in rows if r.get("status") == "completed" and r.get("stage") == stage}
+
+
+def _orphans(store: Store):
+    """Voci rimovibili da clean-tmp: tmp/ dei fit, cartelle temporanee delle analisi e delle statistiche."""
+    return store.orphan_tmp() + store.orphan_analysis_tmp() + store.orphan_stats_tmp()
+
+
+def _stats_status(store: Store, experiment: str, exists: bool) -> None:
+    """Statistiche pubblicate che hanno l'esperimento tra gli ingressi, con lo stato di RQ2 (sola lettura)."""
+    base = store.root / STATS_DIR
+    docs = []
+    if exists and base.is_dir():
+        for p in sorted(base.glob(f"*/{STATS_JSON}")):
+            try:
+                doc = json.loads(p.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                docs.append(({"stats_id": p.parent.name, "illeggibile": True}, None))
+                continue
+            if any(i.get("experiment") == experiment for i in doc.get("inputs", [])):
+                run_id = None
+                try:
+                    run_id = json.loads((p.parent / RUN_INFO_JSON).read_text(encoding="utf-8")).get("run_id")
+                except (OSError, ValueError):
+                    pass
+                docs.append((doc, run_id))
+    completed = _completed_runs(store.read_registry(), runmod.STAGE) if exists else set()
+    print(f"statistiche pubblicate: {len(docs)}")
+    for doc, run_id in docs:
+        rq2_state = (doc.get("rq") or {}).get("rq2", {}).get("status", "-")
+        name = ((doc.get("plan") or {}).get("stats") or {}).get("name")
+        print(f"    {doc.get('stats_id')} piano={name} rq2={rq2_state} run={run_id}"
+              + (" (stats.json illeggibile)" if doc.get("illeggibile") else ""))
+        if run_id not in completed:
+            print(f"    incongruenza: statistiche {doc.get('stats_id')} pubblicate ma run {run_id} non registrato "
+                  "come completato (V13: le statistiche sono complete)")
+    orphans = store.orphan_stats_tmp() if exists else []
+    print(f"orphan_stats_tmp: {len(orphans)}")
+    for e in orphans:
+        print(f"    stats_tmp run={e['run_id']} marcatore={e['has_marker']}")
+
+
+# ------------------------------------------------------------------ stats (F7, D-73)
+def cmd_stats(args) -> int:
+    paths = [("piano statistico", args.plan)] + [("esperimento", e) for e, _ in args.input]
+    for what, path in paths:
+        if not Path(path).is_file():
+            _err(f"piano o config non validi: file di {what} inesistente: {path}")
+            return EXIT_INVALID
+    try:
+        report = runmod.run_stats(args.plan, [(e, aid) for e, aid in args.input], datasets_dir=args.datasets_dir,
+                                  repo_root=REPO_ROOT)
+    except KeyboardInterrupt:
+        _err("interrotto: registro interrupted, lock rilasciato, cartella temporanea lasciata per clean-tmp")
+        return EXIT_INTERRUPTED
+    except StoreLocked as exc:
+        _err(f"store occupato, lock: {_lock_text(exc.lock)}")
+        return EXIT_LOCKED
+    except StatsPublishError as exc:
+        _err(f"pubblicazione non riuscita, nessun risultato: {exc}")
+        return EXIT_PUBLISH
+    except STATS_INVALID as exc:
+        _err(f"piano, ingressi o dati non validi: {exc}")
+        return EXIT_INVALID
+    print(f"statistiche {report.stats_id} pubblicate in {report.stats_dir} (run {report.run_id})")
+    for rq in runmod.RQS:
+        st = report.rq_status.get(rq, {})
+        if st.get("status") == "not_computable":
+            print(f"{rq} non calcolabile: {st.get('reason')}")
+        elif st:
+            print(f"{rq}: {st.get('status')}")
+    for w in report.warnings:
+        print(f"avviso: {w}")
+    return EXIT_OK
+
+
 # ------------------------------------------------------------------ main
 def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(prog="python -m src.cli", description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="command", required=True)
+    p = sub.add_parser("stats", help="statistiche dalle analisi pubblicate (F7)")
+    p.add_argument("plan", help="file YAML del piano statistico (configs/stats/<nome>.yaml)")
+    p.add_argument("--input", nargs=2, action="append", required=True, metavar=("ESPERIMENTO", "ANALYSIS_ID"),
+                   help="config dell'esperimento e analysis_id di un'analisi pubblicata (ripetibile)")
+    p.add_argument("--datasets-dir", default=str(DEFAULT_DATASETS_DIR), help="cartella degli spec dei dataset")
+    p.set_defaults(func=cmd_stats)
     for name, fn, help_ in (("fit", cmd_fit, "esegue o riusa i fit"),
                             ("status", cmd_status, "stato dei compiti e delle analisi (sola lettura)"),
                             ("clean-tmp", cmd_clean_tmp, "pulisce tmp/ e le cartelle temporanee delle analisi sotto lock"),

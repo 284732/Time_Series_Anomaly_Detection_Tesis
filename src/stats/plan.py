@@ -398,6 +398,10 @@ def _check_experiments(data: Mapping[str, Any]) -> None:
     """Esperimento primario e livelli di preproc di RQ1b: esperimenti dichiarati in ``inputs``; ogni blocco di RQ1b
     contiene l'esperimento primario tra i suoi livelli di preproc."""
     declared = [e["experiment"] for e in data["inputs"]]
+    if data["stats"]["name"] in declared:
+        raise ConfigError(f"stats.name {data['stats']['name']!r} coincide con un esperimento di inputs: i run di "
+                          "statistica stanno in runs/<kind>/<stats.name>/ e non si mescolano con quelli di un "
+                          "esperimento (D-73, passo 10)")
     primary = data["primary_experiment"]
     if primary not in declared:
         raise ConfigError(f"primary_experiment: {primary!r} non è tra gli esperimenti di inputs {declared}")
