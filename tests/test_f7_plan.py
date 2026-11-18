@@ -1503,3 +1503,34 @@ def test_stats_name_differs_from_the_input_experiments():
     p = _plan()
     p["stats"]["name"] = p["inputs"][0]["experiment"]
     _err(p, r"stats\.name")
+
+
+# ---------------------------------------------------------------- passo 11: nomi brevi per i percorsi dello store
+@pytest.mark.parametrize("name", ["A", "with-dash", "with.dot", "spazio x", "è", "a" * 33])
+def test_stats_name_is_short_lowercase_ascii(name):
+    p = _plan()
+    p["stats"]["name"] = name
+    _err(p, "stats.name")
+
+
+@pytest.mark.parametrize("sec", ["rq1a", "rq1b"])
+@pytest.mark.parametrize("name", ["Upper", "x-y", "a" * 33])
+def test_block_names_are_short_lowercase_ascii(sec, name):
+    p = _plan()
+    p[sec]["blocks"][0]["name"] = name
+    _err(p, "name")
+
+
+def test_short_names_at_the_limit_are_accepted():
+    p = _plan()
+    p["stats"]["name"] = "a_1" + "b" * 29
+    assert len(p["stats"]["name"]) == sp.SHORT_NAME_MAX == 32
+    p["rq1b"]["blocks"][0]["name"] = "z" * 32
+    sp.validate_stats_plan(p)
+
+
+@pytest.mark.parametrize("name", ["Upper", "x-y", "x.y", "a" * 33])
+def test_input_experiment_names_are_short_lowercase_ascii(name):
+    p = _plan()
+    p["inputs"][0]["experiment"] = name
+    _err(p, r"inputs\[\d\]\.experiment: ammessi solo caratteri \[a-z0-9_\]")   # la regola propria, non un'altra

@@ -36,3 +36,17 @@ def _single_thread_session():
 def synth_smd_dir(tmp_path_factory):
     """Dataset sintetico con struttura SMD (2 macchine), scritto in una cartella temporanea (D-16)."""
     return write_synth_smd(tmp_path_factory.mktemp("synth_smd"))
+
+
+@pytest.fixture(scope="session")
+def report_stats(tmp_path_factory):
+    """Cartella di statistiche sintetica completa per i test del report (F7 passo 11), in sola lettura.
+
+    A fine sessione l'hash della cartella deve essere invariato: nessun test la modifica.
+    """
+    from tests.fixtures.stats_report import build_report_stats, tree_sha256
+    root = tmp_path_factory.mktemp("rs")
+    stats_dir = build_report_stats(root)
+    before = tree_sha256(root / "store")
+    yield {"root": root, "stats_dir": stats_dir, "store": root / "store"}
+    assert tree_sha256(root / "store") == before, "un test ha modificato lo store condiviso del report"

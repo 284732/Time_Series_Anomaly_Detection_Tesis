@@ -59,7 +59,7 @@ import warnings
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterator, List, Optional, Union
+from typing import Any, Callable, Dict, Iterator, List, Optional, Sequence, Union
 
 from src.utils import provenance
 from src.utils.log import get_logger
@@ -89,6 +89,7 @@ STATS_DIR = "stats"                        # stats/<stats_id>/
 STATS_TMP = "stats_tmp"                    # dentro la cartella del run
 STATS_JSON = "stats.json"                  # marcatore di completamento, scritto per ultimo
 RUN_INFO_JSON = "run_info.json"            # identità del run (fuori dal confronto byte per byte)
+MAX_STATS_PATH_CHARS = 250                 # sotto il limite di 260 caratteri di Windows (MAX_PATH), passo 11
 PUBLISH_RENAME_WAITS_S = (0.2, 0.4, 0.8, 1.6)
 PUBLISH_RENAME_ATTEMPTS = len(PUBLISH_RENAME_WAITS_S) + 1
 _sleep = time.sleep                        # sostituibile nei test
@@ -124,6 +125,24 @@ class StatsExists(StoreError):
 
 class StatsPublishError(StoreError):
     """Rinomina della cartella temporanea delle statistiche fallita dopo tutti i tentativi (codice di uscita 4)."""
+
+
+class StatsPathTooLong(StoreError):
+    """Percorso assoluto oltre ``MAX_STATS_PATH_CHARS``: nessuna scrittura (codice di uscita 2)."""
+
+
+def _part_path(dest: Path) -> Path:
+    """Percorso del file temporaneo ``.part`` (stessa lunghezza di quello scritto davvero)."""
+    return dest.with_name(f".{dest.name}." + "0" * 32 + ".part")
+
+
+def _check_path_length(p: Path) -> None:
+    full = os.path.abspath(p)
+    if len(full) > MAX_STATS_PATH_CHARS:
+        raise StatsPathTooLong(
+            f"percorso troppo lungo ({len(full)} caratteri, soglia {MAX_STATS_PATH_CHARS} sotto il limite di 260 di "
+            f"Windows): {full}. Abbrevia i nomi (stats.name, nomi dei blocchi, nomi delle tabelle) o sposta lo store "
+            f"in una cartella con un percorso più corto; nessun file scritto")
 
 
 class StoreLocked(StoreError):
@@ -609,11 +628,23 @@ class Store:
     def stats_complete(self, stats_id: str) -> bool:
         return (self.stats_dir(stats_id) / STATS_JSON).is_file()
 
+    def stats_tmp_path(self, run: RunHandle) -> Path:
+        return run.run_dir / STATS_TMP
+
     def new_stats_tmp(self, run: RunHandle) -> Path:
         """Cartella temporanea delle statistiche nel run (una per run; ``FileExistsError`` se c'è già)."""
-        tmp = run.run_dir / STATS_TMP
+        tmp = self.stats_tmp_path(run)
         tmp.mkdir(exist_ok=False)
         return tmp
+
+    def check_stats_paths(self, tmp_dir: Union[str, Path], relpaths: Sequence[str], stats_id: str) -> None:
+        """Lunghezza dei percorsi assoluti delle statistiche: file temporaneo ``.part``, file nella cartella
+        temporanea e file pubblicato; oltre ``MAX_STATS_PATH_CHARS`` → ``StatsPathTooLong`` (nessuna scrittura)."""
+        tmp_dir = Path(tmp_dir)
+        dest_dir = self.stats_dir(stats_id)
+        for rel in relpaths:
+            for p in (tmp_dir / rel, _part_path(tmp_dir / rel), dest_dir / rel):
+                _check_path_length(p)
 
     def write_stats_file(self, tmp_dir: Union[str, Path], relpath: str, data: bytes) -> Path:
         """Scrive un file nella cartella temporanea delle statistiche (stesse regole di ``write_analysis_file``)."""
@@ -626,6 +657,7 @@ class Store:
         dest = tmp_dir / rel
         if dest.exists():
             raise StoreError(f"file già scritto: {dest}")
+        _check_path_length(_part_path(dest))                            # prima di ogni scrittura (passo 11)
         dest.parent.mkdir(parents=True, exist_ok=True)
         part = dest.with_name(f".{dest.name}.{uuid.uuid4().hex}.part")
         try:

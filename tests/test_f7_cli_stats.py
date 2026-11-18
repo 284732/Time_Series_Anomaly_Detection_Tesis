@@ -130,3 +130,13 @@ def test_clean_tmp_includes_stats_tmp(tmp_path):
     tmp.mkdir(parents=True)
     kinds = {e["kind"] for e in cli._orphans(store)}
     assert "stats_tmp" in kinds
+
+
+def test_path_too_long_maps_to_code_2(files, monkeypatch, capsys):
+    from src.pipeline.store import StatsPathTooLong
+
+    def boom(*a, **k):
+        raise StatsPathTooLong("percorso troppo lungo (300 caratteri): C:/x. Abbrevia i nomi")
+    monkeypatch.setattr(cli.runmod, "run_stats", boom)
+    assert call(files) == cli.EXIT_INVALID
+    assert "Abbrevia i nomi" in capsys.readouterr().err

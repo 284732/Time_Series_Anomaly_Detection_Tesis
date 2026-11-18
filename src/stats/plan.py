@@ -54,7 +54,17 @@ from src.utils.schema import ConfigError
 
 # Da incrementare a mano quando cambia la numerica della statistica o il contratto delle sue uscite (entra in
 # ``stats_id``, D-73 P6).
-STATS_CODE_VERSION = 1
+STATS_CODE_VERSION = 2          # 2: blocco rq4 di stats.json con "status" (passo 11)
+SHORT_NAME_RE = re.compile(r"[a-z0-9_]{1,32}")
+SHORT_NAME_MAX = 32
+
+
+def _short_name(v: Any, path: str) -> str:
+    """Nomi che finiscono nei percorsi dello store (stats.name, blocchi): solo [a-z0-9_], al più 32 caratteri,
+    per restare sotto il limite dei percorsi di Windows (passo 11)."""
+    if not isinstance(v, str) or not SHORT_NAME_RE.fullmatch(v):
+        raise ConfigError(f"{path}: ammessi solo caratteri [a-z0-9_], da 1 a {SHORT_NAME_MAX}; trovato {v!r}")
+    return _schema._path_name(v, path)                 # in più: nomi riservati di Windows (con, nul, …)
 
 TOP_KEYS = ("stats", "inputs", "primary_experiment", "exclusions", "descriptive", "descriptive_baselines", "rq2",
             "rq1a", "rq1b", "rq3", "rq4")
@@ -289,7 +299,7 @@ def _ci(v: Any, path: str, kind: str, methods: Tuple[str, ...] = CI_METHODS) -> 
 # ---------------------------------------------------------------- sezioni
 def _stats(v: Any) -> Dict[str, str]:
     d = _keys(v, "stats", ("name", "kind", "machine_role"))
-    return {"name": _schema._path_name(d["name"], "stats.name"), "kind": _choice(KINDS)(d["kind"], "stats.kind"),
+    return {"name": _short_name(d["name"], "stats.name"), "kind": _choice(KINDS)(d["kind"], "stats.kind"),
             "machine_role": _choice(ts.MACHINE_ROLES)(d["machine_role"], "stats.machine_role")}
 
 
@@ -298,7 +308,7 @@ def _inputs(v: Any) -> List[Dict[str, str]]:
     for i, e in enumerate(_list(v, "inputs")):
         p = f"inputs[{i}]"
         d = _keys(e, p, ("experiment", "config_sha256", "plan_sha256"))
-        out.append({"experiment": _schema._path_name(d["experiment"], f"{p}.experiment"),
+        out.append({"experiment": _short_name(d["experiment"], f"{p}.experiment"),   # passo 11
                     "config_sha256": _sha256(d["config_sha256"], f"{p}.config_sha256"),
                     "plan_sha256": _sha256(d["plan_sha256"], f"{p}.plan_sha256")})
     _unique_sorted([e["experiment"] for e in out], "inputs (esperimenti)")
@@ -505,7 +515,7 @@ _RQ1A_LEVELS = {
 def _rq1a_block(v: Any, path: str) -> Dict[str, Any]:
     d = _keys(v, path, ("name", "table", "metric", "models", "factors", "tau_reference", "delta_reference"))
     table = _choice(TABLES)(d["table"], f"{path}.table")
-    out = {"name": _schema._path_name(d["name"], f"{path}.name"), "table": table,
+    out = {"name": _short_name(d["name"], f"{path}.name"), "table": table,
            "metric": _decomposed_metric(table, d["metric"], f"{path}.metric"),
            "models": _levels(d["models"], f"{path}.models", _scored_model)}
     if len(out["models"]) < 2:
@@ -530,7 +540,7 @@ _RQ1B_LEVELS = {
 def _rq1b_block(v: Any, path: str) -> Dict[str, Any]:
     d = _keys(v, path, ("name", "table", "metric", "models", "factors", "tau_reference", "delta_reference"))
     table = _choice(TABLES)(d["table"], f"{path}.table")
-    out = {"name": _schema._path_name(d["name"], f"{path}.name"), "table": table,
+    out = {"name": _short_name(d["name"], f"{path}.name"), "table": table,
            "metric": _decomposed_metric(table, d["metric"], f"{path}.metric"),
            "models": _levels(d["models"], f"{path}.models", _model_ref)}
     natives = {is_native(m["model"]) for m in out["models"]}

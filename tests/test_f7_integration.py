@@ -119,6 +119,14 @@ def test_fit_analyze_stats_end_to_end(tmp_path, monkeypatch, capsys):
     assert doc["rq"]["rq2"]["status"] == "computable" and doc["rq"]["rq2"]["n_machines"] == 15
     assert doc["rq"]["rq2"]["n_per_group"] == {"1": 5, "2": 5, "3": 5}
     assert doc["rq"]["rq3"]["status"] == "computable"
+    # passo 11: prevalenza e numero di eventi variano dentro i gruppi, quindi ρ_W è definita (non costante)
+    import pandas as pd
+    desc = pd.read_csv(rep.stats_dir / "tables" / "rq3_descriptors.csv.gz")
+    for g, sub in desc.groupby("group"):
+        assert sub["prevalence"].nunique() > 1 and sub["n_events"].nunique() > 1, g
+    corr = pd.read_csv(rep.stats_dir / "tables" / "rq3_correlations.csv.gz")
+    assert corr["rho_w"].notna().all() and (corr["ci_status"] != "undefined_constant").all()
+    assert doc["rq"]["rq4"]["status"] == "computed"
     assert {rep.rq_status[k]["status"] for k in ("rq1a", "rq1b", "rq4")} == {"computed"}
     with capsys.disabled():
         print(f"\n[durata] dataset {t_fit - t0:.1f} s, fit {t_an - t_fit:.1f} s, analyze {t_st - t_an:.1f} s, "

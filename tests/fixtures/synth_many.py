@@ -37,14 +37,33 @@ def _signals(rng: np.random.Generator, noise: float) -> np.ndarray:
     return x
 
 
+EVENT_REGION = (30, 570)          # dentro la regione valutata del test (lontano dai bordi mascherati)
+EVENT_KINDS = ("level", "spike", "variance")
+N_EVENTS = (2, 6)                 # estremi inclusi
+EVENT_LEN = (3, 40)               # estremi inclusi (limitati dallo spazio disponibile)
+
+
+def events_for(seed: int):
+    """Eventi della macchina: numero, lunghezza, posizione e tipo variano tra macchine e dentro i gruppi
+    (prevalenza e numero di eventi non costanti, così RQ3 è calcolabile; F7 passo 11). Generatore separato da
+    quello dei segnali; uno slot per evento, quindi eventi mai sovrapposti né adiacenti."""
+    rng = np.random.default_rng([seed, 11])
+    n = int(rng.integers(N_EVENTS[0], N_EVENTS[1] + 1))
+    lo, hi = EVENT_REGION
+    slot = (hi - lo) // n
+    out = []
+    for i in range(n):
+        length = int(rng.integers(EVENT_LEN[0], min(EVENT_LEN[1], slot - 10) + 1))
+        start = lo + i * slot + int(rng.integers(0, slot - length - 5 + 1))
+        out.append((start, length, EVENT_KINDS[int(rng.integers(0, len(EVENT_KINDS)))]))
+    return out
+
+
 def _machine(seed: int):
     rng = np.random.default_rng(seed)
     x = _signals(rng, 0.05 + 0.01 * (seed % 5))
     train, test = x[:N_TRAIN].copy(), x[N_TRAIN:].copy()
-    k = seed % 7
-    events = [(5, 15, "level"), (120 + 10 * k, 1, "spike"), (250 + 5 * k, 20, "level"),
-              (400 + 3 * k, 30, "variance"), (590, 10, "level")]
-    labels = base._inject(rng, test, events, 0.05)
+    labels = base._inject(rng, test, events_for(seed), 0.05)
     train, test = base._minmax_train_test(train, test)
     return train, test, labels
 

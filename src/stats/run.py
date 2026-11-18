@@ -184,7 +184,7 @@ def compute_outputs(plan: sp.StatsPlan, inputs: si.StatsInputs, *, sensitivity: 
         tables["rq4_descriptive"] = r4.descriptive
         if r4.offset is not None:
             tables["rq4_offset"], tables["rq4_offset_summary"] = r4.offset, r4.offset_summary
-        blocks["rq4"] = r4.stats_json
+        blocks["rq4"] = {"status": "computed", **r4.stats_json}         # come le altre RQ (passo 11)
         status["rq4"] = {"status": "computed", "reason": None}
     for sec in RQS:
         if d[sec] is None:
@@ -264,11 +264,14 @@ def run_stats(plan, inputs: Sequence[Tuple[Any, str]], *, datasets_dir: Union[st
         run = store.begin_run(kind=plan.kind, experiment=plan.name, stage=STAGE, config_sha256="",
                               repo_root=repo_root, plan_sha256=sp.stats_plan_sha256(plan), run_id=run_id)
         try:
-            tmp = store.new_stats_tmp(run)
             main = compute_outputs(plan, loaded)
             sens = compute_outputs(plan, loaded, sensitivity=True) \
                 if plan.to_dict()["exclusions"]["exclude_fit_sensitivity"] else None
             files, stats_json = render_files(plan, loaded, main, sens, sid, comps)
+            # percorsi (temporanei, .part e pubblicati) controllati prima di creare la cartella: nessuna scrittura
+            # parziale se uno supera la soglia di Windows (passo 11)
+            store.check_stats_paths(store.stats_tmp_path(run), sorted(files) + [RUN_INFO_JSON, STATS_JSON], sid)
+            tmp = store.new_stats_tmp(run)
             for rel, data in sorted(files.items()):
                 store.write_stats_file(tmp, rel, data)
             info = {"run_id": run.run_id,

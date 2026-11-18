@@ -135,3 +135,59 @@ def test_orphan_stats_tmp_are_listed(setup):
     orphans = store.orphan_stats_tmp()
     assert len(orphans) == 1 and orphans[0]["kind"] == "stats_tmp" and orphans[0]["run_id"] == run.run_id
     assert orphans[0]["has_marker"] is False
+
+
+# ---------------------------------------------------------------- passo 11: percorsi lunghi su Windows
+def test_threshold_is_below_the_windows_limit():
+    assert st.MAX_STATS_PATH_CHARS == 250
+
+
+def test_write_stats_file_refuses_a_long_path_before_writing(setup, monkeypatch):
+    store, repo = setup
+    with store.lock(st.new_run_id()) as lock:
+        run = _run(store, repo, lock)
+        tmp = store.new_stats_tmp(run)
+        rel = "tables/rq1a_measure_terms.csv.gz"
+        part = os.path.abspath(tmp / "tables" / f".rq1a_measure_terms.csv.gz.{'0' * 32}.part")
+        monkeypatch.setattr(st, "MAX_STATS_PATH_CHARS", len(part) - 1)
+        with pytest.raises(st.StatsPathTooLong, match="Abbrevia i nomi") as e:
+            store.write_stats_file(tmp, rel, b"x")
+        assert part in str(e.value)
+        assert list(tmp.iterdir()) == []                                  # nemmeno la sottocartella
+        monkeypatch.setattr(st, "MAX_STATS_PATH_CHARS", len(part))
+        store.write_stats_file(tmp, rel, b"x")                            # al limite: ammesso
+
+
+def test_check_stats_paths_covers_temporary_part_and_published_paths(setup, monkeypatch):
+    store, repo = setup
+    with store.lock(st.new_run_id()) as lock:
+        run = _run(store, repo, lock)
+        tmp = store.stats_tmp_path(run)
+        rels = ["tables/a.csv.gz", "sensitivity/tables/b.csv.gz"]
+        lens = []
+        for rel in rels:
+            lens += [len(os.path.abspath(tmp / rel)), len(os.path.abspath(st._part_path(tmp / rel))),
+                     len(os.path.abspath(store.stats_dir("0" * 12) / rel))]
+        monkeypatch.setattr(st, "MAX_STATS_PATH_CHARS", max(lens))
+        store.check_stats_paths(tmp, rels, "0" * 12)
+        monkeypatch.setattr(st, "MAX_STATS_PATH_CHARS", max(lens) - 1)
+        with pytest.raises(st.StatsPathTooLong):
+            store.check_stats_paths(tmp, rels, "0" * 12)
+        long_dest = len(os.path.abspath(store.stats_dir("0" * 12) / "x" / ("y" * 200)))
+        monkeypatch.setattr(st, "MAX_STATS_PATH_CHARS", long_dest - 1)
+        with pytest.raises(st.StatsPathTooLong):                          # anche il solo percorso pubblicato
+            store.check_stats_paths(tmp, ["x/" + "y" * 200], "0" * 12)
+        assert not tmp.exists()
+
+
+def test_the_published_path_is_checked_on_its_own(setup, monkeypatch):
+    """Nei run reali il percorso pubblicato è più corto del .part; qui si isola il suo controllo."""
+    store, _ = setup
+    monkeypatch.setattr(st, "_part_path", lambda p: p)
+    short_tmp = store.root / "t"
+    rel = "tables/" + "y" * 40 + ".csv.gz"
+    dest = len(os.path.abspath(store.stats_dir("0" * 12) / rel))
+    assert dest > len(os.path.abspath(short_tmp / rel))
+    monkeypatch.setattr(st, "MAX_STATS_PATH_CHARS", dest - 1)
+    with pytest.raises(st.StatsPathTooLong):
+        store.check_stats_paths(short_tmp, [rel], "0" * 12)

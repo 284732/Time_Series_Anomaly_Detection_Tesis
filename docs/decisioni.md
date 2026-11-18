@@ -2012,6 +2012,100 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
     - Un test sul sorgente (`tests/test_f7_no_blas.py`, via `ast`) lo verifica; `lstsq` resta solo nei test.
   - **Test del run** (`tests/test_f7_run.py`): i test che leggono soltanto il risultato condividono un run di modulo;
     a fine modulo l'hash della sua cartella deve essere invariato. I test che scrivono lavorano su copie proprie.
+- **Nota di rimando (2026-11-18, passo 11, P13, P15, il testo sopra resta invariato; utente, su raccomandazione di
+  Claude Project):** comando `report` (`src/reporting/{source,tables,notices,figures,report}.py`).
+  - **Il report non calcola.** Legge solo `store/stats/<stats_id>/` e prima di formattare verifica, nell'ordine:
+    - posizione sotto `store/stats/`;
+    - `stats.json` presente e `stats_format` supportato;
+    - `stats_id` uguale al nome della cartella;
+    - file elencati presenti e con lo sha256 dichiarato, calcolato sugli stessi byte che si leggono;
+    - nessun file non elencato, salvo `stats.json` e `run_info.json`.
+
+    Garanzia doppia, decisa dall'utente:
+    - (a) test sul sorgente: nessun import di `src.stats`, scipy, statsmodels, sklearn o torch; nessuna chiamata di
+      aggregazione (`mean`, `sum`, `quantile`, `groupby`, `rank`, …);
+    - (b) test sulle uscite: ogni numero di `.md` e `.tex` è la formattazione di un valore pubblicato; i CSV del
+      report sono sottoinsiemi di righe e colonne delle tabelle pubblicate; i dati delle figure sono valori
+      pubblicati.
+  - **Contenuto:** solo ciò che il piano richiede; una RQ saltata ha la riga «Non richiesta dal piano statistico.».
+    Le sezioni sono:
+    - intestazione, con ingressi e stato delle RQ;
+    - descrittive per modello (media, sd, mediana, rango medio, n macchine; per `detection_delay` anche n definite
+      ed `event_recall`);
+    - RQ2, con le righe descrittive (riferimento, random, baseline descrittive) nella stessa tabella, separate e
+      senza esito;
+    - RQ1a e RQ1b (η² con le interazioni modello × fattore in grassetto, R, distribuzione di τ, inversioni);
+    - RQ3, senza retta di regressione;
+    - RQ4, con l'indicatore di scostamento;
+    - sensibilità P8, in una sezione propria etichettata come esplorativa e senza figure;
+    - «Dati esclusi o non usati»: registro, conteggi, NaN in celle non usate, repliche random rimosse, macchine per
+      unità, macchine escluse da RQ2.
+
+    La figura di RQ2 mostra Δ per macchina e l'IC dell'effetto aggregato (decisione dell'utente).
+  - **Numeri:**
+    - cifre fisse in `tables.DIGITS` e in `report.json`: 3 per valori, ρ, R, τ e quote; 1 per η² in percentuale;
+    - p del sign-flip in notazione scientifica con 3 cifre significative sotto 0,001.
+    - Arrotondamento vicino a δ: se un estremo dell'IC, arrotondato, coincide con ±δ senza esserlo, si mostra con
+      le cifre necessarie a distinguerlo, fino alla forma esatta. È formattazione, non calcolo. Test: nessuna riga
+      mostrata contraddice il proprio esito.
+    - δ e i parametri del piano si mostrano nella forma esatta più corta.
+  - **Separatore decimale:** `report … --decimal comma|point`, valore iniziale `comma`.
+    - Vale per `.md`, `.tex` e per le etichette degli assi delle figure.
+    - I CSV restano sempre col punto e a precisione piena.
+    - In LaTeX la virgola è `{,}` e i numeri sono in `$…$`.
+    - Nella prosa e nelle didascalie si localizzano solo i numeri decimali isolati: restano invariati quelli dentro
+      etichette JSON, versioni e nomi.
+
+    L'opzione si registra in `report.json`. Nessun generatore `.docx`.
+  - **Avvertenze:** testi fissi in italiano, in `notices.py`, ciascuna con la sua condizione: risultati esplorativi,
+    D-45, C4, D-34, potenza di RQ3, P8, RQ non calcolabili con il motivo di `stats.json`. Frasi vietate in tutte le
+    uscite: «vince», «non vince», «il deep learning», «significativ», «dimostra», «prova che».
+  - **Figure:** matplotlib con canvas Agg, senza pyplot.
+    - Stile fisso: default di matplotlib più `figures.RC`, in un `rc_context`; si ignora `matplotlibrc`
+      dell'utente.
+    - Font DejaVu Sans incluso in matplotlib.
+    - Metadati di data e versione rimossi da PDF e PNG; byte identici tra processi con `PYTHONHASHSEED` diversi.
+    - Gruppi con la palette categoriale validata e marcatori distinti.
+  - **Uscita:**
+    - cartella nuova fuori dallo store, rifiutata se esiste, se manca la cartella madre o se sta nello store;
+    - scrittura in una cartella temporanea accanto a `--out` e rinomina; nessuna riga di registro;
+    - codici di uscita: 0; 2 (ingresso o uscita non ammessi); 4 (scrittura); 130 (interruzione, cartella
+      temporanea rimossa).
+  - **`status` di RQ4.**
+    - Fatto verificato: il blocco `rq4` di `stats.json` non aveva la chiave `status`, a differenza delle altre RQ.
+    - `run.py` ora la scrive (`computed`), anche nella sensibilità.
+    - `STATS_CODE_VERSION` passa da 1 a 2: lo stesso `stats_id` deve sempre corrispondere agli stessi byte (approvato dall'utente).
+    - Il report rifiuta, con codice 2, un blocco RQ senza `status` o con uno stato sconosciuto; nessuno stato si
+      presume. Ammessi: `computed`, `computable`, `not_computable`, `skipped`.
+  - **Percorsi lunghi su Windows.**
+    - Fatto verificato: con la radice dei test di pytest, il file `.part` di una tabella diagnostica della
+      sensibilità arrivava a 259 caratteri, uno sotto il limite di 260.
+    - `store.py`:
+      - `MAX_STATS_PATH_CHARS = 250`;
+      - `check_stats_paths` controlla, per ogni file, il percorso nella cartella temporanea, quello del `.part` e
+        quello pubblicato;
+      - `run.py` chiama il controllo prima di creare la cartella temporanea, quindi nessuna scrittura parziale;
+      - `write_stats_file` ripete il controllo prima di ogni scrittura.
+    - Errore `StatsPathTooLong`, con il percorso e il suggerimento di abbreviare i nomi o spostare lo store;
+      codice di uscita 2.
+    - La cartella temporanea nasce ora dopo il calcolo: un'interruzione durante il calcolo non lascia cartelle
+      orfane.
+    - `plan.py`: `stats.name`, i nomi dei blocchi di RQ1a e RQ1b e i nomi degli esperimenti dichiarati in `inputs`
+      (che entrano nei nomi delle tabelle diagnostiche) solo `[a-z0-9_]`, al più 32 caratteri, oltre alle regole sui
+      nomi dei percorsi (nomi riservati di Windows). Un nome troppo lungo emerge alla validazione del piano; lo
+      schema degli esperimenti non cambia.
+  - **ρ per gruppo (RQ3):** il testo JSON pubblicato si mostra come «gruppo g: valore» a 3 cifre, con il separatore
+    scelto; è solo formattazione. Il test di tracciabilità verifica che ogni valore mostrato sia l'arrotondamento di
+    quello pubblicato. Il CSV del report conserva il testo pubblicato intero.
+  - **Sha256 nella prosa:** abbreviati a 12 caratteri. I valori completi sono in `report.json`
+    (`stats_plan_sha256`, `stats_json_sha256`, sha di ogni file).
+  - **Ambiente sintetico** (`tests/fixtures/synth_many.py`).
+    - Numero (da 2 a 6), lunghezza, posizione e tipo degli eventi variano per macchina, anche dentro i gruppi, con
+      un generatore separato da quello dei segnali; quindi RQ3 è calcolata.
+    - Lo snapshot F1 non cambia: usa `synth_smd`.
+  - **Separatore nelle figure:** approvato dall'utente.
+  - **Impaginazione LaTeX:** rimandata a quando si deciderà il formato della tesi. Le tabelle larghe (RQ2: 16
+    colonne) e le etichette lunghe delle configurazioni non sono ancora adattate alla pagina.
 
 ### D-53 · File tracciati da git (`.pyc`, dataset) — APPROVATA · 2026-11-10
 - **Decisione:** i `.pyc` non sono tracciati: i 35 file già tracciati sono tolti dal tracciamento con

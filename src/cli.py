@@ -43,7 +43,7 @@ from src.pipeline import fit as fitmod
 from src.pipeline import residual_cache as rc
 from src.pipeline.store import (ANALYSES_DIR, ANALYSIS_JSON, RUN_INFO_JSON, STATS_DIR, STATS_JSON, AnalysisExists,
                                 AnalysisPublishError, StatsExists, StatsPublishError, Store, StoreLocked, is_stale,
-                                new_run_id)
+                                new_run_id, StatsPathTooLong)
 from src.stats import aggregate as _agg, bootstrap as _bs, decisions as _dc, descriptors as _ds
 from src.stats import filters as _flt, inputs as _si, ranking as _rk, rq1 as _rq1, variance as _vr
 from src.stats import run as runmod
@@ -56,7 +56,7 @@ REPO_ROOT = cfgmod._ROOT
 DEFAULT_DATASETS_DIR = REPO_ROOT / "configs" / "datasets"
 INVALID_ERRORS = (ConfigError, ManifestError, fitmod.PreflightError, fitmod.FitRefused, yaml.YAMLError)
 ANALYZE_INVALID = INVALID_ERRORS + (anmod.AnalysisRefused, anmod.AnalysisPreflightError, AnalysisExists)
-STATS_INVALID = (ConfigError, yaml.YAMLError, runmod.StatsRefused, StatsExists, _si.StatsInputError, _flt.FilterError,
+STATS_INVALID = (ConfigError, yaml.YAMLError, runmod.StatsRefused, StatsExists, StatsPathTooLong, _si.StatsInputError, _flt.FilterError,
                  _agg.AggregateError, _bs.BootstrapError, _dc.DecisionError, _vr.VarianceError, _rk.RankingError,
                  _rq1.Rq1Error, _ds.DescriptorError)
 BREAK_NOTE = "break-stale-lock: "
@@ -413,6 +413,24 @@ def cmd_stats(args) -> int:
     return EXIT_OK
 
 
+# ------------------------------------------------------------------ report (F7 passo 11, D-73)
+def cmd_report(args) -> int:
+    from src.reporting import report as repmod             # import differito: il report non serve agli altri comandi
+    try:
+        out = repmod.write_report(args.stats_dir, args.out, decimal=args.decimal)
+    except KeyboardInterrupt:
+        _err("interrotto: nessun report scritto, cartella temporanea rimossa")
+        return EXIT_INTERRUPTED
+    except (repmod.ReportInputError, repmod.ReportError) as exc:
+        _err(f"report non scritto: {exc}")
+        return EXIT_INVALID
+    except repmod.ReportWriteError as exc:
+        _err(f"report non scritto: {exc}")
+        return EXIT_PUBLISH
+    print(f"report scritto in {out} (statistiche {Path(args.stats_dir).name}, separatore {args.decimal})")
+    return EXIT_OK
+
+
 # ------------------------------------------------------------------ main
 def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(prog="python -m src.cli", description=__doc__,
@@ -424,6 +442,12 @@ def build_parser() -> argparse.ArgumentParser:
                    help="config dell'esperimento e analysis_id di un'analisi pubblicata (ripetibile)")
     p.add_argument("--datasets-dir", default=str(DEFAULT_DATASETS_DIR), help="cartella degli spec dei dataset")
     p.set_defaults(func=cmd_stats)
+    p = sub.add_parser("report", help="report dalle statistiche pubblicate (F7): legge, verifica e formatta")
+    p.add_argument("stats_dir", help="cartella store/stats/<stats_id>/")
+    p.add_argument("--out", required=True, help="cartella nuova del report (rifiutata se esiste o se è nello store)")
+    p.add_argument("--decimal", choices=("comma", "point"), default="comma",
+                   help="separatore decimale di .md e .tex (i CSV usano sempre il punto)")
+    p.set_defaults(func=cmd_report)
     for name, fn, help_ in (("fit", cmd_fit, "esegue o riusa i fit"),
                             ("status", cmd_status, "stato dei compiti e delle analisi (sola lettura)"),
                             ("clean-tmp", cmd_clean_tmp, "pulisce tmp/ e le cartelle temporanee delle analisi sotto lock"),

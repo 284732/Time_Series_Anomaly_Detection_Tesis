@@ -32,8 +32,10 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 @pytest.fixture
-def work(env, tmp_path, monkeypatch):
-    dst = tmp_path / "w"
+def work(env, tmp_path_factory, monkeypatch):
+    # radice corta (non la cartella col nome del test): i percorsi della sensibilità restano sotto i 250 caratteri
+    # del controllo di store.py (passo 11)
+    dst = tmp_path_factory.mktemp("w") / "w"
     shutil.copytree(env["root"], dst)
     monkeypatch.chdir(dst)
     return dst
@@ -212,10 +214,28 @@ def test_error_in_an_rq_publishes_nothing_and_marks_the_run_failed(env, work, mo
     assert last["status"] == "failed" and last["config_sha256"] == ""
 
 
-def test_interruption_leaves_no_publication(env, work, monkeypatch):
+def test_interruption_during_computation_leaves_nothing(env, work, monkeypatch):
     def stop(*a, **k):
         raise KeyboardInterrupt
     monkeypatch.setattr(rn.rq4, "assemble_rq4", stop)
+    with pytest.raises(KeyboardInterrupt):
+        run(env, work)
+    store = Store(work / STORE)
+    assert [r for r in store.read_registry() if r["stage"] == "stats"][-1]["status"] == "interrupted"
+    assert not (work / STORE / "stats").exists() or not any((work / STORE / "stats").iterdir())
+    assert store.orphan_stats_tmp() == []            # la cartella temporanea nasce dopo il calcolo (passo 11)
+
+
+def test_interruption_while_writing_leaves_an_orphan_for_clean_tmp(env, work, monkeypatch):
+    real = Store.write_stats_file
+    calls = []
+
+    def stop(self, tmp, rel, data):
+        calls.append(rel)
+        if len(calls) == 2:
+            raise KeyboardInterrupt
+        return real(self, tmp, rel, data)
+    monkeypatch.setattr(Store, "write_stats_file", stop)
     with pytest.raises(KeyboardInterrupt):
         run(env, work)
     store = Store(work / STORE)
@@ -294,3 +314,29 @@ def test_importing_the_stats_stage_does_not_load_torch():
 # ---------------------------------------------------------------- fixture condivisa
 def test_the_shared_run_is_distinct_from_the_environment(env, shared):
     assert shared["root"] != env["root"] and not (env["root"] / STORE / "stats").exists()
+
+
+# ---------------------------------------------------------------- passo 11
+def test_every_rq_block_has_an_explicit_status(at_shared):
+    doc = json.loads((at_shared["rep"].stats_dir / STATS_JSON).read_text(encoding="utf-8"))
+    for rq in rn.RQS:
+        assert doc["rq"][rq]["status"] in ("computed", "computable", "not_computable", "skipped"), rq
+    assert doc["rq"]["rq4"]["status"] == "computed"
+
+
+def test_sensitivity_rq_blocks_have_an_explicit_status(env, work):
+    rep = run(env, work, raw=_sens_plan(env))
+    doc = json.loads((rep.stats_dir / STATS_JSON).read_text(encoding="utf-8"))
+    for rq in rn.RQS:
+        assert "status" in doc["sensitivity"]["rq"][rq], rq
+
+
+def test_too_long_paths_are_refused_before_any_write(env, work, monkeypatch):
+    from src.pipeline import store as st
+    monkeypatch.setattr(st, "MAX_STATS_PATH_CHARS", len(str((work / STORE).resolve())) + 40)
+    with pytest.raises(st.StatsPathTooLong, match="Abbrevia i nomi"):
+        run(env, work)
+    store = Store(work / STORE)
+    assert list((work / STORE / "runs").rglob("stats_tmp")) == []          # cartella temporanea mai creata
+    assert not (work / STORE / "stats").exists() or not any((work / STORE / "stats").iterdir())
+    assert [r for r in store.read_registry() if r["stage"] == "stats"][-1]["status"] == "failed"
