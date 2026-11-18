@@ -227,6 +227,7 @@ def test_skipped_rq_gives_only_the_not_requested_line(report_stats, tmp_path):
     def doc(x):
         x["rq"]["rq1a"] = {"status": "skipped"}
         x["sensitivity"]["rq"]["rq1a"] = {"status": "skipped"}
+        x["sensitivity"]["n_exclude_fit_cases"] = 1           # sezione di sensibilità con le tabelle
     drop = [p for p in __import__("json").loads((report_stats["stats_dir"] / "stats.json").read_text(
         encoding="utf-8"))["files"] if "rq1a_" in p]
     d = copy_stats(report_stats["stats_dir"], tmp_path / "store", doc=doc, drop=drop)

@@ -2,3 +2,5 @@ __pycache__/
 *.pyc
 .pytest_cache/
 store/
+# report d'esempio generati in locale (F7 passo 11-bis), mai tracciati
+reports_local/

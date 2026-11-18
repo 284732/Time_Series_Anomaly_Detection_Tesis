@@ -209,6 +209,12 @@ def _input_record(i: si.StatsInput) -> Dict[str, Any]:
             "machines": list(i.machines), "data_versions": dict(sorted(i.data_versions.items()))}
 
 
+def exclude_fit_cases(filt: Mapping[str, Any]) -> int:
+    """Casi exclude_fit dell'analisi principale (righe del registro con quell'azione): con 0 casi la sensibilità P8
+    coincide con l'analisi principale per costruzione (passo 11-bis; il report legge questo conteggio)."""
+    return int(sum(1 for c in filt["register"] if c["action"] == "exclude_fit"))
+
+
 def render_files(plan: sp.StatsPlan, inputs: si.StatsInputs, main: Outputs, sens: Optional[Outputs],
                  stats_id: str, components: Mapping[str, Any]) -> Tuple[Dict[str, bytes], bytes]:
     """(tabelle per percorso relativo, byte di stats.json). stats.json elenca gli sha256 dei file (non di sé stesso né
@@ -227,6 +233,7 @@ def render_files(plan: sp.StatsPlan, inputs: si.StatsInputs, main: Outputs, sens
         "warnings": list(inputs.warnings) + list(main.warnings),
         "filter": main.blocks["filter"], "rq": main.blocks["rq"],
         "sensitivity": None if sens is None else {"analysis_variant": "sensitivity", "inference": "exploratory",
+                                                  "n_exclude_fit_cases": exclude_fit_cases(main.blocks["filter"]),
                                                   "filter": sens.blocks["filter"], "rq": sens.blocks["rq"]},
         "files": {p: hashlib.sha256(b).hexdigest() for p, b in sorted(files.items())},
     }

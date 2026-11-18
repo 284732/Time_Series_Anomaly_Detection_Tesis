@@ -156,3 +156,21 @@ def test_pure_and_order_independent():
     res2 = r2.RQ2Result(res.status, res.reason, res.rows, res.deltas.sample(frac=1, random_state=3), {})
     b = rq3.assemble_rq3(plan(), res2, mt.sample(frac=1, random_state=4))
     pd.testing.assert_frame_equal(a.rows, b.rows)
+
+
+def test_power_warning_cites_the_simulated_design_not_the_current_sample():
+    """Passo 11-bis: le larghezze 0,76–0,88 vengono dalla simulazione a 22 macchine (6/7/9), non dal campione."""
+    import json
+    from pathlib import Path
+    res, mt = make_inputs()
+    out = rq3.assemble_rq3(plan(), res, mt)
+    w = next(x for x in out.stats_json["warnings"] if x.startswith("potenza"))
+    assert "22 macchine" in w and "6, 7 e 9" in w and "docs/sim_spearman_ci.json" in w and "più larghi" in w
+    assert "0,76–0,88" in w
+    n = out.stats_json["n_machines"]
+    assert f"n = {n}" not in w and "n = " not in w and "G = " not in w
+    sim = json.loads((Path(__file__).resolve().parents[1] / "docs" / "sim_spearman_ci.json").read_text(
+        encoding="utf-8"))
+    assert sim["design"]["group_sizes"] == {"1": 6, "2": 7, "3": 9}
+    widths = [v["mean_width"] for k, v in sim["results"].items() if k.startswith("within_group|fisher|")]
+    assert round(min(widths), 2) == 0.76 and round(max(widths), 2) == 0.88       # i numeri citati sono quelli

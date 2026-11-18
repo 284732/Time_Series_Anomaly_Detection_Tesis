@@ -33,10 +33,16 @@ class RQ3Result:
     stats_json: Dict[str, Any]
 
 
-def _warnings(n_corr: int, n: int, G: int) -> List[str]:
+POWER_WARNING = ("potenza: le larghezze tipiche degli IC al 95 %, circa 0,76–0,88, vengono dalla simulazione del "
+                 "disegno a 22 macchine (gruppi da 6, 7 e 9; docs/sim_spearman_ci.json), non dal campione corrente; "
+                 "con meno macchine gli intervalli sono più larghi. In quel disegno |ρ_W| < ~0,4 ha spesso un IC che "
+                 "comprende 0, e un IC che comprende 0 non è prova di assenza di associazione")
+
+
+def _warnings(n_corr: int) -> List[str]:
+    """Avvertenze di RQ3: nessun numero della simulazione è attribuito al campione corrente (passo 11-bis)."""
     return [f"nessuna correzione per molteplicità: {n_corr} correlazioni (membri × descrittori), analisi esplorativa",
-            f"potenza: con n = {n} e G = {G} le larghezze tipiche degli IC sono circa 0,76–0,88; |ρ_W| < ~0,4 avrà "
-            "spesso un IC che comprende 0, e un IC che comprende 0 non è prova di assenza di associazione"]
+            POWER_WARNING]
 
 
 def assemble_rq3(plan: sp.StatsPlan, rq2_result, mt: pd.DataFrame) -> RQ3Result:
@@ -66,8 +72,7 @@ def assemble_rq3(plan: sp.StatsPlan, rq2_result, mt: pd.DataFrame) -> RQ3Result:
     counts = {g: int(sum(1 for m in machines if dmap.loc[m, "group"] == g)) for g in groups_all}
     k = cfg["min_machines_per_group"]
     low = {g: n for g, n in counts.items() if n < k}
-    G = len([g for g in counts if counts[g] > 0])
-    warnings = _warnings(n_corr, len(machines), G)
+    warnings = _warnings(n_corr)
     if low:
         reason = "; ".join(f"gruppo {g}: {n} macchine < min_machines_per_group {k}" for g, n in low.items())
         return RQ3Result("not_computable", reason, empty, desc,

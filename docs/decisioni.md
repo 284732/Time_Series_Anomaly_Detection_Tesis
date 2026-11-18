@@ -2106,6 +2106,26 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
   - **Separatore nelle figure:** approvato dall'utente.
   - **Impaginazione LaTeX:** rimandata a quando si deciderà il formato della tesi. Le tabelle larghe (RQ2: 16
     colonne) e le etichette lunghe delle configurazioni non sono ancora adattate alla pagina.
+- **Nota di rimando (2026-11-18, passo 11-bis, P8, P10, il testo sopra resta invariato; utente, dalla lettura del
+  report d'esempio):** correzioni prima della golden del passo 12, perché la golden non congeli testi sbagliati.
+  - **Avvertenza P8** (`notices.py`): il testo diceva «fit con residui di calibrazione non finiti esclusi», ed era
+    sbagliato. Ora dice che la sensibilità ripete tutte le statistiche con ogni azione `exclude_fit` trasformata in
+    `exclude_machine_pair` (exclude_fit → exclude_machine_pair, D-73 P8).
+  - **Avvertenza di potenza di RQ3** (`rq3.py`): non attribuisce più i numeri della simulazione al campione corrente.
+    - Le larghezze 0,76–0,88 vengono dalla simulazione del disegno a 22 macchine (6/7/9, `docs/sim_spearman_ci.json`).
+    - Con meno macchine gli intervalli sono più larghi.
+    - Nessun «n = …» del campione corrente.
+    - Un test verifica che i numeri citati coincidano con quelli del file della simulazione.
+  - **Titolo RQ4 nel report:** «RQ4: soglie e scostamento cal → test». L'indicatore non misura la deriva (P10).
+  - **Sensibilità senza casi.**
+    - `stats.json` pubblica `sensitivity.n_exclude_fit_cases`: le righe del registro principale con azione
+      `exclude_fit`.
+    - Il report legge questo conteggio e non lo ricalcola. Con 0 casi, la sezione di sensibilità e la sua parte in
+      «Dati esclusi o non usati» contengono solo l'avvertenza e la frase «Nessun caso exclude_fit: la sensibilità
+      coincide con l'analisi principale per costruzione», senza tabelle.
+    - Il report rifiuta, con codice 2, una sensibilità senza conteggio valido.
+  - **`STATS_CODE_VERSION` = 3**, perché cambiano l'avvertenza di RQ3 e `stats.json`.
+  - **Report d'esempio:** si generano in `reports_local/`, esclusa da git.
 
 ### D-53 · File tracciati da git (`.pyc`, dataset) — APPROVATA · 2026-11-10
 - **Decisione:** i `.pyc` non sono tracciati: i 35 file già tracciati sono tolti dal tracciamento con

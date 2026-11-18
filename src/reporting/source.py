@@ -84,6 +84,9 @@ def load_source(stats_dir) -> StatsSource:
     _check_rq_blocks(doc.get("rq"), "rq")
     if doc.get("sensitivity") is not None:
         _check_rq_blocks(doc["sensitivity"].get("rq"), "sensitivity.rq")
+        n = doc["sensitivity"].get("n_exclude_fit_cases")
+        if not isinstance(n, int) or isinstance(n, bool) or n < 0:
+            raise ReportInputError(f"{STATS_JSON}: sensitivity.n_exclude_fit_cases assente o non valido ({n!r})")
     listed = doc.get("files")
     if not isinstance(listed, dict):
         raise ReportInputError(f"{STATS_JSON} senza elenco dei file")

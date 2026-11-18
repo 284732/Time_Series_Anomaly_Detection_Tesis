@@ -340,3 +340,17 @@ def test_too_long_paths_are_refused_before_any_write(env, work, monkeypatch):
     assert list((work / STORE / "runs").rglob("stats_tmp")) == []          # cartella temporanea mai creata
     assert not (work / STORE / "stats").exists() or not any((work / STORE / "stats").iterdir())
     assert [r for r in store.read_registry() if r["stage"] == "stats"][-1]["status"] == "failed"
+
+
+def test_exclude_fit_cases_counts_register_rows_with_that_action():
+    reg = [{"action": "exclude_fit"}, {"action": "exclude_machine_pair"}, {"action": "exclude_fit"},
+           {"action": "reference_only"}, {"action": "keep"}]
+    assert rn.exclude_fit_cases({"register": reg}) == 2
+    assert rn.exclude_fit_cases({"register": []}) == 0
+
+
+def test_sensitivity_block_publishes_the_exclude_fit_count(env, work):
+    rep = run(env, work, raw=_sens_plan(env))
+    doc = json.loads((rep.stats_dir / STATS_JSON).read_text(encoding="utf-8"))
+    assert doc["sensitivity"]["n_exclude_fit_cases"] == rn.exclude_fit_cases(doc["filter"])
+    assert doc["stats_code_version"] == 3

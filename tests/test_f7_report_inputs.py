@@ -122,3 +122,14 @@ def test_rq_block_without_status_gives_exit_code_2(report_stats, store, tmp_path
     d = copy_stats(report_stats["stats_dir"], store, doc=lambda x: x["rq"]["rq4"].pop("status"))
     assert cli.main(["report", str(d), "--out", str(tmp_path / "out")]) == cli.EXIT_INVALID
     assert not (tmp_path / "out").exists()
+
+
+@pytest.mark.parametrize("value", [None, -1, 1.5, "0", True])
+def test_sensitivity_without_a_valid_exclude_fit_count_is_refused(report_stats, store, tmp_path, value):
+    def doc(x):
+        if value is None:
+            del x["sensitivity"]["n_exclude_fit_cases"]
+        else:
+            x["sensitivity"]["n_exclude_fit_cases"] = value
+    d = copy_stats(report_stats["stats_dir"], store, doc=doc)
+    _refused(d, tmp_path, "n_exclude_fit_cases")

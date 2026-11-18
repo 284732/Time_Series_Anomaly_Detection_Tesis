@@ -30,8 +30,9 @@ TEXTS = {
             "principali: restano separate e non entrano nelle conclusioni (D-34). Tabelle diagnostiche pubblicate:"),
     "rq3_power": ("RQ3 ha potenza bassa con poche macchine per gruppo: un intervallo che comprende lo zero non "
                   "indica assenza di associazione. Avvertenze registrate dallo stadio di statistica:"),
-    "p8": ("Analisi di sensibilità P8: le stesse statistiche con i fit dai residui di calibrazione non finiti "
-           "esclusi. È sempre esplorativa e non sostituisce l'analisi principale."),
+    "p8": ("Analisi di sensibilità P8: ripete tutte le statistiche con ogni azione exclude_fit del piano trasformata "
+           "in exclude_machine_pair (exclude_fit → exclude_machine_pair, D-73 P8): la macchina di un fit escluso esce "
+           "dal confronto per tutti i modelli. È sempre esplorativa e non sostituisce l'analisi principale."),
     "not_computable": ("Una RQ non calcolabile non ha esito; il motivo è quello registrato in stats.json."),
 }
 

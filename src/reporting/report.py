@@ -34,6 +34,8 @@ REPORT_JSON = "report.json"
 SHA_PREFIX = 12
 NOT_REQUESTED = "Non richiesta dal piano statistico."
 SENS_TITLE = "Analisi di sensibilità (P8) — esplorativa"
+RQ4_TITLE = "RQ4: soglie e scostamento cal → test"     # non «deriva»: l'indicatore non la misura (D-73 P10)
+NO_EXCLUDE_FIT = ("Nessun caso exclude_fit: la sensibilità coincide con l'analisi principale per costruzione.")
 DESC_SECTION = "Righe descrittive (senza esito)"
 VARIANT = ["model", "config_id", "window_time_agg", "sensor_agg", "normalizer"]
 
@@ -388,7 +390,7 @@ def _rq3(doc: _Doc, s: StatsSource, tables, block, lvl: int, prefix: str, figure
 
 
 def _rq4(doc: _Doc, s: StatsSource, tables, block, lvl: int, prefix: str, figures: bool, keys) -> None:
-    doc.h(lvl, "RQ4: soglia e deriva")
+    doc.h(lvl, RQ4_TITLE)
     if nt.rq_status(block) == "skipped":
         doc.p(NOT_REQUESTED)
         return
@@ -512,13 +514,22 @@ def build(source: StatsSource, decimal: str = tb.DEFAULT_DECIMAL) -> Built:
     if sens is not None:
         doc.h(2, SENS_TITLE)
         doc.notice("p8")
-        doc.p(f"analysis_variant {sens.get('analysis_variant')}; inferenza {sens.get('inference')}.")
-        _rq_sections(doc, source, source.sensitivity, sens.get("rq", {}), d["plan"], 3, "sensitivity/", False, keys)
+        n_cases = sens["n_exclude_fit_cases"]                 # conteggio pubblicato, non ricalcolato
+        if n_cases == 0:
+            doc.p(NO_EXCLUDE_FIT)
+        else:
+            doc.p(f"Casi exclude_fit nell'analisi principale: {n_cases}; analysis_variant "
+                  f"{sens.get('analysis_variant')}; inferenza {sens.get('inference')}.")
+            _rq_sections(doc, source, source.sensitivity, sens.get("rq", {}), d["plan"], 3, "sensitivity/", False,
+                         keys)
     doc.h(2, "Dati esclusi o non usati")
     _excluded(doc, source, d.get("filter") or {}, source.tables, 3, "")
     if sens is not None:
         doc.h(3, "Sensibilità P8")
-        _excluded(doc, source, sens.get("filter") or {}, source.sensitivity, 4, "sensitivity/")
+        if sens["n_exclude_fit_cases"] == 0:
+            doc.p(NO_EXCLUDE_FIT)
+        else:
+            _excluded(doc, source, sens.get("filter") or {}, source.sensitivity, 4, "sensitivity/")
     figs = fg.figure_specs(source)
     return Built(doc.blocks, doc.tables, doc.csv, doc.csv_source, figs)
 
