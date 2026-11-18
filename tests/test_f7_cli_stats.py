@@ -140,3 +140,18 @@ def test_path_too_long_maps_to_code_2(files, monkeypatch, capsys):
     monkeypatch.setattr(cli.runmod, "run_stats", boom)
     assert call(files) == cli.EXIT_INVALID
     assert "Abbrevia i nomi" in capsys.readouterr().err
+
+
+def test_unencodable_characters_never_crash_the_command(tmp_path):
+    """F7 passo 12: su una pipe cp1252 (Windows) un avviso con «ρ» faceva uscire `stats` con codice 1 dopo la
+    pubblicazione. Ora il carattere diventa una sequenza di escape."""
+    import os
+    import subprocess
+    import sys
+    code = ("import sys; from src import cli; cli._safe_streams(); print('avviso: |ρ_W| < 0,4 — δ'); "
+            "print('errore ρ', file=sys.stderr)")
+    env = dict(os.environ, PYTHONIOENCODING="cp1252")
+    r = subprocess.run([sys.executable, "-c", code], cwd=Path(__file__).resolve().parents[1], env=env,
+                       capture_output=True)
+    assert r.returncode == 0, r.stderr
+    assert b"\u03c1" in r.stdout and b"\u03c1" in r.stderr

@@ -54,6 +54,11 @@ from src.utils.schema import ConfigError
 
 TABLES = ("free", "thr", "fits")
 ANALYZE_STAGE = "analyze"                  # = analyze.STAGE (verificato da un test; analyze importa torch)
+# Identità delle statistiche (stats_id) senza tempi misurati né identità del run (passo 12): colonne di durata delle
+# tabelle e campi di analysis.json esclusi dalla proiezione su cui si calcola l'hash d'identità. Le tabelle pubblicate
+# e i loro sha256 completi restano in stats.json come provenance.
+IDENTITY_EXCLUDED_COLUMNS = {"fits": ("fit_sec",)}             # unica colonna di durata dello schema (verificato)
+IDENTITY_EXCLUDED_ANALYSIS_FIELDS = ("run_id", "created_utc", "git")
 RANDOM = sp.RANDOM
 STATS_ID_LEN = 12
 
@@ -83,7 +88,9 @@ class StatsInput:
     data_versions: Dict[str, str]
     payloads: Dict[str, Dict[str, Any]]                   # fit_key → fit_payload
     tables: Dict[str, pd.DataFrame] = field(default_factory=dict)
-    table_sha256: Dict[str, str] = field(default_factory=dict)
+    table_sha256: Dict[str, str] = field(default_factory=dict)          # file completi (provenance)
+    table_id_sha256: Dict[str, str] = field(default_factory=dict)       # proiezione d'identità (stats_id)
+    analysis_json_id_sha256: str = ""                                   # analysis.json senza identità del run
     preproc: Optional[str] = None
 
     @property
@@ -103,6 +110,26 @@ class StatsInputs:
 
 
 # ---------------------------------------------------------------- utilità
+def identity_table_sha256(df: pd.DataFrame, table: str, file_sha256: str) -> str:
+    """Hash d'identità di una tabella: lo sha256 del file, oppure, se la tabella ha colonne di durata, quello della
+    forma CSV canonica senza di esse (stessi risultati, tempi diversi → stesso hash)."""
+    cols = IDENTITY_EXCLUDED_COLUMNS.get(table)
+    if not cols:
+        return file_sha256
+    text = df.drop(columns=list(cols)).to_csv(index=False, lineterminator="\n", na_rep="")
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def identity_analysis_json_sha256(doc: Mapping[str, Any]) -> str:
+    return canonical_hash({k: v for k, v in doc.items() if k not in IDENTITY_EXCLUDED_ANALYSIS_FIELDS})
+
+
+def identity_exclusions() -> Dict[str, Any]:
+    """Elenco dichiarato in stats.json."""
+    return {"tables": {t: list(c) for t, c in sorted(IDENTITY_EXCLUDED_COLUMNS.items())},
+            "analysis.json": list(IDENTITY_EXCLUDED_ANALYSIS_FIELDS)}
+
+
 def _sha256_file(path: Path) -> str:
     h = hashlib.sha256()
     with open(path, "rb") as fh:
@@ -250,7 +277,8 @@ def _load_one(plan: sp.StatsPlan, cfg, aid: str, declared: Mapping[str, Any], da
                         "calcolato dalla config")
 
     out = StatsInput(experiment=name, kind=cfg.kind, analysis_id=aid, analysis_dir=adir, analysis_json=doc,
-                     analysis_json_sha256=hashlib.sha256(raw).hexdigest(), config_sha256=csha,
+                     analysis_json_sha256=hashlib.sha256(raw).hexdigest(),
+                     analysis_json_id_sha256=identity_analysis_json_sha256(doc), config_sha256=csha,
                      store_root=Path(cfg.store_root).resolve(), machines=tuple(machines),
                      data_versions=data_versions, payloads=payloads)
 
@@ -265,6 +293,7 @@ def _load_one(plan: sp.StatsPlan, cfg, aid: str, declared: Mapping[str, Any], da
             failures.append(f"{p}: tabella {t} non valida: {exc}")
             continue
         out.tables[t], out.table_sha256[t] = df, _sha256_file(path)
+        out.table_id_sha256[t] = identity_table_sha256(df, t, out.table_sha256[t])
         if len(df) != expected_rows.get(t):
             failures.append(f"{p}: tabella {t} con {len(df)} righe, analysis.json ne registra {expected_rows.get(t)}")
         if t != "fits":
@@ -556,7 +585,8 @@ def stats_id_components(plan: sp.StatsPlan, inputs: StatsInputs,
     if not environment:
         raise ValueError("stats_id: ambiente mancante")
     rows = [{"kind": i.kind, "experiment": i.experiment, "analysis_id": i.analysis_id,
-             "analysis_json_sha256": i.analysis_json_sha256, "table_sha256": dict(sorted(i.table_sha256.items()))}
+             "analysis_json_id_sha256": i.analysis_json_id_sha256,
+             "table_id_sha256": dict(sorted(i.table_id_sha256.items()))}
             for i in inputs.inputs.values()]
     return {"stats_plan_sha256": sp.stats_plan_sha256(plan), "stats_code_version": sp.STATS_CODE_VERSION,
             "inputs": sorted(rows, key=lambda r: (r["kind"], r["experiment"], r["analysis_id"])),

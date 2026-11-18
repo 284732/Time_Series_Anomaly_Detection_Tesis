@@ -22,12 +22,11 @@ import pandas as pd
 from src.pipeline.store import RUN_INFO_JSON, STATS_DIR, STATS_JSON
 
 
-def build_report_stats(root: Path) -> Path:
-    """Cartella di statistiche sintetica completa; ritorna ``<store>/stats/<stats_id>``."""
+def build_analyses(root: Path) -> dict:
+    """Dataset, repo, fit e analisi sintetici in ``root`` (chdir temporaneo); nessuna statistica."""
     import tests.test_f7_integration as it
     from src.pipeline import analyze as an
     from src.pipeline import fit as fitmod
-    from src.stats import run as rn
     from tests.fixtures.git_repo import make_repo
     from tests.fixtures.synth_many import write_many_dataset
 
@@ -47,12 +46,31 @@ def build_report_stats(root: Path) -> Path:
                                   repo_root=repo)
             aids[e] = rep.analysis_id
             shas[e] = json.loads((rep.analysis_dir / "analysis.json").read_text(encoding="utf-8"))["plan_sha256"]
-        plan = it.stats_plan(specs, shas)
-        plan["rq4"]["descriptive_metrics"] = ["detection_delay", "event_recall"]
-        plan["exclusions"]["nonfinite_cal"] = "exclude_fit"
-        plan["exclusions"]["exclude_fit_sensitivity"] = True
-        rep = rn.run_stats(plan, [(copy.deepcopy(specs[e]), aids[e]) for e in (it.PRIMARY, it.SCALER)],
-                           datasets_dir=paths["spec"].parent, repo_root=repo)
+        return {"root": root, "paths": paths, "repo": repo, "specs": specs, "aids": aids, "plan_shas": shas,
+                "order": (it.PRIMARY, it.SCALER)}
+    finally:
+        os.chdir(old)
+
+
+def report_plan(env: dict) -> dict:
+    """Piano statistico del report: quello d'integrazione con ritardo tra le descrittive di RQ4 e sensibilità P8."""
+    import tests.test_f7_integration as it
+    plan = it.stats_plan(env["specs"], env["plan_shas"])
+    plan["rq4"]["descriptive_metrics"] = ["detection_delay", "event_recall"]
+    plan["exclusions"]["nonfinite_cal"] = "exclude_fit"
+    plan["exclusions"]["exclude_fit_sensitivity"] = True
+    return plan
+
+
+def build_report_stats(root: Path) -> Path:
+    """Cartella di statistiche sintetica completa; ritorna ``<store>/stats/<stats_id>``."""
+    from src.stats import run as rn
+    env = build_analyses(root)
+    old = os.getcwd()
+    os.chdir(env["root"])
+    try:
+        rep = rn.run_stats(report_plan(env), [(copy.deepcopy(env["specs"][e]), env["aids"][e]) for e in env["order"]],
+                           datasets_dir=env["paths"]["spec"].parent, repo_root=env["repo"])
         return rep.stats_dir
     finally:
         os.chdir(old)

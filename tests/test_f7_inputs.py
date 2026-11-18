@@ -587,10 +587,10 @@ def test_stats_id_is_twelve_hex_and_depends_on_every_component(env):
     assert changed(lambda c: c.update(stats_plan_sha256="0" * 64))
     assert changed(lambda c: c.update(stats_code_version=c["stats_code_version"] + 1))
     assert changed(lambda c: c["environment"].update(numpy="0"))
-    for field in ("analysis_id", "analysis_json_sha256", "kind"):
+    for field in ("analysis_id", "analysis_json_id_sha256", "kind"):
         assert changed(lambda c, f=field: c["inputs"][0].update({f: "x"}))
     for t in ("free", "thr", "fits"):
-        assert changed(lambda c, t=t: c["inputs"][0]["table_sha256"].update({t: "0" * 64}))
+        assert changed(lambda c, t=t: c["inputs"][0]["table_id_sha256"].update({t: "0" * 64}))
 
 
 def test_stats_id_components_use_the_plan_hash_and_code_version(env):
@@ -699,3 +699,73 @@ def test_a_stats_registry_row_is_never_read_as_an_analysis_row(env, work):
     write([r for r in rows if not (r["stage"] == "analyze" and r["experiment"] == PRIMARY)] + [stats_row])
     out = load(env)
     assert len(out.warnings) == 1 and "nessuna riga del registro" in out.warnings[0]
+
+
+
+# ---------------------------------------------------------------- passo 12: stats_id senza tempi misurati
+def _copy_env(env, dst, fits=None, analysis_json=None):
+    """Copia dell'ambiente (stessi percorsi relativi, quindi stessi config_sha256) con modifiche mirate."""
+    import json
+    import shutil
+    from src.pipeline import table_schema as ts_
+    from src.pipeline.store import Store
+    shutil.copytree(env["root"], dst)
+    store = Store(dst / STORE)
+    adir = store.analysis_dir("exploratory", PRIMARY, env["aids"][PRIMARY])
+    if fits is not None:
+        df = fits(store.read_table(adir, "fits"))
+        (adir / "tables" / "fits.csv.gz").write_bytes(ts_.to_csv_gz_bytes(df, "fits"))
+    if analysis_json is not None:
+        p = adir / "analysis.json"
+        doc = json.loads(p.read_text(encoding="utf-8"))
+        analysis_json(doc)
+        p.write_text(json.dumps(doc, sort_keys=True, indent=1), encoding="utf-8")
+    return dst
+
+
+def _sid_at(env, root, monkeypatch):
+    monkeypatch.chdir(root)
+    out = load(env)
+    return si.stats_id(si.stats_id_components(out.plan, out, si.stats_environment())), out
+
+
+def test_identity_exclusions_cover_every_duration_column_of_the_schema():
+    import re
+    from src.pipeline import table_schema as ts_
+    dur = re.compile(r"(_sec|_secs|_seconds|_ms|_time|duration|elapsed)$")
+    found = {t: tuple(c.name for c in cols if dur.search(c.name)) for t, cols in ts_.TABLES.items()}
+    assert {t: c for t, c in found.items() if c} == si.IDENTITY_EXCLUDED_COLUMNS == {"fits": ("fit_sec",)}
+
+
+def test_same_results_with_different_fit_sec_give_the_same_stats_id(env, tmp_path, monkeypatch):
+    def slower(df):
+        df["fit_sec"] = df["fit_sec"].astype(float) * 3.0 + 1.0
+        return df
+    a = _copy_env(env, tmp_path / "a")
+    b = _copy_env(env, tmp_path / "b", fits=slower)
+    sid_a, in_a = _sid_at(env, a, monkeypatch)
+    sid_b, in_b = _sid_at(env, b, monkeypatch)
+    assert in_a.inputs[PRIMARY].table_sha256["fits"] != in_b.inputs[PRIMARY].table_sha256["fits"]   # provenance
+    assert sid_a == sid_b
+
+
+def test_a_different_result_in_fits_changes_the_stats_id(env, tmp_path, monkeypatch):
+    def other(df):
+        df.loc[df.index[0], "n_fit_windows"] = int(df["n_fit_windows"].iloc[0]) + 1
+        return df
+    sid_a, _ = _sid_at(env, _copy_env(env, tmp_path / "a"), monkeypatch)
+    sid_b, _ = _sid_at(env, _copy_env(env, tmp_path / "b", fits=other), monkeypatch)
+    assert sid_a != sid_b
+
+
+def test_run_identity_of_analysis_json_does_not_change_the_stats_id(env, tmp_path, monkeypatch):
+    def when(doc):
+        doc["created_utc"] = "2030-01-01T00:00:00Z"
+        doc["git"] = {"commit": "0" * 40, "dirty": True}
+    def result(doc):
+        doc["nan_reasons"] = dict(doc.get("nan_reasons") or {}, extra=1)
+    sid_a, in_a = _sid_at(env, _copy_env(env, tmp_path / "a"), monkeypatch)
+    sid_b, in_b = _sid_at(env, _copy_env(env, tmp_path / "b", analysis_json=when), monkeypatch)
+    sid_c, _ = _sid_at(env, _copy_env(env, tmp_path / "c", analysis_json=result), monkeypatch)
+    assert in_a.inputs[PRIMARY].analysis_json_sha256 != in_b.inputs[PRIMARY].analysis_json_sha256
+    assert sid_a == sid_b and sid_a != sid_c

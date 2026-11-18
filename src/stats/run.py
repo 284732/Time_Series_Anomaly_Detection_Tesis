@@ -230,6 +230,7 @@ def render_files(plan: sp.StatsPlan, inputs: si.StatsInputs, main: Outputs, sens
         "components": components, "plan": plan.to_dict(), "stats_plan_sha256": sp.stats_plan_sha256(plan),
         "inputs": [_input_record(inputs.inputs[e]) for e in sorted(inputs.inputs)],
         "environment": components["environment"],
+        "identity_exclusions": si.identity_exclusions(),       # campi fuori da stats_id (passo 12)
         "warnings": list(inputs.warnings) + list(main.warnings),
         "filter": main.blocks["filter"], "rq": main.blocks["rq"],
         "sensitivity": None if sens is None else {"analysis_variant": "sensitivity", "inference": "exploratory",

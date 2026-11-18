@@ -1,0 +1,85 @@
+{
+ "environment": {
+  "numpy": "2.3.4",
+  "pandas": "2.3.3",
+  "python": "3.13.9",
+  "scipy": "1.16.3"
+ },
+ "outputs": {
+  "sensitivity/tables/descriptives.csv.gz": "332ec7d338e9880cf1fa89680c9ad3b0d4e8c78e42bd4d4a53fb55ba300e3179",
+  "sensitivity/tables/diagnostic_integ_primary_free.csv.gz": "12cfa7f430f3f31fa7fb22ce255d2426a0f9eb8a42af793e47134e283eba010f",
+  "sensitivity/tables/diagnostic_integ_primary_thr.csv.gz": "97ac3f667b1afaa339e335e6410b031eabdd58c1f09a68dbcac7293fdb97260c",
+  "sensitivity/tables/diagnostic_integ_scaler_free.csv.gz": "b36403b3f9e6d1fdbd75daa705291de64728efd4065e750b5d39a4917942998b",
+  "sensitivity/tables/diagnostic_integ_scaler_thr.csv.gz": "c8a3b5316ebe6455518c837ddd31caf0a4e2e90fbe5336748e52259b4a581953",
+  "sensitivity/tables/exclusions.csv.gz": "eb7d56ca4e89517e5d6728494646373fb36ad7fa8158803a7e4a6bb1e2d79f73",
+  "sensitivity/tables/machine_table.csv.gz": "35229727bf0b927196e972244fc62631a9b3e5de6db66b85aa938c57dd957486",
+  "sensitivity/tables/rq1a_measure_inversions.csv.gz": "0f09ffefaef67ff953d9a4cf1cb78d3d65e8d0864d817796e0d0f034bd09368e",
+  "sensitivity/tables/rq1a_measure_mean_inversions.csv.gz": "0a389cae3712ed0be2c0abdac483ca230b956d1d609c2d503f12bdbb6857aa76",
+  "sensitivity/tables/rq1a_measure_tau.csv.gz": "dfa133d80db9bb5883ebadca3c70652c2057177469c9cf4d3444ec4abb5bd98d",
+  "sensitivity/tables/rq1a_measure_tau_means.csv.gz": "d7c4986466c388e220f9d5b01947469cdf1dc7cc6f54993d4d6498f19af356c5",
+  "sensitivity/tables/rq1a_measure_tau_summary.csv.gz": "313da07122ec77b4197f3cb803730bb1eaf681b96c9fc57c3b9338ebc7993db4",
+  "sensitivity/tables/rq1a_measure_terms.csv.gz": "7ac929dfc1021f4cec0da73a77abdfcdcceb0bd35d17a79195d01e647402b2d5",
+  "sensitivity/tables/rq1b_design_inversions.csv.gz": "7680e02a8b3c0a5f2a8067acffdae4e8229a4fe7841ed47b0f3f87dd9d9f3146",
+  "sensitivity/tables/rq1b_design_mean_inversions.csv.gz": "d1dba3654731e0711125e8f19ae00f9d18b933bc859b3c0e8bb3693c16b4f91c",
+  "sensitivity/tables/rq1b_design_tau.csv.gz": "5cd8a3e1fd7ab44af52cfa76fac18bba092a70101a05476e18f2752974ad5d1e",
+  "sensitivity/tables/rq1b_design_tau_means.csv.gz": "4262403e2653c82ce0372aa2180f8616e850027218e75aff2d49ca2edceb48ff",
+  "sensitivity/tables/rq1b_design_tau_summary.csv.gz": "6ede232723bbbeecc55a0585ac6601b725963b6886bcd335a55dad079508d5dd",
+  "sensitivity/tables/rq1b_design_terms.csv.gz": "98ccb2259bf1c5aa8ca51a5fd4fed03970981c525f937d09bbc6448283b5ea45",
+  "sensitivity/tables/rq2_deltas.csv.gz": "1274bdb4211312d07a27b0b904e01842475ad523512ae7ed41209c6101f20262",
+  "sensitivity/tables/rq2_summary.csv.gz": "aaa80aebc4e74c8da9dde3ea1a246823a8715b3b7e373ac1d63782c41a6c73e1",
+  "sensitivity/tables/rq3_correlations.csv.gz": "f506c4fe46881c93fa91157cab7a449b3176d59b042d00813fd598e4946d994a",
+  "sensitivity/tables/rq3_descriptors.csv.gz": "cc5f26ab90bc7abb85ed5afa4f0ca61355f4d72fa41ea7a38d10377dd0c4b113",
+  "sensitivity/tables/rq4_descriptive.csv.gz": "af27c590533de56bce6e2a6f234350c57e69764e3529f28f36feabec104c9291",
+  "sensitivity/tables/rq4_f1_terms.csv.gz": "cf8f44ab417b50ec9055c22348aee9f8cb9de1b0821b6438330375285eba2a4b",
+  "sensitivity/tables/rq4_fpr_terms.csv.gz": "e6330a32fa605f3f838c5c500b7ca93b0c166cb36ceec04f4b037071c4737a8a",
+  "sensitivity/tables/rq4_offset.csv.gz": "df8acb56391dded6c3764ba8d23d9c0a2d1666c7aa501d448fcecba3a810a576",
+  "sensitivity/tables/rq4_offset_summary.csv.gz": "11dea09ca5cb8d358d2920d1207e5b2bac1765bdceda44fb0358708bc51e5e50",
+  "stats.json (normalizzato)": "78d63cdfb8b5f793ae8cb3fe20fdf895ccf08f2baedd89a779dbfe954a687707",
+  "tables/descriptives.csv.gz": "c4a0a9e7dc1f084e7a1d7ed4211d5a980de0033a94e9f481321baacbde32f574",
+  "tables/diagnostic_integ_primary_free.csv.gz": "ea477d4ebb0855207109d9d34ce14bc49df798abb0fed92be141d1dadfde5283",
+  "tables/diagnostic_integ_primary_thr.csv.gz": "070701939ca6c66e52fb0d12f1e9f6f439246047fb15a8eea6d6f2d28fb305fc",
+  "tables/diagnostic_integ_scaler_free.csv.gz": "24882524af9cb3965c6703deeead409e2b1fe812eb2b3b3207b885753ceb6aa6",
+  "tables/diagnostic_integ_scaler_thr.csv.gz": "9c9bd8feff34628e97d4e75b30b344451b1bba800d718dc731f8e5fba3d078ba",
+  "tables/exclusions.csv.gz": "eb7d56ca4e89517e5d6728494646373fb36ad7fa8158803a7e4a6bb1e2d79f73",
+  "tables/machine_table.csv.gz": "256729c7fa5b26eb8c41690a8df7c9d476111f11e55a2322acc032a0dc99a2d8",
+  "tables/rq1a_measure_inversions.csv.gz": "77adf58a43b25c31ba47efca6a6d37c8ed08782abc40a38084724abc0f85a9b8",
+  "tables/rq1a_measure_mean_inversions.csv.gz": "c9f36752194db242da44688623e8ddeb096391aaa42558f3cc5444814abdba2a",
+  "tables/rq1a_measure_tau.csv.gz": "0a645a2ef3c1927bd5b1ec93c759834dc9b841d085cb987fbc3f28fede970f82",
+  "tables/rq1a_measure_tau_means.csv.gz": "4c9156409cf34d2bf761fe166273d736ed4796baa30d1f79526ab8d0e541bb81",
+  "tables/rq1a_measure_tau_summary.csv.gz": "f49d97fc09e5be2c4a2e9d5fbd8b7c038352963f4772d2e90f7ae7e457eab811",
+  "tables/rq1a_measure_terms.csv.gz": "55ac5a47c66c7ff637ab0e96d00c9ebd94546528028841ec3976c656bf3a6bae",
+  "tables/rq1b_design_inversions.csv.gz": "6ceccd8920feb71c0af0e13b5095fc23abfd9b94af0f415d0b68c2651a1b7a6c",
+  "tables/rq1b_design_mean_inversions.csv.gz": "054a7c375d0409b00dab998cf6d77c1c8d2a934944c7d48ce8fd77be38e5bbf3",
+  "tables/rq1b_design_tau.csv.gz": "f5fe91096c35f22606f22d9c375af54883a304455850fb3825eca9a82c6526ac",
+  "tables/rq1b_design_tau_means.csv.gz": "072805cb15a780dd55002b07921b8f5c9f49bd7be7e92281239bdbbb04f25b22",
+  "tables/rq1b_design_tau_summary.csv.gz": "28694798d65bfc720e40f5b5bcda4adc6acbc69fa422a3e8d586a093ed042ca2",
+  "tables/rq1b_design_terms.csv.gz": "60e6d6d5e1ae764f90871aadf2adc4d4d8ef63b065bf86a2446d4ae0e83b54b5",
+  "tables/rq2_deltas.csv.gz": "bf47cccaf41811ec4d25a27347d4941491b06e450eab798fc2dad04643e28003",
+  "tables/rq2_summary.csv.gz": "3066a87a7b75bfc6acebb74085f0bebb04a26b17d823d019ba82be2de5e009bc",
+  "tables/rq3_correlations.csv.gz": "dbba4d8aa1b75431e63f581fdaa6b17c9b0e05abf1c64dd62f33984f7a9ae49a",
+  "tables/rq3_descriptors.csv.gz": "363511b801bf17641f0088b5b88850a655f6bca6ca4b8f51b67ff681295ec146",
+  "tables/rq4_descriptive.csv.gz": "e091a8006159aa2ea29d838192f2a495c3ba373bf3fdbcbff12333c7e50faded",
+  "tables/rq4_f1_terms.csv.gz": "208301a2adab5d4f364b308dcbc3e280306795975c95b4f9b5194ba602199ba9",
+  "tables/rq4_fpr_terms.csv.gz": "9b40840e66dd934a803b80678e682eae48226808dbf6b14956341bf9b3ae3f35",
+  "tables/rq4_offset.csv.gz": "ff1ac4b07010fd1a47e4913e8ee2ab2a776318691c46101730b35878f1462239",
+  "tables/rq4_offset_summary.csv.gz": "a833ae9a2d37da889ad6cea298fdeec55c64f83955570bf0d0c7f07c9e649718"
+ },
+ "run_dependent_keys": {
+  "inputs": [
+   "config_sha256",
+   "analysis_json_sha256"
+  ],
+  "inputs.table_sha256": [
+   "fits"
+  ],
+  "plan.inputs": [
+   "config_sha256"
+  ],
+  "top": [
+   "stats_id",
+   "stats_plan_sha256",
+   "components"
+  ]
+ },
+ "stats_code_version": 4
+}

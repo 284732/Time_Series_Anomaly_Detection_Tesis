@@ -353,4 +353,15 @@ def test_sensitivity_block_publishes_the_exclude_fit_count(env, work):
     rep = run(env, work, raw=_sens_plan(env))
     doc = json.loads((rep.stats_dir / STATS_JSON).read_text(encoding="utf-8"))
     assert doc["sensitivity"]["n_exclude_fit_cases"] == rn.exclude_fit_cases(doc["filter"])
-    assert doc["stats_code_version"] == 3
+    assert doc["stats_code_version"] == sp.STATS_CODE_VERSION == 4
+
+
+
+def test_stats_json_declares_the_identity_exclusions_and_keeps_full_hashes(at_shared):
+    doc = json.loads((at_shared["rep"].stats_dir / STATS_JSON).read_text(encoding="utf-8"))
+    assert doc["identity_exclusions"] == {"tables": {"fits": ["fit_sec"]},
+                                          "analysis.json": ["run_id", "created_utc", "git"]}
+    for i in doc["inputs"]:                                   # provenance: sha256 completi dei file pubblicati
+        assert set(i["table_sha256"]) == {"free", "thr", "fits"} and len(i["analysis_json_sha256"]) == 64
+    for c in doc["components"]["inputs"]:                     # identità: proiezioni
+        assert set(c) >= {"analysis_json_id_sha256", "table_id_sha256"} and "table_sha256" not in c

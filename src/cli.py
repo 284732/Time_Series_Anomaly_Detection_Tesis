@@ -467,7 +467,16 @@ def build_parser() -> argparse.ArgumentParser:
     return ap
 
 
+def _safe_streams() -> None:
+    """Un carattere non codificabile (es. «ρ» su una pipe cp1252 di Windows) diventa una sequenza di escape invece di
+    far fallire il comando dopo il lavoro fatto (F7 passo 12); la codifica resta quella del sistema."""
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(errors="backslashreplace")
+
+
 def main(argv: Optional[List[str]] = None) -> int:
+    _safe_streams()
     args = build_parser().parse_args(argv)
     return args.func(args)
 

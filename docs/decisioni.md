@@ -2126,6 +2126,53 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
     - Il report rifiuta, con codice 2, una sensibilità senza conteggio valido.
   - **`STATS_CODE_VERSION` = 3**, perché cambiano l'avvertenza di RQ3 e `stats.json`.
   - **Report d'esempio:** si generano in `reports_local/`, esclusa da git.
+- **Nota di rimando (2026-11-18, passo 12 A+B, il testo sopra resta invariato; piano approvato dall'utente):**
+  golden e prova completa.
+  - **Golden** (`tests/test_f7_golden.py`, `tests/golden/{stats,report}_synth.json`), sullo stesso ambiente
+    sintetico del report.
+    - Statistiche, legate a `STATS_CODE_VERSION`: sha256 di ogni tabella pubblicata e di `stats.json` normalizzato.
+    - Report, legato a `REPORT_CODE_VERSION` e `STATS_CODE_VERSION`: `.md`, `.tex` e `.csv` con separatore
+      `comma`, più `report.json` normalizzato. Figure escluse (decisione dell'utente). L'ambiente registrato include
+      matplotlib.
+    - Rigenerazione solo con `python tests/test_f7_golden.py --write-golden`, che rifiuta uscite cambiate con la
+      stessa versione.
+  - **Fatti verificati per la normalizzazione:** costruito due volte in cartelle diverse, l'ambiente dà tabelle
+    identiche byte per byte. Di `stats.json` cambiano solo i campi che dipendono:
+    - dai percorsi assoluti (`config_sha256` li include): `stats_id`, `stats_plan_sha256`, `components`,
+      `config_sha256` e `analysis_json_sha256` degli ingressi;
+    - dalle misure del run: lo sha256 della tabella `fits` degli ingressi, che contiene `fit_sec`.
+
+    L'elenco è in `RUN_DEPENDENT_KEYS` ed è registrato nella golden.
+    - La normalizzazione dei percorsi assoluti vale solo per l'ambiente dei test, che scrive percorsi assoluti nelle
+      config.
+    - Fatto verificato: con le config reali i percorsi sono relativi (`base.yaml`: `data.data_dir: dataset`;
+      specifiche dei dataset: percorsi relativi alla loro cartella). Lo stesso esperimento caricato da due copie di
+      `configs/` in cartelle diverse dà lo stesso `config_sha256`.
+    - Limite: `paths.store_root` è aggiunto da ogni esperimento e lo schema accetta anche un percorso assoluto (non
+      esistono ancora esperimenti reali in `configs/experiments/`). Proposta, non applicata: rifiutare i percorsi
+      assoluti negli esperimenti `official` (F10).
+  - **`stats_id` senza tempi misurati (`STATS_CODE_VERSION` = 4).**
+    - L'identità si calcola su proiezioni: tabella `fits` senza `fit_sec`, l'unica colonna di durata dello schema
+      (un test lo verifica su tutte le tabelle); `analysis.json` senza `run_id`, `created_utc` e `git`. Su
+      `analysis.json` si applica lo stesso principio: un'analisi rifatta con risultati identici dà lo stesso
+      `stats_id`.
+    - L'elenco è dichiarato in `stats.json` (`identity_exclusions`). Le tabelle e gli sha256 completi restano in
+      `stats.json` come provenance.
+    - Test: `fit_sec` diversi con risultati identici → stesso `stats_id`; un risultato diverso in `fits` → `stats_id`
+      diverso; identità del run diversa in `analysis.json` → stesso `stats_id`, un suo risultato diverso → diverso.
+    - Prove di difetto: 4 su 4.
+    - La golden si genera con un solo thread, come i test: con più thread PCA (BLAS) cambia le ultime cifre delle
+      tabelle diagnostiche. Il primo tentativo senza `single_thread()` era sbagliato; è stato rigenerato.
+  - **Prova completa da riga di comando** (`tests/test_f7_cli_e2e.py`, `slow`): esperimenti come file YAML uniti a
+    `base.yaml` e ai modelli; `stats` → `status` → `report` → secondo `report` rifiutato (codici 0, 0, 0, 2).
+  - **Fatto verificato, limite fino a F8:** un esperimento `split3` scritto su file non si carica finché
+    `configs/base.yaml` dichiara `split.val_ratio` (`legacy2`). L'unione profonda non toglie chiavi e lo schema di
+    `split3` rifiuta `val_ratio`.
+    - Per questo la prova completa usa `legacy2` (solo `primary`; `test_context` richiede `split3`, D-60).
+    - Un test documenta il limite; va rivisto quando F8 cambia `base.yaml`.
+  - **Difetto trovato e corretto** (`src/cli.py`): su una pipe cp1252 di Windows, un avviso con «ρ» faceva uscire
+    `stats` con codice 1 dopo la pubblicazione. Ora `main` imposta `errors="backslashreplace"` su stdout e stderr,
+    con la stessa codifica. Test e prova di difetto.
 
 ### D-53 · File tracciati da git (`.pyc`, dataset) — APPROVATA · 2026-11-10
 - **Decisione:** i `.pyc` non sono tracciati: i 35 file già tracciati sono tolti dal tracciamento con

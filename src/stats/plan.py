@@ -54,8 +54,9 @@ from src.utils.schema import ConfigError
 
 # Da incrementare a mano quando cambia la numerica della statistica o il contratto delle sue uscite (entra in
 # ``stats_id``, D-73 P6).
-STATS_CODE_VERSION = 3          # 2: status nel blocco rq4 (passo 11); 3: avvertenza di potenza di RQ3 e
-                                # n_exclude_fit_cases nella sensibilità (passo 11-bis)
+STATS_CODE_VERSION = 4          # 2: status nel blocco rq4 (passo 11); 3: avvertenza di potenza di RQ3 e
+                                # n_exclude_fit_cases nella sensibilità (passo 11-bis); 4: stats_id senza tempi
+                                # misurati né identità del run, identity_exclusions in stats.json (passo 12)
 SHORT_NAME_RE = re.compile(r"[a-z0-9_]{1,32}")
 SHORT_NAME_MAX = 32
 
