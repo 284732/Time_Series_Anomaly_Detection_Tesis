@@ -416,5 +416,5 @@ def test_fit_summary_and_report(run_a):
     assert seconds < 60
 
 
-def test_no_store_in_repository():
-    assert not (ROOT / "store").exists()
+def test_store_not_modified(repo_store_guard):
+    repo_store_guard.check()

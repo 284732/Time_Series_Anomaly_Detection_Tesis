@@ -157,14 +157,14 @@ def test_exit_130_on_keyboard_interrupt(env, tmp_path, monkeypatch):
 
 # ------------------------------------------------------------------ 3. fumo con subprocess
 @pytest.mark.slow          # circa 11 s (due subprocess che reimportano torch); incluso nella suite predefinita
-def test_smoke_subprocess_fit_and_status(env, tmp_path):
+def test_smoke_subprocess_fit_and_status(env, tmp_path, repo_store_guard):
     path, store = _yaml(env, tmp_path, run_models=("pca", "input_norm"))
     for cmd in ("fit", "status"):
         p = subprocess.run([sys.executable, "-m", "src.cli", cmd, str(path), "--datasets-dir", str(env["datasets_dir"])],
                            cwd=ROOT, capture_output=True, text=True, timeout=300)
         assert p.returncode == 0, (cmd, p.stdout, p.stderr)
     assert p.stdout.count(" complete ") == 4
-    assert not (ROOT / "store").exists()
+    repo_store_guard.check()
 
 
 # ------------------------------------------------------------------ 4. status in sola lettura
@@ -372,6 +372,6 @@ def test_clean_tmp_lock_cases(env, tmp_path, capsys):
     assert len(summary) == n_tmp + 1
 
 
-def test_no_store_in_repository():
-    assert not (ROOT / "store").exists()
+def test_store_not_modified(repo_store_guard):
+    repo_store_guard.check()
 

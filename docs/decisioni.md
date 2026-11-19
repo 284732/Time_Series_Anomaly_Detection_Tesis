@@ -689,6 +689,12 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
   dati reali lanciato dall'utente. Dopo M1: confronto tra run dello `store/`. `confronta_run.py` resta lo strumento per
   la pipeline storica.
 - **Documenti:** `CLAUDE.md` §5; proposta §9; piano F1, M1.
+- **Nota di rimando (2026-11-19, chiusura di M1, il testo sopra resta invariato):** M1 superata il 2026-11-19 con
+  parità esatta su entrambe le varianti di D-50. Fit e analisi sul commit `4d8d248`; run di fit
+  `20261119T144234-c54fd9f8`; analisi `be0a03233647` (aggregazione nella finestra `last`, proiezione `last`) e
+  `a02e1de4a1e5` (aggregazione nella finestra `mean`, proiezione `last`). Dettagli in `docs/m1_parita.md`. Da qui la
+  verifica di «nessun cambiamento numerico» è il confronto tra due run dello `store/` con stessa config e stessi seed;
+  snapshot F1 e golden restano nella suite come controlli sintetici.
 
 ### D-15 · Interfaccia di `fit` invariata, `FitInfo` come attributo — APPROVATA · 2026-11-09
 - **Decisione:** `fit(X, y=None, X_val=None) -> self` non cambia. Le informazioni di training vanno in `self.fit_info_`
@@ -700,6 +706,19 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
 - **Decisione:** i test possono addestrare modelli minimi su dati sintetici generati in `tmp_path`; non leggono `dataset/`
   e non scrivono in `results/`, `store/` o altre cartelle del repository.
 - **Documenti:** `CLAUDE.md` §4; piano F1.
+- **Nota di rimando (2026-11-19, chiusura di M1, il testo sopra resta invariato; modifica di test esistenti approvata
+  dall'utente):** il controllo su `store/` del repository passa da «`store/` assente» a «`store/` non modificato dai
+  test».
+  - **Motivo:** dopo M1 `store/` esiste legittimamente (D-56) e contiene i run di M1. Il vecchio controllo falliva
+    sempre e non verificava più l'intento di questa voce.
+  - **Come:** in `tests/conftest.py` un'impronta di sessione presa all'inizio (`tests/fixtures/store_guard.py`:
+    percorsi relativi, cartelle, dimensione e `mtime_ns` dei file), confrontata alla fine dei 6 test che prima
+    controllavano l'assenza: `test_no_store_in_repository` (rinominato `test_store_not_modified`) in
+    `test_f5_cli.py`, `test_f5_failures.py`, `test_f5_fit.py` e `test_f5_regenerate.py`, più i due test di fumo con sottoprocesso di F5 e F6. Se `store/`
+    manca all'inizio, il test verifica che manchi ancora: in quel caso il controllo coincide con il precedente.
+  - **Verifica:** prove su radici temporanee in `tests/test_store_guard.py` (file nuovo, cartella vuota nuova, file
+    riscritto con lo stesso contenuto, dimensione cambiata a `mtime` invariato, file cancellato, `store/` creato quando
+    mancava, `store/` rimosso). Le prove di difetto sono fatte sulla guardia e sulla fixture, mai su `store/`.
 
 ### D-17 · Procedura di M1 e tolleranze — APPROVATA · 2026-11-09
 - **Decisione:** PCA e baseline deterministiche: tolleranza zero. AE: prima si tenta l'identità bit a bit con lo stesso
@@ -724,6 +743,11 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
     puntuale e baseline random una differenza storico ≠ riesecuzione va comunque diagnosticata (prima i dati, con
     `scripts/make_data_hashes.py --check`) e l'accettazione richiede l'approvazione esplicita dell'utente (tolleranza
     zero di questa voce).
+- **Nota di rimando (2026-11-19, chiusura di M1, il testo sopra resta invariato):** identità bit a bit ottenuta per
+  tutti i modelli, AE compresi, con i thread predefiniti registrati sopra (uguali in tutti gli 8 fit). Questo vale per
+  storico contro nuovo, storico contro riesecuzione e riesecuzione contro nuovo, epoche comprese. Nessuna tolleranza
+  fissata, nessuna diagnosi necessaria; la regola D5 non si è applicata. Il valore dei thread per i run ufficiali resta
+  da decidere in F10. Dettagli in `docs/m1_parita.md`.
 
 ### D-18 · Dipendenze — APPROVATA · 2026-11-09
 - **Decisione:** ammesse quelle di `requirements.txt` (numpy, pandas, scipy, scikit-learn, torch, pyyaml, matplotlib,
@@ -776,6 +800,12 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
 - **Collegamenti:** D-13, D-14, D-17, D-55.
 - **Serve entro:** M1.
 - **Documenti:** `CLAUDE.md` §4; piano gruppo A punto 6, F0, M1.
+- **Nota di rimando (2026-11-19, chiusura di M1, il testo sopra resta invariato):** riferimento riprodotto esattamente,
+  con tolleranza zero, dalla nuova pipeline (analisi `be0a03233647` e `a02e1de4a1e5`) e anche dalla riesecuzione di
+  `main.py` nell'ambiente dedicato (`reports_local/m1/main_rerun_{last,mean}/`). Su 70 file per confronto non c'è
+  nessuna differenza, salvo le esclusioni fissate prima dei run. Il limite sopra (versioni, thread e macchina dei run
+  `_01` non registrati) resta dichiarato, con portata ridotta: lo storico coincide bit a bit con la riesecuzione.
+  Dettagli in `docs/m1_parita.md`.
 
 ### D-55 · Ambiente di riferimento e file di lock — APPROVATA · 2026-11-10
 - **Decisione:** ambiente di riferimento = ambiente Windows dell'utente con **Python 3.13.9**, lo stesso per test, M1 e

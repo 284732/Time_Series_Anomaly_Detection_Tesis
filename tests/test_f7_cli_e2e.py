@@ -15,6 +15,7 @@ Il cambio di ``base.yaml`` è previsto in F8.
 import copy
 import hashlib
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -26,9 +27,16 @@ ROOT = Path(__file__).resolve().parents[1]
 pytestmark = pytest.mark.slow
 
 
+# Codifica delle pipe del sottoprocesso fissata dal test, non ereditata dalla shell: cp1252 è quella delle pipe di
+# Windows, e con «ρ» negli avvisi esercita _safe_streams da main (F7 passo 12). Si decodifica con la stessa codifica.
+SUBPROCESS_ENCODING = "cp1252"
+
+
 def _cli(*args):
-    return subprocess.run([sys.executable, "-m", "src.cli", *map(str, args)], cwd=ROOT, capture_output=True,
-                          text=True)
+    env = dict(os.environ, PYTHONIOENCODING=SUBPROCESS_ENCODING)
+    env.pop("PYTHONUTF8", None)
+    return subprocess.run([sys.executable, "-m", "src.cli", *map(str, args)], cwd=ROOT, env=env, capture_output=True,
+                          encoding=SUBPROCESS_ENCODING)
 
 
 @pytest.fixture(scope="module")

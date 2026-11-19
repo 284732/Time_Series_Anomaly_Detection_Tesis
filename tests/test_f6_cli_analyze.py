@@ -297,7 +297,7 @@ def test_clean_tmp_removes_orphan_analysis_tmp(env, tmp_path, fitted, monkeypatc
 
 # ------------------------------------------------------------------ fumo con subprocess
 @pytest.mark.slow          # tre subprocess che reimportano torch; incluso nella suite predefinita
-def test_smoke_subprocess_fit_analyze_status(env, tmp_path):
+def test_smoke_subprocess_fit_analyze_status(env, tmp_path, repo_store_guard):
     exp, store = _exp(env, tmp_path, name="smoke", run_models=("pca",))
     plan = _plan(tmp_path)
     for args in (["fit", exp], ["analyze", exp, plan], ["status", exp]):
@@ -305,4 +305,4 @@ def test_smoke_subprocess_fit_analyze_status(env, tmp_path):
                             str(env["datasets_dir"])], cwd=ROOT, capture_output=True, text=True, timeout=600)
         assert p.returncode == 0, (args, p.stdout, p.stderr)
     assert "analisi pubblicate: 1" in p.stdout
-    assert not (ROOT / "store").exists()
+    repo_store_guard.check()

@@ -453,5 +453,5 @@ def test_meta_records_rebuild_window_starts_and_ends(env, stores, mode):
     assert (heads > 0) == (mode == "split3")
 
 
-def test_no_store_in_repository():
-    assert not (Path(__file__).resolve().parents[1] / "store").exists()
+def test_store_not_modified(repo_store_guard):
+    repo_store_guard.check()

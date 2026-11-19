@@ -68,9 +68,26 @@ Regole di applicazione:
 - ogni nuova decisione approvata va registrata in `docs/decisioni.md` (data, motivazione, documenti toccati)
   prima di essere implementata.
 
-### 3.3 Pipeline ATTUALE (implementata)
+### 3.3 Pipeline di riferimento (dopo M1)
 
-Entry point `main.py` → `prepare_machine_data` + `run_machine`:
+M1 è superata (2026-11-19, parità esatta, `docs/m1_parita.md`; note su D-14, D-17, D-50). La **nuova pipeline** è
+quella di riferimento: ogni nuovo esperimento passa da `src/cli.py`, e da qui la verifica di «nessun cambiamento
+numerico» è il confronto tra due run dello `store/` (D-14).
+
+Stadi (`python -m src.cli <comando>`):
+1. `fit <esperimento.yaml>` (`src/pipeline/fit.py`, `fit_plan.py`): manifest e segmenti (`src/data/segments.py`;
+   modalità `legacy2` oggi, `split3` da F8), scaler, finestre (`src/data/windows.py`), `set_seed`, fit, checkpoint e
+   residui per sensore (`last`, `mean`, D-33) in `store/fits/<fit_key>/`, con `meta.json` e provenance (D-70).
+2. `analyze <esperimento.yaml> <piano.yaml>` (`src/pipeline/analyze.py`, `analysis_grid.py`): nessun fit; tabelle
+   lunghe `free`, `thr`, `fits` (`table_schema.py`) in `store/runs/<kind>/<esperimento>/analyses/<analysis_id>/`,
+   più l'export legacy opzionale (`legacy_export.py`, D-72).
+3. `stats` (`src/stats/`) e `report` (`src/reporting/`), D-73.
+4. `status [--verify]` e `clean-tmp` per lo stato e l'integrità dello store.
+
+Il protocollo in vigore resta quello storico (`legacy2`, `configs/base.yaml`) fino a F8.
+
+**Pipeline storica, congelata (D-13).** Resta nel repository fino a F12 come riferimento: non si modifica e non serve
+più come oracolo. Entry point `main.py` → `prepare_machine_data` + `run_machine`:
 
 1. `src/data/loader.py` carica train/test/label.
 2. Split cronologico in **2 parti** train/validation (`src/evaluation/protocol.py::chronological_split`, `val_ratio`).
@@ -81,19 +98,29 @@ Entry point `main.py` → `prepare_machine_data` + `run_machine`:
 7. Proiezione finestra→timestamp, soglia = percentile della validation, metriche sul test (`protocol.py`).
 8. Output: JSON metriche, `.npz` con score **per timestamp già aggregati**, CSV per macchina, `summary_timestamp_metrics.csv`.
 
-`main.py` è **congelato** (D-13): resta il riferimento storico finché la nuova pipeline non supera M1.
+`main.py` è **congelato** (D-13) fino a F12. Una riesecuzione si lancia solo su richiesta e scrive in una cartella
+nuova.
 
-Problemi noti (da risolvere nella nuova pipeline, non da preservare):
-- la validation è usata 3 volte (early stopping, normalizer z, soglia): asimmetria AE vs PCA;
-- `src/preprocessing/split.py` (split fit/es/calib) esiste ed è testato ma **non è collegato** a `main.py`;
-- `src/evaluation/protocols.py` (2×2 soglia × PA) e `src/evaluation/rules.py` (soglie causali) sono librerie non richiamate da nessuno script;
-- non si salvano residui per sensore: ogni cambio di `window_time_agg` o di scoring richiede un nuovo fit;
+Problemi noti della pipeline storica (non da preservare), con lo stato nella nuova:
+- la validation è usata 3 volte (early stopping, normalizer z, soglia): asimmetria AE vs PCA. `legacy2` la riproduce
+  di proposito per la parità; si corregge in F8 con `split3` (correzione dichiarata P1);
+- `src/preprocessing/split.py` (split fit/es/calib) esiste ed è testato ma **non è collegato** a `main.py`; nella
+  nuova pipeline `src/data/segments.py` lo usa per `split3` (`split_bounds`), mentre per `legacy2` usa il taglio
+  storico `protocol.chronological_split` con es = cal (doppio uso dichiarato, `es_is_cal`, P1);
+- `src/evaluation/protocols.py` (2×2 soglia × PA) e `src/evaluation/rules.py` (soglie causali) non sono richiamate da
+  `main.py`. Nella nuova pipeline le soglie (`static_pct`, `roll_quantile`, `roll_robust_z`) sono nel modulo nuovo
+  `src/evaluation/thresholds.py`, e `rules.py` resta invariato fino a F12. I test di F6 (`test_f6_thresholds.py`)
+  verificano l'identità con `rules.py` a storia vuota e con NaN solo iniziali, e la differenza dichiarata quando c'è un
+  buco interno (`rules.py` conta per righe, D-72 C1);
+- `main.py` non salva i residui per sensore, quindi ogni cambio di `window_time_agg` o di scoring richiede un nuovo
+  fit; la nuova pipeline li salva (D-33, D-70);
 - `configs/config.yaml` (default di `main.py`) non esiste: usare sempre una config esplicita.
 
 ### 3.4 Architettura target
-Descritta in `proposta_architettura_target.md` e realizzata secondo `piano_operativo.md`: stadio di fit
-(checkpoint + residui per sensore, `fit_key` = hash della config rilevante + `FIT_CODE_VERSION`), stadio di
-analisi (nessun fit, tabella lunga), stadio di statistica e report. Le scelte già approvate sono in
+Descritta in `proposta_architettura_target.md` e realizzata secondo `piano_operativo.md`. Fino a F7 e M1 sono
+implementati e validati in `legacy2` (§3.3): stadio di fit (checkpoint e residui per sensore, `fit_key` = hash della
+config rilevante + `FIT_CODE_VERSION`), stadio di analisi (nessun fit, tabella lunga), stadio di statistica e report.
+Restano da fare il protocollo canonico (F8) e le fasi successive. Le scelte già approvate sono in
 `docs/decisioni.md` (D-03…D-26, D-32, D-33, D-34, D-36, D-45, D-50, D-51, D-52, D-55, D-56, D-58…D-69, D-70, D-71, D-72, D-73, D-76); quelle ancora aperte sono nelle
 sezioni D ed E del registro.
 
@@ -202,21 +229,33 @@ La PCA si fitta solo su fit (D-06).
 
 ## 7. Workflow di sviluppo e testing
 
-Comandi (Windows, dalla root):
-- Test: `python -m pytest -q` (dati sintetici, veloce, nessun dato reale). `pytest.ini` imposta `pythonpath = .`.
-- Test singolo file: `python -m pytest tests/test_protocol.py -q`.
-- Run (solo se richiesto): `python main.py configs/config_tests/repro_last.yaml`.
-- Confronto run: `python scripts/confronta_run.py <dir_A> <dir_B>`.
-- Aggregazione: `python aggregate_results.py --results-dir <cartella_run>`.
-- Statistiche (F7, solo se richiesto): `python -m src.cli stats <piano_stats.yaml> --input <esperimento.yaml> <analysis_id> [--input ...]`.
-- Report (F7): `python -m src.cli report <store/stats/<stats_id>> --out <cartella_nuova> [--decimal comma|point]`; i report d'esempio vanno in `reports_local/` (esclusa da git).
-- Golden di statistiche e report: `python tests/test_f7_golden.py --write-golden`, solo dopo aver aumentato `STATS_CODE_VERSION` o `REPORT_CODE_VERSION`; senza aumento di versione solo se è cambiato l'ambiente registrato (lock compreso) e le uscite differiscono soltanto nei campi d'identità che ne derivano (controllo nel test, nota su D-73).
+Ambiente di riferimento (D-55): `C:\Users\predi\venvs\smd_m1` (fuori dal repository; lock = `requirements-lock.txt`).
+Tutti i comandi usano il suo interprete, dalla root, in PowerShell:
+`$py = "C:\Users\predi\venvs\smd_m1\Scripts\python.exe"`. Prima dei run, nessuna variabile `*_NUM_THREADS` impostata
+(thread predefiniti e registrati, nota su D-17).
+
+- Test: `& $py -m pytest -q` (dati sintetici, nessun dato reale). `pytest.ini` imposta `pythonpath = .`.
+- Test singolo file: `& $py -m pytest tests/test_protocol.py -q`.
+- Test su dati reali (D-62, solo se richiesto): `& $py -m pytest -q --real-data -m real_data`; hash dei dati:
+  `& $py scripts/make_data_hashes.py --check`.
+- Fit (solo se richiesto, dati reali): `& $py -m src.cli fit <esperimento.yaml>`.
+- Analisi (solo se richiesto): `& $py -m src.cli analyze <esperimento.yaml> <piano.yaml>`.
+- Stato e integrità dello store: `& $py -m src.cli status <esperimento.yaml> [--verify]`; pulizia delle cartelle
+  temporanee orfane: `& $py -m src.cli clean-tmp <esperimento.yaml>`.
+- Statistiche (F7, solo se richiesto): `& $py -m src.cli stats <piano_stats.yaml> --input <esperimento.yaml> <analysis_id> [--input ...]`.
+- Report (F7): `& $py -m src.cli report <store/stats/<stats_id>> --out <cartella_nuova> [--decimal comma|point]`; i report d'esempio vanno in `reports_local/` (esclusa da git).
+- Parità con la pipeline storica (M1): `& $py scripts/parity_report.py --reference <run_storico> --store store --experiment <esperimento.yaml> --analysis-id <id> [--rerun <riesecuzione>] --out <cartella_nuova>`.
+- Pipeline storica (congelata, solo se richiesto):
+  - run: `& $py main.py configs/config_tests/repro_last.yaml`;
+  - confronto run: `& $py scripts/confronta_run.py <dir_A> <dir_B>`;
+  - aggregazione: `& $py aggregate_results.py --results-dir <cartella_run>`.
+- Golden di statistiche e report: `& $py tests/test_f7_golden.py --write-golden`, solo dopo aver aumentato `STATS_CODE_VERSION` o `REPORT_CODE_VERSION`; senza aumento di versione solo se è cambiato l'ambiente registrato (lock compreso) e le uscite differiscono soltanto nei campi d'identità che ne derivano (controllo nel test, nota su D-73).
 
 Flusso per ogni compito:
 1. Leggere il codice coinvolto, i test esistenti e le voci pertinenti di `docs/decisioni.md` prima di proporre modifiche.
 2. Se il compito è strutturale (sezione 8) o tocca una decisione `APERTA`, fermarsi al piano e attendere l'approvazione.
 3. Per invarianti (leak, confini, causalità, coerenza protocolli) scrivere prima il test, poi il codice.
-4. Eseguire `python -m pytest -q` dopo ogni modifica e riportare l'esito reale (anche i fallimenti).
+4. Eseguire `& $py -m pytest -q` dopo ogni modifica e riportare l'esito reale (anche i fallimenti).
 5. Se la modifica può alterare i numeri: dirlo esplicitamente e proporre il confronto di regressione (che lancia l'utente).
 6. Riassumere cosa è cambiato, cosa è stato verificato e cosa no; segnalare eventuali problemi emersi lungo la strada.
 
@@ -238,12 +277,13 @@ Prima di scrivere codice:
 Le fasi già approvate in `piano_operativo.md` valgono come piano approvato per il loro perimetro; ogni scostamento
 dal piano torna a questa procedura.
 
-Durante l'implementazione, la pipeline attuale resta funzionante finché la nuova non è validata dal test di
-regressione (M1).
+La nuova pipeline è stata validata dal test di regressione (M1) il 2026-11-19: parità esatta con i run di riferimento
+(`docs/m1_parita.md`). La pipeline storica (`main.py`) resta funzionante e congelata fino a F12, ma non serve più come
+oracolo.
 
 ## 9. Aggiornamenti previsti di questo file
 
 - F0: riconciliazione con `docs/decisioni.md` (questa versione);
-- dopo M1: la nuova pipeline diventa quella di riferimento (§3.3–3.4, §7 comandi);
+- dopo M1: la nuova pipeline diventa quella di riferimento (§3.3–3.4, §7 comandi) — fatto il 2026-11-19;
 - dopo F8: protocollo canonico in vigore (§5);
 - F12: rimozione dei riferimenti alla pipeline storica.

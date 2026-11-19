@@ -834,6 +834,70 @@ D-53 approvata (2026-11-10): `.pyc` tolti dal tracciamento, `dataset/` resta tra
     - AE non addestrati (D-69) e modello di previsione (D-71, D-74) sono fuori da M1;
     - versioni delle librerie, thread e macchina dei run storici non sono registrati (D-50, D-61): limite dichiarato;
       la riesecuzione lo mitiga ma non lo elimina.
+- **Stato: completata (2026-11-19).** Commit: preparazione `4d8d248` (config di parità, `parity_report`, lock
+  dall'ambiente dedicato, golden), chiusura (commit che contiene questa riga). Run lanciati dall'utente il 2026-11-19
+  sul commit `4d8d248`. Report in `docs/m1_parita.md`; report dello script in `reports_local/m1/parity_{last,mean}/`
+  (esclusa da git). Suite di chiusura: vedi il messaggio del commit di chiusura.
+  - **Esito:** **parità esatta** (`parita_esatta`) su entrambe le varianti: aggregazione nella finestra `last` con
+    proiezione `last` (analisi `be0a03233647`) e aggregazione nella finestra `mean` con proiezione `last` (analisi
+    `a02e1de4a1e5`). Il run di fit è `20261119T144234-c54fd9f8` (8 fit, nessun fallito). Codici di uscita 0 per B2, C1,
+    D1, D2, D3, E1.
+  - **Verificato in M1 (dati reali, `machine-1-1` e `machine-3-8`, seed 42, tolleranza zero):**
+    - storico = nuovo, storico = riesecuzione di `main.py`, riesecuzione = nuovo: 70 file per confronto (34 JSON delle
+      metriche, 34 `.npz`, 2 CSV per macchina), nessuna differenza, epoche comprese. I tre modelli soggetti alla
+      regola D5 sono coperti a tolleranza zero (`pca`, `pca_pointwise`, `random_baseline`);
+    - tabella lunga contro export legacy (I1): 408 confronti (34 righe × 12 colonne), righe escluse 0;
+    - non finiti: `n_nonfinite_cal` = `n_nonfinite_test` = 0 e nessuna loss non finita negli 8 fit;
+    - provenance: commit unico, albero pulito, `lock_sha256` del commit, device `cpu`, `seeds[0]` = 42, thread e pool
+      uguali tra i fit, nessuna variabile `*_NUM_THREADS`;
+    - `status --verify` con codice 0.
+
+    I conteggi del report sono a livello di file, non di campi, celle o array (`docs/m1_parita.md` §7).
+  - **Corrispondenza tra test previsti e file:**
+    - config e vincolo sui seed (`seeds[0]` = 42, equivalenza con `repro_*.yaml` e con `legacy_plan`):
+      `test_m1_configs.py` (9 test);
+    - `parity_report.py`: confronti, esclusioni, I1, non finiti, provenance, esiti e codici di uscita, con prove di
+      difetto: `test_m1_parity_report.py` (38 test);
+    - regola delle golden F7 al cambio d'ambiente: `test_f7_golden.py` (8 test nuovi).
+  - **Scostamenti dal piano:**
+    - quelli elencati nella nota del piano di M1 sopra: un esperimento e due piani di analisi, riesecuzione di
+      `main.py`, ambiente dedicato e lock rigenerato, report in `docs/m1_parita.md`;
+    - in più, dal cancello B1: regola delle golden F7 resa più permissiva solo per il cambio d'ambiente con
+      differenze limitate all'identità (nota su D-73).
+  - **Non verificato in M1:**
+    - altre macchine e altri seed;
+    - `input_norm` e `rolling_zscore` su dati reali;
+    - AE non addestrati e modello di previsione;
+    - caso `n_nonfinite_cal` > 0, assente su 1-1 e 3-8;
+    - macchina, thread e versioni dei run storici (limite dichiarato, portata ridotta dall'identità storico =
+      riesecuzione);
+    - le uscite di B2–D3 sono quelle riportate dall'utente (`docs/m1_parita.md` §4); la trascrizione
+      `reports_local/m1/console_D1_E1.txt` contiene solo i codici di D1–E1.
+  - **Test modificati alla chiusura** (approvazione dell'utente, 2026-11-19):
+    - i 6 controlli «`store/` assente» diventano «`store/` non modificato dai test» (nota su D-16; guardia in
+      `tests/fixtures/store_guard.py`, prove in `tests/test_store_guard.py`, 9 test);
+    - `test_f7_cli_e2e.py` fissa la codifica delle pipe del sottoprocesso (`PYTHONIOENCODING=cp1252`, decodifica
+      cp1252) invece di ereditarla dalla shell. Con `PYTHONIOENCODING=utf-8` nella shell il test falliva in
+      decodifica. Prova di difetto: senza `_safe_streams()` in `main` il test ora fallisce. Il caso «ρ» su cp1252
+      resta coperto anche da `test_f7_cli_stats.py::test_unencodable_characters_never_crash_the_command`, che fissa la
+      codifica da sé.
+  - **Passati ad altre fasi:**
+    - **F8** (verifica di completezza alla chiusura di M1):
+      - `split3` da file (dalla chiusura di F7, «Passati ad altre fasi»);
+      - AE non addestrati (D-69): nella sezione F8, «Dipendenze», da implementare dopo M1 e prima di F8;
+      - modello di previsione (D-71, D-74): nella chiusura di F7 e nella sezione F8, «Dipendenze»;
+      - golden F6 allineata alla regola di F7 (chiusura di F7);
+      - docstring di `src/pipeline/legacy_export.py` (chiusura di F7);
+      - *(aggiunto ora)* controllo dei non finiti: lo scostamento dichiarato su `raw_mean` (D-72 C15, caso
+        `n_nonfinite_cal` > 0) non si è presentato su 1-1 e 3-8. Va controllato con la tabella `fits` nell'esperimento
+        legacy contro canonico sulle 6 macchine dev, e nel report va tenuto tra le correzioni dichiarate (nota da F6
+        nella sezione F8).
+    - **F10:** numero di thread per i run ufficiali (fissato o registrato; nota su D-17).
+    - **Dalla chiusura di F7, punti per M1:** chiusi. Lock rigenerato (D-55); confronto sui CSV per macchina e sui
+      JSON, non sul summary; thread registrati. La verifica con `n_nonfinite_cal` è chiusa come «assente» e passa a F8.
+  - **Decisioni approvate durante M1:** D1–D6 e I1–I4 dell'utente, registrate come note di rimando su D-14, D-17, D-18,
+    D-50, D-55 e D-73; nessuna nuova voce `D-xx`.
+  - **Decisioni APERTE toccate e rimaste aperte:** nessuna.
 
 ### F8 — Nuovo protocollo canonico (cambiamento numerico dichiarato)
 - **Obiettivo:** passare a `split3` 60/20/20 [D-05], nessun contesto all'inizio del test nell'analisi primaria e contesto da cal solo nella variante di RQ1a [D-03, D-32, D-20], maschere secondo D-20 e D-22, normalizer e soglie su cal secondo D-23 con storia cal → test [D-04, D-21], PCA solo su fit [D-06], `max_epochs`/patience secondo D-39, `train_step` secondo D-38, preprocessing secondo D-40.
@@ -877,6 +941,9 @@ D-53 approvata (2026-11-10): `.pyc` tolti dal tracciamento, `dataset/` resta tra
     dichiarate finora: P1 (validation usata tre volte); storia per righe di `rules.py` (D-72 C1); NaN nel supporto di
     cal scartato in silenzio dalla soglia statica dello storico (`raw_mean`), ora riga NaN contata (D-72 C15, passo
     6.0).
+- **Nota (2026-11-19, da M1):** il caso `n_nonfinite_cal` > 0 non si è presentato su `machine-1-1` e `machine-3-8`.
+  Nell'esperimento legacy contro canonico sulle 6 macchine dev si controlla con la tabella `fits`; se compare, le righe
+  `raw_mean` con `nan_reason = nonfinite_residual_cal` vanno riportate come correzione dichiarata (D-72 C15).
 
 ### F9 — Tuning e sensibilità (esperimenti esplorativi)
 - **Obiettivo:** scegliere le configurazioni globali per famiglia, con budget pari, sulle 6 macchine dev.

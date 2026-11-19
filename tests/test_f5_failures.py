@@ -415,6 +415,6 @@ def test_fitinfo_nonfinite_roundtrip(field, value):
     assert absent.explained_variance is None         # null senza nonfinite_fields = assente
 
 
-def test_no_store_in_repository():
-    assert not (Path(__file__).resolve().parents[1] / "store").exists()
+def test_store_not_modified(repo_store_guard):
+    repo_store_guard.check()
 

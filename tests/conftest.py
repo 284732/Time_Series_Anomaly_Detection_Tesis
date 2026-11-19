@@ -1,10 +1,15 @@
 """Fixture comuni dei test: determinismo (1 thread), dataset sintetico in una cartella temporanea,
-esclusione dei test ``real_data`` dalla suite di default (D-62)."""
+esclusione dei test ``real_data`` dalla suite di default (D-62), guardia di ``store/`` (D-16)."""
+
+from pathlib import Path
 
 import pytest
 
 from tests.fixtures.legacy_snapshot import single_thread
+from tests.fixtures.store_guard import StoreGuard
 from tests.fixtures.synth_smd import write_synth_smd
+
+REPO_STORE = Path(__file__).resolve().parents[1] / "store"
 
 REAL_DATA_OPTION = "--real-data"
 REAL_DATA_SKIP_REASON = "legge dataset/ (sola lettura): attivo solo con --real-data (D-62)"
@@ -30,6 +35,13 @@ def _single_thread_session():
     """torch.set_num_threads(1) e threadpool_limits(1) solo dentro i test; stato ripristinato alla fine."""
     with single_thread():
         yield
+
+
+@pytest.fixture(scope="session", autouse=True)
+def repo_store_guard():
+    """Impronta di ``store/`` del repository a inizio sessione (sola lettura). I test che la richiedono chiamano
+    ``check()`` alla fine: ``store/`` non modificato dai test, oppure ancora assente se mancava (nota su D-16)."""
+    return StoreGuard(REPO_STORE)
 
 
 @pytest.fixture(scope="session")
