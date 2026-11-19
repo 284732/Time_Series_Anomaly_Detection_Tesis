@@ -1,0 +1,15 @@
+# M1 (D-50; decisione D3 dell'utente del 2026-11-19): un solo esperimento per i due run storici di riferimento,
+# results/results_tests/results_repro_last_01 e results_repro_mean_01. Le due config storiche differiscono solo per
+# l'aggregazione nella finestra, che è un livello dell'analisi (D-33: il fit salva i residui last e mean): i fit sono
+# gli stessi, i due run diventano due piani di analisi (configs/analysis/parity_last.yaml e parity_mean.yaml).
+# Tutto il resto viene da base.yaml (legacy2, valori storici) e da configs/models/; l'equivalenza con la config
+# effettiva di main.py è verificata da tests/test_m1_configs.py. Seed nell'ordine storico, 42 per primo (nota di M1).
+experiment:
+  name: parity_repro
+  kind: exploratory
+  seeds: [42]
+paths:
+  store_root: store
+data:
+  machines: [machine-1-1, machine-3-8]
+run_models: [pca, pca_pointwise, conv_autoencoder, lstm_autoencoder]

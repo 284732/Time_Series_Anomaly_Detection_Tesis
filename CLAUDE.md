@@ -210,7 +210,7 @@ Comandi (Windows, dalla root):
 - Aggregazione: `python aggregate_results.py --results-dir <cartella_run>`.
 - Statistiche (F7, solo se richiesto): `python -m src.cli stats <piano_stats.yaml> --input <esperimento.yaml> <analysis_id> [--input ...]`.
 - Report (F7): `python -m src.cli report <store/stats/<stats_id>> --out <cartella_nuova> [--decimal comma|point]`; i report d'esempio vanno in `reports_local/` (esclusa da git).
-- Golden di statistiche e report: `python tests/test_f7_golden.py --write-golden`, solo dopo aver aumentato `STATS_CODE_VERSION` o `REPORT_CODE_VERSION`.
+- Golden di statistiche e report: `python tests/test_f7_golden.py --write-golden`, solo dopo aver aumentato `STATS_CODE_VERSION` o `REPORT_CODE_VERSION`; senza aumento di versione solo se è cambiato l'ambiente registrato (lock compreso) e le uscite differiscono soltanto nei campi d'identità che ne derivano (controllo nel test, nota su D-73).
 
 Flusso per ogni compito:
 1. Leggere il codice coinvolto, i test esistenti e le voci pertinenti di `docs/decisioni.md` prima di proporre modifiche.

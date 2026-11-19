@@ -1,0 +1,21 @@
+# M1: run storico results_repro_mean_01 (aggregazione nella finestra mean, proiezione last, soglia al 98° percentile
+# della validation). Stessa struttura di legacy_plan in tests/test_f6_crosscheck.py (criterio di I1): le metriche
+# della tabella lunga equivalenti a quelle di main.py, e l'export legacy nel formato di main.py.
+scenarios: [primary]
+window_time_aggs: [mean]
+scorings:
+  - {sensor_agg: mean, normalizer: none}
+  - {sensor_agg: mean, normalizer: std}
+  - {sensor_agg: max, normalizer: std}
+  - {sensor_agg: top5, normalizer: std}
+ts_aggs: [last]
+thresholds:
+  static_pct: [98.0]
+  roll_quantile: []
+  roll_robust_z: []
+  oracle: true
+pa: [static_pct]
+legacy_export:
+  threshold_percentile: 98.0
+  timestamp_agg: last
+  window_time_agg: mean

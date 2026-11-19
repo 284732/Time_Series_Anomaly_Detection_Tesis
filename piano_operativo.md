@@ -704,7 +704,13 @@ D-53 approvata (2026-11-10): `.pyc` tolti dal tracciamento, `dataset/` resta tra
         l'unione profonda dei livelli non toglie chiavi e lo schema di `split3` la rifiuta. È un prerequisito per
         `test_context` e per le analisi esplorative; la prova completa da riga di comando copre solo `legacy2`, e
         un test documenta il limite;
-      - modello di previsione (D-71, D-74).
+      - modello di previsione (D-71, D-74);
+      - *(aggiunto il 2026-11-19, da M1, decisione dell'utente)* correzione dichiarata del docstring di
+        `src/pipeline/legacy_export.py`: cita l'handler di `charset_normalizer`, pacchetto che non è più nell'ambiente
+        dedicato (D-55). Nessun effetto sui numeri; in M1 il file non si tocca;
+      - *(aggiunto il 2026-11-19, da M1, decisione dell'utente)* allineare la golden di F6
+        (`tests/test_f6_analyze_golden.py`) alla regola di F7: rigenerazione per cambio di ambiente solo se cambiano
+        soltanto gli identificativi che ne derivano (oggi la ammette senza questo controllo). Vedi la nota su D-73.
     - **M1** (da F6, ancora validi):
       - rigenerare il lock da un ambiente dedicato (D-55);
       - confronto con i run storici sui CSV per macchina o sui JSON delle metriche, non sul summary;
@@ -749,6 +755,85 @@ D-53 approvata (2026-11-10): `.pyc` tolti dal tracciamento, `dataset/` resta tra
 - **Completata quando:** PCA e baseline con score identici; AE identici bit a bit oppure con differenze diagnosticate, documentate e coperte da una tolleranza motivata [D-17]; metriche identiche; report salvato in `docs/`.
 - **Procedura in caso di differenze [D-17]:** prima si verifica il numero di thread (registrato nella provenance) e le versioni delle librerie rispetto ai run storici; poi si isola il primo artefatto che diverge (finestre, scaler, residui, score). Non si alzano le tolleranze senza spiegazione.
 - **Impatto sui risultati:** nessuno. **Da qui la pipeline storica non serve più come oracolo**, ma resta disponibile fino a F12.
+- **Nota (2026-11-19, piano di M1 approvato dall'utente; criteri fissati prima dei run, I2).** Decisioni D1–D6 e
+  integrazioni I1–I4 dell'utente, su raccomandazione di Claude Project; note di rimando su D-17, D-18, D-55.
+  - **Run di riferimento, descritti con precisione:** `results_repro_last_01` = aggregazione nella finestra `last`,
+    proiezione `last`; `results_repro_mean_01` = aggregazione nella finestra `mean`, proiezione `last` (in entrambe le
+    `repro_*.yaml` `timestamp_agg` è `last`); soglia al 98° percentile della validation, seed 42, `machine-1-1` e
+    `machine-3-8` (macchine di sviluppo, D-51).
+  - **Perimetro:** controllo di parità con il protocollo storico (`legacy2`). Nessun comando `stats` né `report`,
+    nessun esperimento `split3`, nessuna statistica del nuovo protocollo sui dati reali prima di F10. Gli errori storici
+    non si correggono in M1 (restano a F8 come cambiamenti dichiarati).
+  - **Scostamenti dal testo sopra:**
+    - un solo esperimento, `configs/experiments/parity_repro.yaml`, al posto di `parity_repro_{last,mean}.yaml` (D3):
+      le due config storiche differiscono solo per l'aggregazione nella finestra, che è un livello dell'analisi
+      (D-33), quindi i fit sono gli stessi;
+    - due piani di analisi, `configs/analysis/parity_last.yaml` e `parity_mean.yaml`, con la struttura di
+      `legacy_plan` di `tests/test_f6_crosscheck.py` (i piani di analisi sono arrivati con F6, dopo il testo sopra);
+    - riesecuzione di `main.py` (D2) con `configs/config_tests/m1_rerun_{last,mean}.yaml` (copie delle `repro_*`
+      salvo le cartelle di uscita, sotto `reports_local/m1/`, esclusa da git); le config esistenti non cambiano;
+    - ambiente dedicato fuori dal repository e lock rigenerato (D-55), con il criterio di confronto fissato prima
+      (nota su D-55);
+    - report finale in `docs/m1_parita.md`.
+  - **Confronti (tolleranza zero, D-17), con `scripts/parity_report.py`:** storico contro nuovo, storico contro
+    riesecuzione, riesecuzione contro nuovo, per ciascuno dei due piani:
+    - insieme dei file: `metrics/<m>/*_metrics.json`, `scores/<m>/*_scores.npz`, `per_machine/<m>.csv`,
+      presenza di `failures.csv`;
+    - JSON delle metriche: tutti i campi, stesso tipo e stesso valore (NaN = NaN);
+    - CSV per macchina letti con `float_precision="round_trip"`, righe abbinate per (Machine, Model, Variant, Seed),
+      stesse colonne nello stesso ordine, stesso dtype, valori identici; `Epochs` si confronta;
+    - `.npz` per array: stesse chiavi, dtype, forma e valori.
+  - **Esclusioni dai confronti (elenco esatto, passo 0.5):**
+    - colonne `FitSec` e `InferSec` dei CSV per macchina (durate);
+    - nessun campo dei JSON delle metriche (nessuno dipende dal run);
+    - byte dei file `.npz` (lo zip può contenere date): si confrontano gli array; esclusione di formato, non di
+      contenuto;
+    - `summary_timestamp_metrics.csv` (riletto da `main.run_experiment` con il parser predefinito, nota sopra) e le
+      cartelle vuote dei grafici (`save_plots` falso).
+  - **Tabella lunga contro export legacy (I1):** criterio di
+    `tests/test_f6_crosscheck.py::test_long_table_equals_legacy_summary`, ripreso senza cambiarlo: 12 colonne (AP,
+    ROC_AUC, BestF1_oracle, Prevalence, F1, Precision, Recall, FPR_at_thr, PA_F1, EventRecall, FalseAlarmSeg,
+    N_events), abbinamento per (macchina, modello, `sensor_agg`, `normalizer`, metrica; per `thr` anche
+    `threshold_policy = static_pct` e `pa`) con una sola riga, tolleranza zero, righe con `nan_reason` escluse e contate
+    contro quelle dichiarate. Un NaN in entrambe le tabelle senza `nan_reason` → ci si ferma e lo si riporta; il
+    criterio non cambia. Motivo: l'export riusa `main.evaluate_variant`, quindi storico contro export verifica fit,
+    residui e scoring ma non il codice delle metriche di F6, che userà F11.
+  - **Non finiti:** caso dichiarato (D-72 C15) = righe `raw_mean` con `nan_reason = nonfinite_residual_cal` di un fit
+    con `n_nonfinite_cal` > 0, contate e riportate; qualunque altro `nan_reason`, residui non finiti nel test, loss non
+    finita o fit `failed` sono differenze. Se `n_nonfinite_cal` = 0 ovunque, il punto si chiude come «assente su 1-1
+    e 3-8» e resta da controllare in F8.
+  - **Provenance:** `seeds[0]` = 42; nessuna variabile `*_NUM_THREADS`; thread di torch e pool BLAS/OpenMP uguali tra i
+    fit e registrati (D1); `lock_sha256` = lock del commit; albero git pulito e stesso commit per fit e analisi; device
+    richiesto ed effettivo `cpu` in `meta.json` (I4; per lo storico e la riesecuzione il device si verifica solo sulle
+    config, perché `main.py` non lo registra).
+  - **Criteri di esito:**
+    - **parità esatta (M1 superata):** storico = nuovo e riesecuzione = nuovo su tutti i confronti; I1 senza
+      differenze; non finiti assenti o solo nel caso dichiarato; provenance senza differenze; `status --verify`
+      pulito; epoche uguali;
+    - **parità nell'ambiente di riferimento (D5):** storico ≠ nuovo ma riesecuzione = nuovo bit a bit, con gli altri
+      controlli puliti: M1 superata con una voce di registro. Se lo storico diverge su PCA, PCA puntuale o baseline
+      random, prima si diagnostica (dati con `scripts/make_data_hashes.py --check`, poi versioni e thread) e
+      l'accettazione richiede l'approvazione esplicita dell'utente;
+    - **differenze ammesse per gli AE (D-17):** solo con causa diagnosticata e documentata, nell'ordine: confronto
+      storico contro riesecuzione (deriva dell'ambiente), riesecuzione contro nuovo (deve essere esatto), thread e
+      versioni, primo artefatto che diverge (dati scalati con i test `real_data`, finestre, epoche, score); una
+      tolleranza solo con una voce di registro approvata;
+    - **esito negativo:** riesecuzione ≠ nuovo, oppure differenze non spiegate su PCA, baseline o metriche, oppure I1,
+      non finiti o provenance con differenze: ci si ferma, niente F8, diagnosi secondo D-17; non si alzano
+      tolleranze, non si modificano `main.py` né la pipeline per far tornare i numeri.
+  - **Esito del cancello B1 (suite con l'ambiente dedicato, 2026-11-19):** 3 golden fallite (analisi F6, statistiche
+    e report F7) per `lock_sha256`, nessun altro test. Diagnosi scambiando una causa alla volta: ambiente globale con
+    il lock nuovo → stesse 3 fallite; ambiente dedicato con il lock vecchio → tutte passate; quindi la causa è il lock,
+    non l'ambiente. Valori identici: le uscite differiscono solo negli identificativi che derivano dal lock
+    (`analysis_id` e sha256 che ne dipendono), verificato byte per byte dopo la sostituzione (nota su D-73). Golden
+    rigenerate dopo la verifica; la regola delle golden F7 è stata resa più permissiva nel solo caso del cambio
+    d'ambiente con differenze limitate all'identità (nota su D-73, decisione dell'utente).
+  - **Limiti già noti:**
+    - `input_norm` e `rolling_zscore` non sono nei run di D-50: su dati reali restano non verificati (solo snapshot
+      sintetico F1);
+    - AE non addestrati (D-69) e modello di previsione (D-71, D-74) sono fuori da M1;
+    - versioni delle librerie, thread e macchina dei run storici non sono registrati (D-50, D-61): limite dichiarato;
+      la riesecuzione lo mitiga ma non lo elimina.
 
 ### F8 — Nuovo protocollo canonico (cambiamento numerico dichiarato)
 - **Obiettivo:** passare a `split3` 60/20/20 [D-05], nessun contesto all'inizio del test nell'analisi primaria e contesto da cal solo nella variante di RQ1a [D-03, D-32, D-20], maschere secondo D-20 e D-22, normalizer e soglie su cal secondo D-23 con storia cal → test [D-04, D-21], PCA solo su fit [D-06], `max_epochs`/patience secondo D-39, `train_step` secondo D-38, preprocessing secondo D-40.

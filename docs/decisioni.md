@@ -706,11 +706,35 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
   numero di thread dei run storici; se ci sono differenze, indagine preliminare documentata della causa, poi eventuale
   tolleranza motivata. Il numero di thread si registra nella provenance.
 - **Documenti:** `CLAUDE.md` §5; piano M1.
+- **Nota di rimando (2026-11-19, M1, il testo sopra resta invariato):**
+  - **Thread in M1** (decisione D1 dell'utente, 2026-11-19, su raccomandazione di Claude Project): thread predefiniti,
+    non fissati a 1; prima di ogni comando si verifica che nessuna variabile `*_NUM_THREADS` sia impostata, e il numero
+    di thread si registra nella provenance di ogni fit (`scripts/parity_report.py` lo controlla e lo riporta). Motivo:
+    `main.py` non fissa i thread, quindi i run storici hanno usato i valori predefiniti; fissarli a 1 introdurrebbe una
+    differenza rispetto allo storico. La nota di F7 «fissato o registrato» riguarda le tabelle diagnostiche di
+    `stats`, che M1 non esegue: si sceglie «registrato», nessun conflitto con questa voce. Il valore per i run
+    ufficiali si decide in F10.
+  - **Valori predefiniti misurati su questo PC alla data di M1** (2026-11-19, ambiente `C:\Users\predi\venvs\smd_m1`,
+    uguali nell'installazione globale): torch 4 thread intra-op e 4 inter-op; OpenBLAS 8 e 8 (`libscipy_openblas`
+    0.3.30 di numpy e 0.3.29.dev di scipy); OpenMP `libiomp` 1 e 4 (due pool); `vcomp` 8.
+  - **Limite** (D-50, D-61): per i run `_01` non è registrato su quale macchina e con quali thread siano stati prodotti;
+    resta un limite dichiarato.
+  - **Regola D5** (decisione dell'utente, 2026-11-19): se storico ≠ riesecuzione di `main.py` ma riesecuzione = nuova
+    pipeline bit a bit, M1 è superata come «parità nell'ambiente di riferimento», con una voce di registro. Per PCA, PCA
+    puntuale e baseline random una differenza storico ≠ riesecuzione va comunque diagnosticata (prima i dati, con
+    `scripts/make_data_hashes.py --check`) e l'accettazione richiede l'approvazione esplicita dell'utente (tolleranza
+    zero di questa voce).
 
 ### D-18 · Dipendenze — APPROVATA · 2026-11-09
 - **Decisione:** ammesse quelle di `requirements.txt` (numpy, pandas, scipy, scikit-learn, torch, pyyaml, matplotlib,
   seaborn, tqdm). Nessuna nuova dipendenza senza approvazione. `pyarrow` non si aggiunge.
 - **Documenti:** `CLAUDE.md` §6; proposta §3, §10, §11.
+- **Nota di rimando (2026-11-19, M1, il testo sopra resta invariato; decisione D4 dell'utente):** due pacchetti usati
+  dal progetto non sono in `requirements.txt` e si dichiarano qui, senza aggiungere dipendenze nuove:
+  - `pytest`: strumento di sviluppo per la suite (non usato dal codice di calcolo); è nel lock (9.1.1);
+  - `threadpoolctl`: importato direttamente da `src/utils/provenance.py` per registrare i pool BLAS/OpenMP; è già una
+    dipendenza di scikit-learn ed è nel lock (3.6.0).
+  `requirements.txt` resta invariato.
 
 ### D-19 · Formato iniziale dello store: CSV.gz — APPROVATA · 2026-11-09
 - **Decisione:** tabelle lunghe e registro in CSV (tabelle compresse `.csv.gz`). Lettura e scrittura isolate in
@@ -759,6 +783,26 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
 - **Nota:** lock provvisorio, generato dall'installazione globale di Python (contiene pacchetti estranei al progetto).
   Prima di M1: ambiente virtuale dedicato e lock rigenerato da lì, registrato come aggiornamento di questa voce.
 - **Collegamenti:** D-17, D-18.
+- **Nota di rimando (2026-11-19, M1, il testo sopra resta invariato): lock rigenerato dall'ambiente dedicato.**
+  - **Ambiente:** `C:\Users\predi\venvs\smd_m1`, fuori dal repository (la provenance conta anche i file non
+    tracciati), Python 3.13.9, creato con `python -m venv` dall'installazione globale (decisioni D4 e D6
+    dell'utente, 2026-11-19).
+  - **Installazione:** `pip install -r requirements.txt pytest -c requirements-lock.txt` (vincoli dal lock
+    provvisorio: stesse versioni dell'ambiente usato finora). Nuovo lock scritto in byte dal freeze
+    (`subprocess.check_output([sys.executable, "-m", "pip", "freeze"])`, niente `>` di PowerShell);
+    `provenance.file_sha256` = `6e09688d74c4b22a23036c23b79bd826eeafceefcb93d56ea9f73d60d790ac59`.
+  - **Criterio del confronto dei lock (fissato prima):** numpy, scipy, pandas, scikit-learn, torch, threadpoolctl e le
+    loro librerie native con versioni identiche; ammesse solo la scomparsa dei pacchetti estranei al progetto e la
+    comparsa di pytest e delle sue dipendenze; qualsiasi altra differenza ferma M1.
+  - **Esito:** 49 pacchetti estranei tolti, nessuno aggiunto, nessuna versione cambiata (37 pacchetti identici;
+    `pytest` era già nel lock). Diff approvato dall'utente il 2026-11-19.
+  - **Librerie native** (controllo proposto da Claude, approvato dall'utente): sha256 di tutti i `.dll` e `.pyd` di
+    numpy, scipy, scikit-learn, torch, pandas e threadpoolctl confrontati tra installazione globale e ambiente
+    dedicato: identici (le sole 4 differenze sono file di pacchetti estranei assenti dall'ambiente dedicato:
+    `charset_normalizer`, `cbor2`, `zmq`); `threadpool_info()` e thread di torch identici. Script e risultati in
+    `reports_local/m1/env_check/` (`native_check.py`, `glob.json`, `venv.json`), esclusa da git.
+  - **Effetto:** cambia `lock_sha256`, quindi la firma d'ambiente (`provenance.environment_signature`): i fit di M1 si
+    fanno dopo il commit del nuovo lock.
 
 ### D-56 · Posizione di `store/` e budget di disco — APPROVATA · 2026-11-10
 - **Decisione:** `store/` nella radice del progetto, esclusa da git con `.gitignore`. Budget di disco: 5–10 GB.
@@ -2192,6 +2236,37 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
     δ, i livelli dei fattori, i descrittori e le regole di esclusione sono parametri dichiarati nel piano statistico,
     senza valori predefiniti.
   - **Scostamento:** nessun piano in `configs/stats/` in F7; un piano reale richiede δ (D-30) e i valori di D-44.
+- **Nota di rimando (2026-11-19, M1, il testo sopra resta invariato): regola delle golden di F7 resa più permissiva in
+  un solo caso.** Modifica di `tests/test_f7_golden.py` approvata dall'utente il 2026-11-19 (opzione A, su
+  raccomandazione di Claude Project).
+  - **Perché:** il lock rigenerato per M1 (nota su D-55) cambia `lock_sha256`, quindi gli `analysis_id`, che compaiono
+    nelle tabelle diagnostiche delle statistiche e nei file del report che elencano gli ingressi. Le golden di F7
+    fallivano senza alcun cambiamento numerico, e la regola precedente («si rigenera solo dopo aver aumentato
+    `STATS_CODE_VERSION` o `REPORT_CODE_VERSION`») avrebbe registrato come cambio di codice un cambio d'ambiente.
+  - **Cosa cambia:**
+    - l'ambiente registrato nelle golden di F7 contiene anche `lock_sha256`, come la golden di F6;
+    - le golden registrano anche le uscite in forma d'identità (`identity_outputs`): sha256 calcolati dopo aver
+      sostituito con segnaposto gli identificativi che derivano dall'ambiente (`lock_sha256`, `analysis_id` degli
+      ingressi; gli sha256 delle tabelle d'ingresso e della mappa `files` sono sostituiti dallo sha256 delle stesse
+      tabelle in forma d'identità, così il contenuto resta controllato);
+    - riscrittura a parità di versione: ammessa se le uscite sono identiche; rifiutata se l'ambiente è lo stesso e le
+      uscite sono diverse (come prima); con l'ambiente cambiato, ammessa solo se le uscite differiscono soltanto nei
+      campi d'identità (`identity_outputs` uguali), altrimenti rifiutata, anche con una golden senza `identity_outputs`.
+  - **Verifica prima della rigenerazione (punto 1 dell'utente):** uscite ricostruite con il lock vecchio (hash
+    identici alle golden registrate) e con il lock nuovo; dopo la sostituzione di `lock_sha256`, dei tre
+    `analysis_id`, di `stats_id` e degli sha256 che ne dipendono, coincidono byte per byte nella forma registrata dalle
+    golden: F6 `free`, `thr`, `analysis.json` (e `fits` identica); F7 le 8 tabelle `diagnostic_integ_*` e `stats.json`
+    normalizzato (le altre tabelle identiche); report `report.md`, `report.tex`, `tables/inputs.md`,
+    `tables/inputs.tex` (gli altri file identici). Esito completo e script (`gbuild.py` costruisce le uscite con il
+    lock attivo, `gverify.py` sostituisce e confronta, `iddiff.py` confronta la forma d'identità con la golden,
+    `mutate_golden2.py` sono le prove di difetto) in `reports_local/m1/golden_check/` (`gverify_out.txt`), esclusa da
+    git.
+  - **Rigenerazione:** F7 in due passi con la regola nuova (lock vecchio: uscite identiche, si aggiungono lock e
+    `identity_outputs`; lock nuovo: ambiente cambiato, forma d'identità uguale → ammessa); F6 con la sua regola.
+  - **Segnalato, non modificato:** la golden di F6 (`tests/test_f6_analyze_golden.py`) ammette la rigenerazione con
+    l'ambiente cambiato senza il controllo della forma d'identità; per M1 il controllo è stato fatto a parte (sopra).
+    Allinearla richiede l'approvazione dell'utente.
+  - **Documenti:** `CLAUDE.md` §7; piano, nota di M1.
 
 ### D-53 · File tracciati da git (`.pyc`, dataset) — APPROVATA · 2026-11-10
 - **Decisione:** i `.pyc` non sono tracciati: i 35 file già tracciati sono tolti dal tracciamento con
