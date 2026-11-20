@@ -914,7 +914,10 @@ D-53 approvata (2026-11-10): `.pyc` tolti dal tracciamento, `dataset/` resta tra
   - `src/stats/plan.py` lo rifiuta nei blocchi con `window_time_agg` o `ts_agg` a più di un livello;
   - test per entrambi i punti.
   Gli AE non addestrati si dichiarano baseline descrittive nel piano statistico (D-73).
-- **Nota (2026-11-16, proposta di Claude Project in D-69, NON ancora approvata):** se approvata, ogni AE non
+- **Nota (2026-11-16, proposta di Claude Project in D-69, NON ancora approvata):** *(rev. 2026-11-20: approvata con
+  modifiche, nota del 2026-11-20 su D-69: nomi distinti `*_untrained` al posto dell'opzione `untrained: true`, non
+  realizzabile; `batch_size` di scoring nel `fit_key`; validatore di appaiamento. Il testo sotto resta come storico.)*
+  Se approvata, ogni AE non
   addestrato è l'AE addestrato selezionato in F9 con zero epoche: stessa configurazione, stessa inizializzazione,
   stessi seed, BatchNorm con le statistiche iniziali. Si realizza con un'opzione esplicita (per esempio
   `untrained: true`), non con `max_epochs: 0`. Le classi storiche `Untrained…` con `init_std` non si usano per i run.
@@ -944,6 +947,50 @@ D-53 approvata (2026-11-10): `.pyc` tolti dal tracciamento, `dataset/` resta tra
 - **Nota (2026-11-19, da M1):** il caso `n_nonfinite_cal` > 0 non si è presentato su `machine-1-1` e `machine-3-8`.
   Nell'esperimento legacy contro canonico sulle 6 macchine dev si controlla con la tabella `fits`; se compare, le righe
   `raw_mean` con `nan_reason = nonfinite_residual_cal` vanno riportate come correzione dichiarata (D-72 C15).
+- **Nota (2026-11-20, prerequisiti di F8; utente, su raccomandazione di Claude Project).** Decisioni: D-54 e D-75
+  approvate; D-77 nuova (caricamento delle config); note del 2026-11-20 su D-10, D-40, D-69, D-71, D-73, D-74. Restano
+  APERTE, senza valori predefiniti nel codice (valori provvisori solo nei test sintetici): D-38, D-39, D-40, D-41;
+  D-74 per budget e griglie. Nei passi 0–7 `configs/base.yaml` non cambia.
+  - **Regole per ogni passo:** dopo ogni passo snapshot F1, golden, suite completa, riepilogo completo, poi stop per la
+    revisione dell'utente; nessun commit senza richiesta; se un fatto nel codice contraddice le decisioni, ci si ferma
+    e lo si segnala prima di procedere.
+  - **Passi:**
+    - **0 — registro e piano** (solo documenti): le voci sopra e questa nota;
+    - **1 — golden di F6 e docstring** (nota su D-73): golden di `tests/test_f6_analyze_golden.py` con il criterio
+      `identity_outputs` di F7 (`tests/test_f7_golden.py`), rigenerata una volta nel nuovo formato; docstring di
+      `src/pipeline/legacy_export.py` corretto dopo aver verificato nell'ambiente smd_m1 quale handler registra davvero
+      l'import di `main.py`. Nessun effetto sui numeri;
+    - **2 — caricamento delle config** (D-77): blocco `split` atomico (A1) e valori storici espliciti in
+      `parity_repro.yaml` (strategia (i)). Test: `config_sha256` e `fit_key` di `parity_repro` uguali a quelli del run
+      M1 nel registro dello store (sola lettura); indipendenza (D-77, revisione del passo 0): con copie temporanee di
+      `base.yaml` e dei file di `configs/models/` modificate, `config_sha256` e `fit_key` di `parity_repro` restano
+      quelli di M1, e i file veri non si toccano; un esperimento `split3` e uno `legacy2` si caricano da file; una
+      chiave del modo non attivo in `split` è un errore; `tests/test_f7_cli_e2e.py:114` capovolto in «ora si carica»,
+      senza renderlo più permissivo;
+    - **3 — AE non addestrati** (D-69 e D-73, note del 2026-11-20): `conv_autoencoder_untrained`,
+      `lstm_autoencoder_untrained`. Test: pesi = pesi iniziali dell'AE addestrato con lo stesso seed; percorso a zero
+      epoche (storia vuota, `best_epoch` `None`, nessun ripristino, modello in eval); `fit_key` con seed e `batch_size` di
+      scoring (cambiare solo il learning rate → stesso `fit_key`; cambiare il `batch_size` di scoring → `fit_key`
+      diverso); validatore (`params` o `batch_size` non appaiati → errore); `plan.py` (`*_untrained` rifiutato fuori da
+      `descriptive_baselines`, native ancora ammessi lì); snapshot F1 e golden invariati;
+    - **4 — modello di previsione** (D-74, nota del 2026-11-20): `lstm_forecaster`, `ForecastTrainer`. Test: leakage
+      (l'ultimo punto della finestra non cambia la previsione, un punto tra i primi W−1 sì); forme dei residui e
+      `residual_aggs = ("last",)`; determinismo a seed fissato; `analysis_grid` senza righe offline, contate in
+      `analysis.json`; export legacy che rifiuta il modello; `PyTorchTrainer` invariato (snapshot F1 e golden degli AE
+      identici); golden rigenerata solo per l'aumento di `ANALYSIS_CODE_VERSION`, con le sole differenze di identità;
+    - **5 — regole di `plan.py` per il modello di previsione** (D-74): rifiuto nei blocchi di RQ1a con `ts_agg` ≠
+      `[last]`; rifiuto nei blocchi di RQ1b con più di un `window_time_agg`; solo `window_time_agg: last` e
+      `ts_agg: last` dove compare (RQ2, RQ4, `descriptive`); riscontro di `descriptive_baselines` con lo schema. Un
+      test per ogni rifiuto;
+    - **6 — prova sintetica completa** `split3` da file con tutti i modelli (`fit` → `analyze` → `stats`), D-16;
+    - **7 — verifica di D-40** (nota del 2026-11-20 su D-40): script in sola lettura, solo le 6 macchine dev, uscite in
+      `reports_local/d40/`; numeri senza conclusioni sulla decisione.
+  - **Dopo il passo 7, F8 vera e propria:** decisioni D-38, D-39, D-40; valori canonici in `configs/base.yaml`;
+    `configs/experiments/protocol_switch_dev.yaml`; esperimento legacy contro canonico sulle 6 macchine dev (lo lancia
+    l'utente), con il controllo dei non finiti (nota del 2026-11-19 sopra) e le correzioni dichiarate tenute separate
+    dai fattori di protocollo (nota del 2026-11-12).
+  - **Tempi (D-54):** consegna entro il 2027-01-31, chiusura del progetto nella prima metà di dicembre 2026; l'opzione 1
+    di D-75 si fa solo se F11 è chiusa entro il 2026-12-10.
 
 ### F9 — Tuning e sensibilità (esperimenti esplorativi)
 - **Obiettivo:** scegliere le configurazioni globali per famiglia, con budget pari, sulle 6 macchine dev.

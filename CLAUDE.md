@@ -121,8 +121,8 @@ Descritta in `proposta_architettura_target.md` e realizzata secondo `piano_opera
 implementati e validati in `legacy2` (§3.3): stadio di fit (checkpoint e residui per sensore, `fit_key` = hash della
 config rilevante + `FIT_CODE_VERSION`), stadio di analisi (nessun fit, tabella lunga), stadio di statistica e report.
 Restano da fare il protocollo canonico (F8) e le fasi successive. Le scelte già approvate sono in
-`docs/decisioni.md` (D-03…D-26, D-32, D-33, D-34, D-36, D-45, D-50, D-51, D-52, D-55, D-56, D-58…D-69, D-70, D-71, D-72, D-73, D-76); quelle ancora aperte sono nelle
-sezioni D ed E del registro.
+`docs/decisioni.md` (D-03…D-26, D-32, D-33, D-34, D-36, D-45, D-50, D-51, D-52, D-54, D-55, D-56, D-58…D-69, D-70, D-71, D-72, D-73, D-75, D-76, D-77); quelle ancora aperte sono nella
+sezione D del registro.
 
 ## 4. Protezione di dataset, risultati e configurazioni storiche
 

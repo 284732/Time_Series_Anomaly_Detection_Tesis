@@ -35,6 +35,18 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
 - **Motivazione:** il riferimento storico non si può rompere per errore; la parità si dimostra confrontando due pipeline (C5).
 - **Documenti:** proposta §1, §12; `CLAUDE.md` §3.
 
+### D-54 · Scadenze e tempo disponibile — APPROVATA · 2026-11-20
+- **Testo della voce APERTA — DIPENDE DALL'UTENTE (storico, invariato):**
+  - Determinano se F9 e il secondo dataset sono realistici.
+- **Decisione:** consegna della tesi entro il **2027-01-31**; obiettivo di chiusura del progetto nella **prima metà di
+  dicembre 2026**.
+- **Conseguenze:**
+  - il secondo dataset resta escluso (D-45, decisione sul perimetro del 2026-11-16);
+  - condiziona l'opzione 1 di D-75 (solo se F11 è chiusa entro il 2026-12-10).
+- **Approvazione:** utente, 2026-11-20, su raccomandazione di Claude Project.
+- **Collegamenti:** D-45, D-75.
+- **Documenti:** piano F8 (ordine dei passi 0–7), F9–F11.
+
 ---
 
 ## B. Metodologia — decisioni approvate
@@ -101,6 +113,10 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
 - **Nota di rimando (2026-11-16, il testo sopra resta invariato):** il perimetro dei run ufficiali si estende con gli
   AE non addestrati come baseline descrittiva (D-69, approvata) e con un modello di previsione (D-71 approvata, punti
   aperti in D-74); un modello recente è un'eventuale estensione separata (D-75, aperta).
+- **Nota di rimando (2026-11-20, il testo sopra resta invariato):** D-75 è approvata (nessun modello recente nei run
+  principali; estensione solo alle condizioni di D-75); gli AE non addestrati hanno i nomi
+  `conv_autoencoder_untrained` e `lstm_autoencoder_untrained` (D-69, nota del 2026-11-20); il modello di previsione è
+  `lstm_forecaster` (D-74, nota del 2026-11-20).
 
 ### D-11 · Normalizer robusto come variante — APPROVATA · 2026-11-09
 - **Decisione:** si aggiunge un normalizer robusto (mediana/IQR) come variante, accanto a quello storico. Se entra nel budget
@@ -587,6 +603,46 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
   architettura, stesso seed), non solo con il riferimento di RQ2. Oggi RQ2 riporta per le baseline descrittive solo
   il Δ rispetto al riferimento (D-73, nota del passo 7). Il confronto appaiato «addestrato − non addestrato» si progetta
   allora.
+- **Nota di rimando (2026-11-20, prerequisiti di F8, il testo sopra resta invariato; utente, su raccomandazione di
+  Claude Project): dettagli approvati.**
+  - **Fatti verificati nel codice (2026-11-20):**
+    - un esperimento ammette un solo blocco per nome di modello (`src/utils/schema.py:349`, `:377`), e RQ2 legge solo
+      dal `primary_experiment` (D-73): l'opzione «`untrained: true`» della proposta del 2026-11-16 non permetterebbe
+      di avere l'AE addestrato e quello non addestrato nello stesso esperimento, quindi non è realizzabile;
+    - le classi storiche inizializzano **tutti** i parametri con N(0, `init_std`²), compresi γ e β del BatchNorm
+      (`src/models/deep/untrained_ae.py:30-34`): con γ ≈ 0 l'uscita è quasi costante e lo score è di fatto l'energia
+      dell'input;
+    - con zero epoche il ciclo di `PyTorchTrainer.fit` non viene eseguito, nessuno stato viene ripristinato,
+      `stopped_epoch` = 0 e `best_epoch` = `None`; la rete si costruisce dentro `fit`, dopo `set_seed`
+      (`src/pipeline/fit.py:113`) e prima di qualunque consumo del generatore da parte del DataLoader (lettura del
+      codice, da dimostrare con un test al passo 3);
+    - con `trained` falso `schema.model_kwargs` non passa `batch_size` (`schema.py:390-394`): lo scoring userebbe il
+      64 implicito di `config.get("batch_size", 64)`, che decide il blocco interno di scoring (D-64) ed è fuori dal
+      `fit_key`.
+  - **Decisioni:**
+    - **B1, nomi distinti:** `conv_autoencoder_untrained` e `lstm_autoencoder_untrained`, nuove voci di
+      `schema.MODEL_SCHEMAS`. Sostituisce l'opzione «`untrained: true`» della proposta del 2026-11-16;
+    - **zero epoche:** sottoclassi dei detector addestrati; inizializzazione standard di PyTorch, la stessa dell'AE
+      addestrato; BatchNorm con le statistiche iniziali (γ = 1, β = 0, media 0, varianza 1), **scelta da dichiarare**
+      nella tesi;
+    - **B3 scartata** (classi storiche con `init_std`): non isola l'apprendimento (fatto sopra). In tesi si cita la
+      differenza con Kim et al. (2022), Case 3. Le classi storiche restano nel registro di `main.py` (D-13) e in
+      `OUTSIDE_NUCLEUS`;
+    - **seed nel `fit_key`:** sì (modello non deterministico);
+    - **correzione della proposta del 2026-11-16:** il `batch_size` usato nello scoring entra nel `fit_key` come blocco
+      esplicito (per esempio `scoring`; nome della chiave fissato al passo 3), perché decide il blocco interno di
+      scoring (D-64) e può cambiare i residui. Gli altri parametri di training (learning rate, `max_epochs`, patience,
+      …) restano fuori;
+    - **validatore:** quando un AE e il suo `*_untrained` sono entrambi in `run_models`, `params` identici e `batch_size`
+      di scoring uguale a `training.batch_size` dell'AE addestrato; altrimenti `ConfigError`;
+    - **controllo di parità dedicato:** test «pesi dell'AE non addestrato = pesi iniziali dell'AE addestrato con lo
+      stesso seed, prima della prima epoca» (non esistono run storici di confronto);
+    - **confronto appaiato «addestrato − non addestrato»** (nota del 2026-11-17): approvato nel principio come riga
+      descrittiva; si progetta nel piano statistico in F10. Non è un prerequisito del codice.
+  - **Effetto sull'elenco «Restano da fissare prima di F8»:** chiavi di schema (stesse dell'AE addestrato, `init_std`
+    non serve), seed nel `fit_key`, BatchNorm e controllo di parità sono fissati; la regola di `plan.py` è in D-73
+    (nota del 2026-11-20).
+  - **Documenti:** piano F8 (passo 3).
 
 ### D-71 · Perimetro dei modelli DL — APPROVATA · 2026-11-16
 - **Testo della voce APERTA (storico, invariato):**
@@ -621,6 +677,9 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
 - **Approvazione:** utente, 2026-11-16 (discussione sul perimetro della tesi, su raccomandazione di Claude Project).
 - **Collegamenti:** D-10, D-36, D-41, D-68, D-69, D-73, D-74, D-75.
 - **Documenti:** piano F8.
+- **Nota di rimando (2026-11-20, il testo sopra resta invariato):** D-75 (modello recente) è approvata: opzione 0 nei
+  run principali, opzione 1 condizionata ai tempi (D-54); il perimetro della famiglia confermativa (m = 3) non cambia.
+  Schema e implementazione del modello di previsione: nota del 2026-11-20 su D-74.
 
 ### D-76 · Metodo degli IC di RQ2: bootstrap-t stratificato — APPROVATA · 2026-11-17
 - **Rivede:** D-36 per il solo metodo (A). Il resto di D-36 resta invariato: Bonferroni 1 − α/m, m dalla famiglia
@@ -679,6 +738,31 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
   propria simulazione; fino ad allora `plan.py` rifiuta `rq3` non nulla, con un messaggio che rimanda al passo 9.
 - **Approvazione:** utente, 2026-11-17, su raccomandazione di Claude Project, con il criterio fissato prima.
 - **Collegamenti:** D-36, D-44, D-51, D-73.
+
+### D-75 · Modello recente come estensione (es. Anomaly Transformer) — APPROVATA · 2026-11-20
+- **Testo della voce APERTA (storico, invariato):**
+  - **Origine:** opzione (b) di D-71, separata dalla decisione approvata.
+  - **Decisione da prendere:** a fine M1.
+  - **Vincoli se approvata:** estensione con piano di analisi e piano statistico **congelati a parte**; non entra mai
+    nella famiglia confermativa del piano principale; righe etichettate a parte; non deve ritardare l'analisi
+    principale. Integrerebbe D-10 (perimetro) e D-41 (budget e parità di trattamento).
+  - **Collegamenti:** D-10, D-36, D-41, D-71.
+- **Decisione:**
+  - **Opzione 0, adesso:** nessun modello recente nei run principali; il limite si dichiara nella tesi (D-71 (a):
+    conclusioni per famiglia di modelli).
+  - **Opzione 1, condizionata:** un modello recente (per esempio Anomaly Transformer) con gli iperparametri
+    dell'articolo, **senza tuning**; solo i fattori di misura di RQ1a e le descrittive; piano di analisi e piano
+    statistico a parte, **scritti dopo F11 e dichiarati come tali**; righe etichettate a parte, mai nella famiglia
+    confermativa. Si fa **solo se F11 è chiusa entro il 2026-12-10**, con un tetto di **3 giorni di lavoro**;
+    altrimenti va tra gli sviluppi futuri, senza riaprire la decisione.
+  - **Opzione 2 scartata:** tuning con budget pari (D-41), incompatibile con i tempi (D-54).
+- **Conseguenze:**
+  - il perimetro dei run principali (D-10, D-71) non cambia;
+  - con l'opzione 1 il piano dell'estensione non è pre-registrato prima dei risultati principali: va dichiarato
+    esplicitamente nella tesi, e le sue righe restano descrittive.
+- **Approvazione:** utente, 2026-11-20, su raccomandazione di Claude Project.
+- **Collegamenti:** D-10, D-36, D-41, D-54, D-71.
+- **Documenti:** piano F8 (nota del 2026-11-20), F11.
 
 ---
 
@@ -2297,6 +2381,20 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
     l'ambiente cambiato senza il controllo della forma d'identità; per M1 il controllo è stato fatto a parte (sopra).
     Allinearla richiede l'approvazione dell'utente.
   - **Documenti:** `CLAUDE.md` §7; piano, nota di M1.
+- **Nota di rimando (2026-11-20, prerequisiti di F8, il testo sopra resta invariato; utente, su raccomandazione di
+  Claude Project):**
+  - **P5, `descriptive_baselines` (nota del passo 1-bis):** l'affermazione «un Conv-AE addestrato e uno non addestrato
+    hanno lo stesso `model` e `config_id` diversi» non vale più: con D-69 (nota del 2026-11-20) hanno **nomi di modello
+    distinti** (`conv_autoencoder` e `conv_autoencoder_untrained`; lo stesso per l'LSTM). L'identità resta la coppia
+    `(model, config_id)`.
+  - **Regola in `src/stats/plan.py` (passo 3 di F8):** un modello `*_untrained` può comparire **solo** in
+    `descriptive_baselines`: mai nella famiglia o come riferimento di RQ2, mai come `delta_reference` o tra i modelli
+    di un blocco di RQ1a, RQ1b o RQ4. È il riscontro con lo schema dei modelli rimandato al passo 1-bis.
+  - **Invariato (decisione del 2026-11-16):** `descriptive_baselines` resta aperta anche ad altri modelli, compresi i
+    native.
+  - **Golden di F6 (punto «Segnalato, non modificato» sopra):** allineamento alla regola di F7 (`identity_outputs`)
+    approvato; si fa al passo 1 di F8.
+  - **Documenti:** piano F8 (passi 1, 3, 5).
 
 ### D-53 · File tracciati da git (`.pyc`, dataset) — APPROVATA · 2026-11-10
 - **Decisione:** i `.pyc` non sono tracciati: i 35 file già tracciati sono tolti dal tracciamento con
@@ -2304,6 +2402,44 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
   `dataset/` resta tracciato (sola lettura, riproducibilità).
 - **Approvazione:** utente, 2026-11-10, su raccomandazione di Claude Project.
 - **Collegamenti:** D-55, D-56.
+
+### D-77 · Caricamento delle config: blocco `split` atomico e valori storici espliciti — APPROVATA · 2026-11-20
+- **Problema (fatti verificati nel codice, 2026-11-20):**
+  - `merge_layers` (`src/utils/config.py:74-89`) fa un'unione profonda e non toglie mai chiavi;
+  - `_validate_split` (`src/utils/schema.py:279-293`) accetta solo le chiavi del modo attivo (`legacy2`:
+    `mode`, `val_ratio`; `split3`: `mode`, `fractions`);
+  - `configs/base.yaml` dichiara `legacy2` con `val_ratio`, quindi un esperimento `split3` scritto su file viene
+    rifiutato (documentato da `tests/test_f7_cli_e2e.py:114`). Il problema è simmetrico: quando F8 metterà `split3`
+    in `base.yaml`, un esperimento `legacy2` non si caricherebbe più;
+  - `config_sha256` è l'hash della config risolta (`config.py:234-237`), non dei file; il `fit_key` usa solo i campi
+    del modo attivo (`schema.py:228-231`).
+- **Decisione:**
+  - **A1:** `split` è l'**unico blocco atomico** dell'unione dei livelli: se un livello lo dichiara, sostituisce per
+    intero quello dei livelli precedenti; tutte le altre mappe restano in unione profonda. La regola si documenta nel
+    codice (`merge_layers`, `load_experiment`). Lo schema non cambia: una chiave del modo non attivo dentro `split`
+    resta un errore (nessuna chiave ignorata);
+  - **strategia (i):** `configs/experiments/parity_repro.yaml` dichiara esplicitamente tutti i valori storici, così
+    resta indipendente dai valori canonici che F8 metterà in `base.yaml` (piano F8, «File»). Nei passi 0–7 di F8
+    `base.yaml` non cambia.
+  - **«Tutti i valori storici» (revisione del passo 0, utente, 2026-11-20):** `parity_repro.yaml` non eredita
+    **alcun** valore che entri in `config_sha256` o nel `fit_key`: `split`, `preprocessing`, `windows`, `training`,
+    `params` dei modelli in `run_models`, `device`, blocco `data` e percorsi. Motivo: F9 scriverà le griglie in
+    `configs/models/*.yaml` e F8 i valori canonici in `base.yaml`.
+- **Vincolo di verifica (passo 2):**
+  - `config_sha256` e `fit_key` di `parity_repro` dopo la modifica uguali a quelli del run M1 nel registro dello store
+    (letto in sola lettura);
+  - **indipendenza:** con copie temporanee di `base.yaml` e dei file di `configs/models/` modificate (valori diversi
+    qualunque), `config_sha256` e `fit_key` di `parity_repro` restano quelli di M1. I file veri non si toccano;
+  - un esperimento `split3` e uno `legacy2` si caricano da file; una chiave del modo non attivo è un errore;
+  - `tests/test_f7_cli_e2e.py:114` si capovolge in «ora si carica» senza diventare più permissivo.
+- **Alternative scartate:** A2 (`split` tolto da `base.yaml`), A3 (lo schema ignora le chiavi dell'altro modo: chiave
+  ignorata in silenzio), A4 (`null` come cancellazione: ambiguo, `clip: null` è un valore), A5 (due livelli base:
+  nuova chiave o nuovo flag di CLI).
+- **Impatto sui risultati:** nessuno; le config esistenti risolvono alla stessa config, quindi `config_sha256` e
+  `fit_key` restano invariati (da dimostrare con il test sopra).
+- **Approvazione:** utente, 2026-11-20, su raccomandazione di Claude Project.
+- **Collegamenti:** D-05, D-14, D-50, D-63, D-70, D-73 (P6).
+- **Documenti:** piano F8 (passo 2).
 
 ---
 
@@ -2353,6 +2489,15 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
   - **Collegamenti:** F1, F8, D-26.
 - **Nota di rimando (2026-11-10, la voce resta APERTA):** con D-65 lo scaler in `split3` si fitta solo su fit (60%):
   la verifica proposta sopra misura gli intervalli anche su fit, non solo sulla parte di train storica (80%).
+- **Nota (2026-11-20, la voce resta APERTA; utente, su raccomandazione di Claude Project): verifica autorizzata.**
+  - **Perimetro:** sola lettura su `dataset/`; nessun training; nessuna label; **solo le 6 macchine di sviluppo**
+    (`configs/dev_machines.yaml`, D-51), mai le 22 di valutazione.
+  - **Misure, per macchina e sensore:** range su fit (60%) e sul train storico (80%); range nel test; valore massimo
+    assoluto nel test dopo lo scaler storico (minmax senza clip né pavimento); conteggio dei sensori con massimo
+    maggiore di 2 nel test.
+  - **Uscite:** script in sola lettura, risultati in `reports_local/d40/` (esclusa da git); i numeri si riportano
+    senza conclusioni sulla decisione, che resta dell'utente.
+  - **Documenti:** piano F8 (passo 7).
 
 ### D-41 · Budget di tuning — APERTA
 - **Da decidere:** K per famiglia (proposta 8), griglie, criterio di selezione (proposta: AP normalizzata media sulle 6
@@ -2455,21 +2600,56 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
   - test per entrambi i punti.
 - **Ordine:** implementazione dopo M1, prima di F8. **Serve entro:** F8.
 - **Collegamenti:** D-10, D-33, D-36, D-41, D-71.
+- **Nota (2026-11-20, prerequisiti di F8; utente, su raccomandazione di Claude Project): schema e implementazione
+  approvati. La voce resta APERTA solo per budget e griglie di tuning (D-41).**
+  - **Fatti verificati nel codice (2026-11-20):**
+    - `PyTorchTrainer` è solo ricostruttivo: la loss è `criterion(recon_x, batch)` sulla finestra intera (`train_epoch`,
+      `evaluate`) e `get_error_matrix` confronta con tutta la finestra (`src/training/trainer.py:196-211`);
+    - un modello può dichiarare una sola aggregazione dei residui (precedente: `rolling_zscore`,
+      `residual_aggs = ("last",)`), e lo stadio di fit salva solo quelle dichiarate
+      (`src/pipeline/residual_cache.py:65-67`);
+    - `analysis_grid.residual_names` chiede tutte le `window_time_aggs` del piano per ogni modello non native e
+      `fit_scores` cicla su tutti i `ts_aggs` (`src/pipeline/analysis_grid.py:96-106`, `:203`, `:219`);
+    - `window_time_agg = none` è riservato ai modelli native (`src/pipeline/table_schema.py:220-224`);
+    - **chiavi dell'LSTM-AE:** lo schema di `lstm_autoencoder` ha `hidden_dim` e `latent_dim`
+      (`src/utils/schema.py:163-164`). `hidden_dim` ha lo stesso nome e lo stesso significato (dimensione dello stato
+      nascosto dell'LSTM). **`num_layers` non è una chiave dell'LSTM-AE:** esiste solo come argomento interno di
+      `LSTMEncoder` e `LSTMDecoder`, con lo stesso nome e lo stesso significato di `nn.LSTM`, ed è fisso a 1 perché
+      `LSTMAutoencoderNet` non lo passa (`src/models/deep/lstm_ae.py:18`, `:37`, `:60-63`). Segnalato all'utente al
+      passo 0: con `num_layers` come chiave il modello di previsione avrebbe un iperparametro che l'LSTM-AE non espone
+      (asimmetria dello spazio di tuning, D-41). Deciso alla revisione del passo 0 (punto «chiavi» sotto).
+  - **Decisioni:**
+    - **nome e architettura:** `lstm_forecaster`: LSTM sui primi W−1 punti della finestra più una testa lineare verso
+      gli F sensori; orizzonte 1 fisso (non è una chiave); blocco `training` condiviso con gli AE;
+    - **chiavi (revisione del passo 0, utente, 2026-11-20):** solo `{hidden_dim}`, con lo stesso nome e lo stesso
+      significato dell'LSTM-AE; **un solo strato** LSTM, come l'LSTM-AE (`num_layers` fisso a 1, non è una chiave).
+      Motivo: stessa architettura di base dell'LSTM-AE e nessun iperparametro di tuning in più rispetto all'AE (D-41);
+      l'unica differenza resta ricostruzione contro previsione. Scartate: `{hidden_dim, num_layers}` (disparità di
+      tuning) ed esporre `num_layers` nell'LSTM-AE (cambio di schema dell'AE, rischio per `config_id` e per la parità
+      di M1). **Da dichiarare in tesi.** Nessun valore predefinito nel codice; valori provvisori solo nei test
+      sintetici (D-41 aperta);
+    - **trainer (T2):** `ForecastTrainer`, sottoclasse di `PyTorchTrainer`. `PyTorchTrainer` resta intatto e
+      `FIT_CODE_VERSION` invariata;
+    - **residui:** `residual_aggs = ("last",)`; nelle tabelle `window_time_agg = last`;
+    - **analisi:** le righe offline (`ts_agg` `mean`, `max`) del modello sono **assenti**, non NaN; il loro conteggio si
+      registra in `analysis.json`;
+    - **export legacy:** rifiuta il modello (non esiste un corrispettivo storico);
+    - **`ANALYSIS_CODE_VERSION` aumentata** (il contratto delle uscite cambia); la golden di F6 si rigenera con la
+      regola di F7, ammessa solo se cambiano soltanto gli identificativi;
+    - **test di leakage obbligatorio:** modificare l'ultimo punto della finestra non cambia la previsione, modificare un
+      punto tra i primi W−1 la cambia.
+  - **Conseguenza da dichiarare:** un blocco che mescola AE e previsione non stima l'effetto di `ts_agg` sugli AE. In
+    F10 RQ1a avrà due blocchi: solo AE, con il fattore `ts_agg`; tutti i modelli, con `ts_agg = last`.
+  - **Restano APERTI:** budget di tuning, griglie e parità di trattamento (D-41).
+  - **Documenti:** piano F8 (passi 4, 5).
 
-### D-75 · Modello recente come estensione (es. Anomaly Transformer) — APERTA · 2026-11-16
-- **Origine:** opzione (b) di D-71, separata dalla decisione approvata.
-- **Decisione da prendere:** a fine M1.
-- **Vincoli se approvata:** estensione con piano di analisi e piano statistico **congelati a parte**; non entra mai
-  nella famiglia confermativa del piano principale; righe etichettate a parte; non deve ritardare l'analisi
-  principale. Integrerebbe D-10 (perimetro) e D-41 (budget e parità di trattamento).
-- **Collegamenti:** D-10, D-36, D-41, D-71.
+*(D-75 è stata approvata il 2026-11-20 ed è passata alla sezione B.)*
 
 ---
 
 ## E. Decisioni aperte che dipendono dall'utente
 
-### D-54 · Scadenze e tempo disponibile — APERTA — DIPENDE DALL'UTENTE
-- Determinano se F9 e il secondo dataset sono realistici.
+Nessuna voce aperta. *(D-54 è stata chiusa il 2026-11-20 ed è passata alla sezione A.)*
 
 ---
 
