@@ -639,6 +639,23 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
       stesso seed, prima della prima epoca» (non esistono run storici di confronto);
     - **confronto appaiato «addestrato − non addestrato»** (nota del 2026-11-17): approvato nel principio come riga
       descrittiva; si progetta nel piano statistico in F10. Non è un prerequisito del codice.
+  - **Realizzazione (passo 3 di F8, da rivedere alla revisione del passo):**
+    - chiave di config del lotto di scoring: `score_batch_size` nei `params` di `*_untrained` (obbligatoria, intero
+      ≥ 1, nessun default); `ModelSchema.untrained_of` collega ogni `*_untrained` al suo AE;
+    - `fit_key`: blocco esplicito `scoring: {batch_size}` **in aggiunta** ai `params` completi. Scostamento dal
+      primo disegno (togliere `score_batch_size` dai `params` del payload): `analysis_grid.fits_row` ricalcola
+      `config_id` dai `params` del `fit_payload` con la formula di `config.config_id`, e i due `config_id` dello
+      stesso fit sarebbero diversi tra le tabelle `free` e `fits` (fatto rilevato dal test d'integrazione);
+    - classi `ConvAutoencoderUntrainedDetector` e `LSTMAutoencoderUntrainedDetector` in
+      `src/models/deep/ae_untrained.py`, sottoclassi dei detector addestrati (`conv_ae.py`, `lstm_ae.py` invariati):
+      `epochs` = 0 esplicito (il trainer altrimenti userebbe il default storico 40), un valore diverso da 0 è un errore,
+      controllo dell'esito a zero epoche e rete in eval dopo `fit`;
+    - `src/models/registry.py`: `NEW_PIPELINE_ONLY` (nomi senza corrispettivo in `main.py`) e `LEGACY_NUCLEUS`; i test
+      ancorati alla pipeline storica (golden T0 e R1, registro di `main.py`) li escludono per nome, con le asserzioni
+      sui modelli storici invariate.
+  - **Nota per F10 (revisione del passo 3, utente, 2026-11-20):** nella config dell'esperimento ufficiale ogni
+    `*_untrained` compare sempre insieme al suo AE addestrato in `run_models`, così il validatore di appaiamento si
+    applica sempre. Da verificare al congelamento (F10); nessun codice ora.
   - **Effetto sull'elenco «Restano da fissare prima di F8»:** chiavi di schema (stesse dell'AE addestrato, `init_std`
     non serve), seed nel `fit_key`, BatchNorm e controllo di parità sono fissati; la regola di `plan.py` è in D-73
     (nota del 2026-11-20).

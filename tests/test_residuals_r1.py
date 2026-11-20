@@ -90,7 +90,7 @@ def build_r1(work: Path) -> dict:
     for seg in SEGS:
         inputs[f"f3|score_{seg}"] = array_summary(legacy_layout_batch(ws[seg], 0, len(ws[seg])))
     residuals, state = {}, {}
-    for name in registry.NUCLEUS:
+    for name in registry.LEGACY_NUCLEUS:   # i 6 modelli storici (F8: NEW_PIPELINE_ONLY esclusi, golden invariato)
         model = fit_like_main(name, data)
         for seg in SEGS:
             res = compute_residuals(model, ws[seg], model.residual_aggs, len(ws[seg]), "legacy2")

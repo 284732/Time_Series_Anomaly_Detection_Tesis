@@ -17,7 +17,8 @@ File ``configs/stats/<nome>.yaml``, validato con le regole di F2: chiave sconosc
   * ``descriptive_baselines``: modelli ``{model, config_id}`` con ruolo di baseline descrittiva (AE non addestrati,
     D-69; P7 esteso), lista anche vuota ma sempre dichiarata; mai confrontati (famiglia o riferimento di RQ2, modelli
     o ``delta_reference`` dei blocchi di RQ1a e RQ1b, modelli di RQ4). L'identità è la coppia ``(model, config_id)``;
-    il riscontro con lo schema dei modelli si aggiunge quando D-69 lo fissa;
+    riscontro con lo schema dei modelli (D-73, nota del 2026-11-20): un modello ``*_untrained`` (D-69) compare solo
+    qui, mai come modello confrontato, qualunque sia il suo ``config_id``; la lista resta aperta ad altri modelli;
   * ``rq2``, ``rq1a``, ``rq1b``, ``rq3``, ``rq4``: ognuna obbligatoria, ``null`` per non calcolarla; almeno una non
     nulla; ``rq3`` richiede ``rq2``.
 
@@ -380,13 +381,22 @@ def _pair(m: Mapping[str, Any]) -> Tuple[str, str]:
     return m["model"], m["config_id"]
 
 
+def is_untrained(model: str) -> bool:
+    """AE non addestrato (``schema.MODEL_SCHEMAS[...].untrained_of``, D-69)."""
+    return _schema.MODEL_SCHEMAS[model].untrained_of is not None
+
+
 def _check_baselines(data: Mapping[str, Any]) -> None:
-    """Una baseline descrittiva (coppia model, config_id) non è mai un modello confrontato (D-69, D-73 P7 e P13)."""
+    """Una baseline descrittiva (coppia model, config_id) non è mai un modello confrontato (D-69, D-73 P7 e P13); un
+    modello ``*_untrained`` compare solo in ``descriptive_baselines``, qualunque sia il suo ``config_id`` (D-73, nota
+    del 2026-11-20: riscontro con lo schema dei modelli)."""
     base = {_pair(b) for b in data["descriptive_baselines"]}
-    if not base:
-        return
 
     def check(models: Sequence[Mapping[str, Any]], where: str) -> None:
+        untrained = sorted({_pair(m) for m in models if is_untrained(m["model"])})
+        if untrained:
+            raise ConfigError(f"{where}: {untrained} sono AE non addestrati: compaiono solo in descriptive_baselines "
+                              "(D-69, D-73 nota del 2026-11-20), mai come modelli confrontati")
         hit = sorted({_pair(m) for m in models} & base)
         if hit:
             raise ConfigError(f"{where}: {hit} è dichiarato baseline descrittiva (descriptive_baselines; D-69, D-73 "

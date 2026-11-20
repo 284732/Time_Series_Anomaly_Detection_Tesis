@@ -151,6 +151,11 @@ class ModelSchema:
     class_path: str                    # "modulo:Classe", importato solo quando serve
     trained: bool                      # True = addestrato con il trainer PyTorch (usa il blocco training)
     params: Mapping[str, Callable[[Any, str], Any]]
+    untrained_of: Optional[str] = None  # AE non addestrato (D-69): nome dell'AE addestrato di cui è la versione a zero
+                                        # epoche; params = quelli dell'AE + SCORE_BATCH_KEY
+
+
+SCORE_BATCH_KEY = "score_batch_size"   # lotto di scoring degli AE non addestrati: blocco "scoring" del fit_key (D-69)
 
 
 MODEL_SCHEMAS: Dict[str, ModelSchema] = {
@@ -165,6 +170,13 @@ MODEL_SCHEMAS: Dict[str, ModelSchema] = {
     "rolling_zscore": ModelSchema("src.models.traditional.rolling_zscore:RollingZScoreDetector", False,
                                   {"top_k": _int(1), "eps": _real(0.0, True)}),
     "input_norm": ModelSchema("src.models.traditional.input_norm:InputNormDetector", False, {}),
+    # AE non addestrati (D-69, nota del 2026-11-20): zero epoche, fuori dal blocco training; solo nuova pipeline
+    "conv_autoencoder_untrained": ModelSchema(
+        "src.models.deep.ae_untrained:ConvAutoencoderUntrainedDetector", False,
+        {"channels": _int_list, "latent_dim": _int(1), SCORE_BATCH_KEY: _int(1)}, untrained_of="conv_autoencoder"),
+    "lstm_autoencoder_untrained": ModelSchema(
+        "src.models.deep.ae_untrained:LSTMAutoencoderUntrainedDetector", False,
+        {"hidden_dim": _int(1), "latent_dim": _int(1), SCORE_BATCH_KEY: _int(1)}, untrained_of="lstm_autoencoder"),
 }
 
 
@@ -315,6 +327,27 @@ def _validate_machines(v: Any) -> Union[str, Tuple[str, ...]]:
     raise ConfigError(f"data.machines: atteso 'dev', 'eval' o una lista di macchine, trovato {v!r}")
 
 
+def untrained_architecture(spec: "ModelSpec") -> Dict[str, Any]:
+    """``params`` di un AE non addestrato senza il lotto di scoring: quelli che devono coincidere con l'AE (D-69)."""
+    return {k: v for k, v in spec.params.items() if k != SCORE_BATCH_KEY}
+
+
+def _check_untrained_pairs(models: Mapping[str, "ModelSpec"], run_models, training: Mapping[str, Any]) -> None:
+    """D-69 (nota del 2026-11-20): se un AE e il suo ``*_untrained`` sono entrambi in ``run_models``, ``params``
+    identici e ``score_batch_size`` uguale a ``training.batch_size``; altrimenti errore."""
+    for name in run_models:
+        paired = MODEL_SCHEMAS[name].untrained_of
+        if paired is None or paired not in run_models:
+            continue
+        mine, theirs = untrained_architecture(models[name]), dict(models[paired].params)
+        if mine != theirs:
+            raise ConfigError(f"models.{name}: params {mine} diversi da quelli di {paired} {theirs}: l'AE non "
+                              "addestrato ha la stessa architettura dell'AE addestrato (D-69)")
+        if models[name].params[SCORE_BATCH_KEY] != training["batch_size"]:
+            raise ConfigError(f"models.{name}.{SCORE_BATCH_KEY}: {models[name].params[SCORE_BATCH_KEY]} diverso da "
+                              f"training.batch_size {training['batch_size']} dell'AE addestrato {paired} (D-69)")
+
+
 def validate_experiment(raw: Any) -> ExperimentConfig:
     """Valida la config unita (base + modelli + esperimento) e restituisce un ``ExperimentConfig``."""
     raw = _check_keys(raw, "config", TOP_KEYS)
@@ -350,6 +383,7 @@ def validate_experiment(raw: Any) -> ExperimentConfig:
     for name in run_models:
         if name not in all_models:
             raise ConfigError(f"run_models: {name!r} non ha un blocco in models")
+    _check_untrained_pairs(all_models, run_models, tr)
 
     windows = WindowConfig(_int(2)(win["window_size"], "windows.window_size"),
                            _int(1)(win["step"], "windows.step"),
@@ -383,6 +417,10 @@ def model_kwargs(cfg: ExperimentConfig, model: str, seed: int) -> Dict[str, Any]
     """Config passata alla classe del modello (F4): iperparametri, training e device, tutti espliciti."""
     spec = cfg.models[model]
     out = dict(spec.params)
+    if MODEL_SCHEMAS[model].untrained_of is not None:
+        # AE non addestrato (D-69): zero epoche esplicite; il lotto di scoring è il batch_size letto dal modello (D-64)
+        out = untrained_architecture(spec)
+        out.update(batch_size=spec.params[SCORE_BATCH_KEY], epochs=0)
     if "channels" in out:
         out["channels"] = list(out["channels"])
     if out.get("random_state") == FROM_SEED:

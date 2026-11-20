@@ -27,6 +27,12 @@ OUTSIDE_NUCLEUS: Dict[str, str] = {
 }
 
 
+# Nomi di MODEL_SCHEMAS che esistono solo nella nuova pipeline (F8): nessun corrispettivo in main.MODEL_REGISTRY, quindi
+# nessuna parità storica; i test ancorati alla pipeline storica (golden T0, R1, registro di main.py) li escludono per
+# nome, e i loro test sono dedicati. AE non addestrati: D-69, nota del 2026-11-20.
+NEW_PIPELINE_ONLY: Tuple[str, ...] = ("conv_autoencoder_untrained", "lstm_autoencoder_untrained")
+
+
 def get(name: str) -> type:
     """Classe del modello ``name`` (solo modelli di ``MODEL_SCHEMAS``)."""
     if name not in schema.MODEL_SCHEMAS:
@@ -42,6 +48,7 @@ def nucleus() -> Tuple[str, ...]:
 
 
 NUCLEUS: Tuple[str, ...] = nucleus()
+LEGACY_NUCLEUS: Tuple[str, ...] = tuple(n for n in NUCLEUS if n not in NEW_PIPELINE_ONLY)   # con corrispettivo storico
 
 
 def load_checkpoint(path: Union[str, Path], allow_version_mismatch: bool = False) -> BaseAnomalyDetector:

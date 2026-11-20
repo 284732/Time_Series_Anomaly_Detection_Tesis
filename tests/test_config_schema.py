@@ -204,8 +204,13 @@ def test_pca_svd_solver_rule_matches_model_code(n_components):
 
 def test_model_classes_and_flags_match_legacy_registry():
     import main
+    from src.models.registry import NEW_PIPELINE_ONLY
     for name, ms in schema.MODEL_SCHEMAS.items():
+        if name in NEW_PIPELINE_ONLY:          # F8: solo nuova pipeline, nessun corrispettivo storico
+            assert name not in main.MODEL_REGISTRY
+            continue
         assert schema.model_class(name) is main.MODEL_REGISTRY[name]
+    assert set(schema.MODEL_SCHEMAS) - set(NEW_PIPELINE_ONLY) <= set(main.MODEL_REGISTRY)
     cfg = validate_experiment(raw_config())
     for name in ("pca_pointwise", "rolling_zscore", "input_norm", "conv_autoencoder", "lstm_autoencoder"):
         assert cfg.models[name].deterministic is bool(main.MODEL_REGISTRY[name].deterministic)

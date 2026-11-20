@@ -213,6 +213,11 @@ def fit_payload(cfg: "_schema.ExperimentConfig", machine: str, model: str, seed:
     spec = cfg.models[model]
     payload = _base_payload(cfg, machine, data_version)
     payload["model"] = {"name": spec.name, "params": dict(spec.params)}
+    if _schema.MODEL_SCHEMAS[spec.name].untrained_of is not None:
+        # AE non addestrato (D-69): il lotto di scoring decide il blocco interno di D-64 → blocco esplicito "scoring";
+        # il training resta fuori (trained falso, zero epoche). I params restano completi: config_id si ricalcola dai
+        # params del fit_payload (analysis_grid.fits_row) con la formula di config_id
+        payload["scoring"] = {"batch_size": spec.params[_schema.SCORE_BATCH_KEY]}
     payload["residual_aggs"] = list(_schema.RESIDUAL_AGGS)      # [D-33]
     payload["device"] = cfg.device
     if spec.trained:

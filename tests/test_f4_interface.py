@@ -87,7 +87,11 @@ def test_native_only_matches_models_without_per_sensor_residuals_in_table_schema
     assert legacy_variant_levels("raw", "last") == {"sensor_agg": "native", "normalizer": "none",
                                                     "window_time_agg": "none"}
     assert legacy_variant_levels("raw_mean", "last")["sensor_agg"] != "native"
+    from src.models.registry import NEW_PIPELINE_ONLY
     for name in schema.MODEL_SCHEMAS:
+        if name in NEW_PIPELINE_ONLY:          # F8: assenti dal golden T0; AE non addestrati con residui per sensore
+            assert schema.model_class(name).native_only is False, name
+            continue
         assert schema.model_class(name).native_only == (name not in with_features), name
     assert [n for n in schema.MODEL_SCHEMAS if schema.model_class(n).native_only] == ["rolling_zscore"]
 
@@ -96,7 +100,9 @@ def test_native_only_matches_models_without_per_sensor_residuals_in_table_schema
 # Chi non le dichiara ha ``()`` (default di base.py, D-68).
 CORE_RESIDUAL_AGGS = {"rolling_zscore": ("last",), "pca": ("last", "mean"), "pca_pointwise": ("last", "mean"),
                       "input_norm": ("last", "mean"), "conv_autoencoder": ("last", "mean"),
-                      "lstm_autoencoder": ("last", "mean")}
+                      "lstm_autoencoder": ("last", "mean"),
+                      # F8 passo 3 (D-69): AE non addestrati, stesse aggregazioni degli AE addestrati
+                      "conv_autoencoder_untrained": ("last", "mean"), "lstm_autoencoder_untrained": ("last", "mean")}
 
 
 def test_residual_aggs_declared_only_by_models_that_implement_residuals():

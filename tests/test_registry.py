@@ -27,17 +27,23 @@ def test_nucleus_is_models_with_declared_residuals():
     expected = tuple(n for n in schema.MODEL_SCHEMAS if schema.model_class(n).residual_aggs)
     assert registry.NUCLEUS == registry.nucleus() == expected
     assert registry.NUCLEUS == ("pca", "pca_pointwise", "conv_autoencoder", "lstm_autoencoder",
-                                "rolling_zscore", "input_norm")
+                                "rolling_zscore", "input_norm",
+                                "conv_autoencoder_untrained", "lstm_autoencoder_untrained")     # F8 passo 3
+    assert registry.LEGACY_NUCLEUS == ("pca", "pca_pointwise", "conv_autoencoder", "lstm_autoencoder",
+                                       "rolling_zscore", "input_norm")
+    assert registry.NEW_PIPELINE_ONLY == ("conv_autoencoder_untrained", "lstm_autoencoder_untrained")
 
 
 def test_registry_matches_main_model_registry():
-    """Stesse classi di main.MODEL_REGISTRY per i nomi del nucleo; esclusi elencati esplicitamente."""
+    """Stesse classi di main.MODEL_REGISTRY per i nomi del nucleo storico; esclusi elencati esplicitamente; i nomi
+    solo della nuova pipeline (F8) non sono in main.py."""
     import main
-    for name in registry.NUCLEUS:
+    for name in registry.LEGACY_NUCLEUS:
         assert main.MODEL_REGISTRY[name] is registry.get(name), name
     excluded = {"isolation_forest", "one_class_svm", "vae", "untrained_lstm_ae", "untrained_conv_ae"}
     assert set(registry.OUTSIDE_NUCLEUS) == excluded
-    assert set(main.MODEL_REGISTRY) == set(registry.NUCLEUS) | excluded
+    assert set(main.MODEL_REGISTRY) == set(registry.LEGACY_NUCLEUS) | excluded
+    assert not set(registry.NEW_PIPELINE_ONLY) & set(main.MODEL_REGISTRY)
     assert not set(registry.NUCLEUS) & excluded
     for name in excluded:
         assert main.MODEL_REGISTRY[name].residual_aggs == (), name
@@ -49,7 +55,7 @@ def fitted(synth_smd_dir):
     """Modelli costruiti con registry.get(name), stessa sequenza di main.run_machine."""
     data = prepare(synth_smd_dir)
     out = {}
-    for name in registry.NUCLEUS:
+    for name in registry.LEGACY_NUCLEUS:        # modelli con corrispettivo in main.py (F8: NEW_PIPELINE_ONLY a parte)
         cls = registry.get(name)
         cfg = dict(model_config(name), device="cpu")
         cfg.setdefault("random_state", SEED)
