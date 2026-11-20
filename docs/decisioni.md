@@ -2743,6 +2743,28 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
       `analysis_code_version` (1 → 2, nei due punti) e la chiave nuova `absent_rows: {}` (sempre presente, anche vuota),
       cioè il contratto che giustifica l'aumento di versione. Golden rigenerata una volta;
     - **golden di F7:** criterio nuovo nella nota del 2026-11-20 su D-73 (golden).
+  - **Passo 5 di F8, regole di `src/stats/plan.py` (utente, 2026-11-20, decisioni prese prima di scrivere il codice,
+    su raccomandazione di Claude Project; da rivedere alla revisione del passo):**
+    - **riscontro con lo schema:** le regole si ricavano dagli attributi della classe (`residual_aggs`,
+      `allowed_ts_aggs`; `plan.model_window_time_aggs`, `plan.model_ts_aggs`), mai dal nome `lstm_forecaster`; ogni
+      modello futuro con le stesse restrizioni è coperto;
+    - **scoring:** dovunque il piano dà uno scoring a un modello (RQ2 riferimento, famiglia e `rq2.baselines`, cioè le
+      righe descrittive tratte da `descriptive_baselines`; modelli dei blocchi di RQ1a; modelli di RQ4) il
+      `window_time_agg` deve avere righe: per il modello di previsione solo `last`;
+    - **RQ1a:** un blocco con il modello di previsione ha `ts_agg = [last]` (rifiutati sia i livelli offline in più sia
+      un solo livello offline);
+    - **RQ1b:** un blocco con il modello di previsione ha solo livelli di `scoring` con `window_time_agg = last`: più
+      di un `window_time_agg` e il solo `mean` sono due rifiuti distinti (il secondo va oltre la lettera del piano, «più
+      di un `window_time_agg`», per decisione dell'utente: altrimenti il blocco fallirebbe più tardi, ai controlli sugli
+      ingressi);
+    - **`descriptive`:** nessuna regola. Le voci non nominano modelli e `plan.py` non vede l'esperimento: con `ts_agg`
+      ≠ `last` il modello di previsione è assente dalla voce per costruzione, come le sue righe offline (`absent_rows`).
+      **Da dichiarare in tesi** insieme alla conseguenza del punto (d);
+    - **`descriptive_baselines`:** resta aperta a ogni modello (decisione del 2026-11-16), compreso quello di previsione;
+    - **`STATS_CODE_VERSION` invariata** (4): la modifica aggiunge solo rifiuti, quindi ogni piano valido prima dà le
+      stesse uscite (stesso criterio del passo 3); golden di F7 invariata;
+    - **test:** `tests/test_f8_forecaster_plan.py`, un test per ogni rifiuto e i casi ammessi; prove di difetto (6
+      mutazioni in memoria, tutte rilevate).
 
 *(D-75 è stata approvata il 2026-11-20 ed è passata alla sezione B.)*
 

@@ -36,6 +36,16 @@ entro gruppo (``statistic: within_group``) con IC di Fisher z e errore standard 
 ``native`` (attributo di classe ``native_only``) hanno lo scoring none/native/none e in RQ1b stanno in blocchi senza
 fattore ``scoring`` (D-25).
 
+Livelli per modello (F8 passo 5, D-74), dagli attributi della classe nello schema (``residual_aggs``,
+``allowed_ts_aggs``; ``model_window_time_aggs``, ``model_ts_aggs``), mai dal nome: un modello compare con uno scoring
+solo se il suo ``window_time_agg`` ha righe (RQ2 riferimento, famiglia e ``baselines``; modelli di RQ1a e RQ4); in un
+blocco di RQ1a i livelli di ``ts_agg`` devono essere tra quelli del modello; in un blocco di RQ1b ogni livello di
+``scoring`` deve avere un ``window_time_agg`` del modello, e un modello con un solo ``window_time_agg`` non sta in un
+blocco con più livelli di ``window_time_agg``. Oggi la restrizione riguarda solo il modello di previsione
+(``lstm_forecaster``: solo ``last`` per entrambi). Le voci ``descriptive`` non nominano modelli e non hanno regole: con
+``ts_agg`` ≠ ``last`` il modello di previsione vi è assente per costruzione, come le sue righe offline (decisione del
+passo 5). ``descriptive_baselines`` resta aperta a ogni modello.
+
 Canonicalizzazione come ``plan_sha256`` di F6: reali normalizzati a float (99 e 99.0 coincidono), interi senza
 conversione, bool mai accettati come numeri; duplicati controllati sui valori normalizzati prima dell'ordinamento;
 liste senza ordine significativo ordinate. ``stats_plan_sha256`` = hash canonico della forma normalizzata;
@@ -220,6 +230,18 @@ def is_native(model: str) -> bool:
     return bool(getattr(_schema.model_class(model), "native_only", False))
 
 
+def model_window_time_aggs(model: str) -> Tuple[str, ...]:
+    """``window_time_agg`` con righe per un modello non native: quelli di ``RESIDUAL_WTA`` che la classe salva
+    (``residual_aggs``); modello di previsione: solo ``last`` (D-74 b). Riscontro con lo schema dei modelli."""
+    return tuple(a for a in RESIDUAL_WTA if a in _schema.model_class(model).residual_aggs)
+
+
+def model_ts_aggs(model: str) -> Tuple[str, ...]:
+    """``ts_agg`` con righe per un modello: ``allowed_ts_aggs`` della classe, ``None`` = tutti (D-74 c)."""
+    allowed = getattr(_schema.model_class(model), "allowed_ts_aggs", None)
+    return tuple(a for a in ts.TS_AGGS if allowed is None or a in allowed)
+
+
 def _model_name(v: Any, path: str) -> str:
     if v == RANDOM:
         raise ConfigError(f"{path}: random_baseline non è un livello del fattore modello (D-73 P7)")
@@ -244,6 +266,10 @@ def _scored_model(v: Any, path: str) -> Dict[str, str]:
         out.update(NATIVE_SCORING)
     else:
         out.update(_residual_scoring(d, path))
+        have = model_window_time_aggs(model)
+        if out["window_time_agg"] not in have:
+            raise ConfigError(f"{path}: il modello {model!r} ha righe solo con window_time_agg {list(have)}, trovato "
+                              f"{out['window_time_agg']!r} (modello di previsione: solo window_time_agg = last, D-74)")
     return out
 
 
@@ -534,6 +560,14 @@ def _rq1a_block(v: Any, path: str) -> Dict[str, Any]:
         raise ConfigError(f"{path}.models: in RQ1a servono almeno 2 modelli (interazione modello × fattore, D-25)")
     f = _keys(d["factors"], f"{path}.factors", RQ1A_FACTORS[table])
     out["factors"] = {k: _levels(f[k], f"{path}.factors.{k}", _RQ1A_LEVELS[k]) for k in RQ1A_FACTORS[table]}
+    for m in out["models"]:
+        allowed = list(model_ts_aggs(m["model"]))
+        bad = [x for x in out["factors"]["ts_agg"] if x not in allowed]
+        if bad:
+            raise ConfigError(f"{path} ({out['name']}): il modello {m['model']!r} ha righe solo con ts_agg "
+                              f"{allowed}: il blocco deve avere ts_agg = {allowed}, trovato "
+                              f"{out['factors']['ts_agg']} (D-74: un blocco che mescola AE e previsione non stima "
+                              "l'effetto di ts_agg; in F10 due blocchi)")
     if table == "thr" and out["metric"] != F1 and (
             {"policy": ORACLE} in out["factors"]["threshold"] or True in out["factors"]["pa"]):
         raise ConfigError(f"{path}.metric: con oracolo o pa vero tra i livelli la metrica deve essere f1 (D-72 V10)")
@@ -566,6 +600,19 @@ def _rq1b_block(v: Any, path: str) -> Dict[str, Any]:
         names = tuple(n for n in names if n != "scoring")
     f = _keys(d["factors"], f"{path}.factors", names)
     out["factors"] = {k: _levels(f[k], f"{path}.factors.{k}", _RQ1B_LEVELS[k]) for k in names}
+    if not native:
+        wtas = sorted({s["window_time_agg"] for s in out["factors"]["scoring"]})
+        for m in out["models"]:
+            have = list(model_window_time_aggs(m["model"]))
+            if have == list(RESIDUAL_WTA):
+                continue
+            if len(wtas) > 1:
+                raise ConfigError(f"{path} ({out['name']}): il modello {m['model']!r} (righe solo con "
+                                  f"window_time_agg {have}) non sta in un blocco con più di un window_time_agg nei "
+                                  f"livelli di scoring {wtas} (D-74 b)")
+            if wtas[0] not in have:
+                raise ConfigError(f"{path} ({out['name']}): il modello {m['model']!r} ammette solo window_time_agg = "
+                                  f"{' / '.join(have)} nei livelli di scoring, trovato {wtas[0]!r} (D-74 b)")
     _needs_two_levels(out, path)
     _references(d, out, path, len(out["models"]), _RQ1B_LEVELS, _model_ref)
     return out
