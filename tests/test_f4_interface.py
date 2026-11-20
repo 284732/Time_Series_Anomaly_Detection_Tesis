@@ -102,7 +102,9 @@ CORE_RESIDUAL_AGGS = {"rolling_zscore": ("last",), "pca": ("last", "mean"), "pca
                       "input_norm": ("last", "mean"), "conv_autoencoder": ("last", "mean"),
                       "lstm_autoencoder": ("last", "mean"),
                       # F8 passo 3 (D-69): AE non addestrati, stesse aggregazioni degli AE addestrati
-                      "conv_autoencoder_untrained": ("last", "mean"), "lstm_autoencoder_untrained": ("last", "mean")}
+                      "conv_autoencoder_untrained": ("last", "mean"), "lstm_autoencoder_untrained": ("last", "mean"),
+                      # F8 passo 4 (D-74 b): un solo punto previsto per finestra, solo last
+                      "lstm_forecaster": ("last",)}
 
 
 def test_residual_aggs_declared_only_by_models_that_implement_residuals():

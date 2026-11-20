@@ -1,5 +1,5 @@
 {
- "analysis_code_version": 1,
+ "analysis_code_version": 2,
  "environment": {
   "lock_sha256": "6e09688d74c4b22a23036c23b79bd826eeafceefcb93d56ea9f73d60d790ac59",
   "packages": {
@@ -11,15 +11,15 @@
   "python": "3.13.9"
  },
  "identity_outputs": {
-  "analysis.json": "3be6f0a2baf8085d0285b7ddb525adb22b0a31c7c145c27c393e3e8c077e684c",
+  "analysis.json": "092e31eb342b70e8da6a87c552036944bb1e96e8a25e4671874949a9a6390c4a",
   "fits": "548253e6ca907238534d04b2daf1ea2134ccb2c01c7d6aaf328643f1da76c079",
   "free": "0bf45fe742d9e92134409deb7fb8b00e14b88e68b98ad5c6df44df16ee0ed2cd",
   "thr": "36bfeed41ee34567f9270a6eeba7058854f5c1690fac8498440b0b07c04e57f2"
  },
  "outputs": {
-  "analysis.json": "c22c1b51773059a3f3aef4688c47663afc44484c46cd9028a85e7cf1c5d03901",
+  "analysis.json": "19630a5881a6c1ca8655b302b876bbe825be0e67769a7ac18527b3bd8b9a1ecc",
   "fits": "548253e6ca907238534d04b2daf1ea2134ccb2c01c7d6aaf328643f1da76c079",
-  "free": "48d249a9cb757d21c27614822cb3f2265cfeb08f6305fdbc1bcb47539b141dfe",
-  "thr": "d3eb0816b35d2ed5bdbf7d5a3d2db7055b70bbb96d9c4914f019863f44cefb56"
+  "free": "af4518093835b27cd4bbda14c5a5469b0e3f645397021d3a9af4fcf80dd1c291",
+  "thr": "bf8565066723fe5bd54fda969309dc70546704e36ac783edd3dc7faaba588a67"
  }
 }

@@ -43,7 +43,9 @@ from src.utils.schema import ConfigError
 
 # Da incrementare a mano quando cambia la numerica dell'analisi (metriche, soglie, normalizer, proiezioni) o il
 # contratto delle sue uscite: entra in ``analysis_id`` (D-72 B12).
-ANALYSIS_CODE_VERSION = 1
+# 2 (F8 passo 4, D-74): livelli per modello (righe del modello di previsione solo window_time_agg = ts_agg = last, le
+# altre assenti e contate in analysis.json, chiave absent_rows); numeri dei modelli esistenti invariati.
+ANALYSIS_CODE_VERSION = 2
 ANALYSIS_ID_LEN = 12
 
 SCENARIOS = _ts.SCENARIOS

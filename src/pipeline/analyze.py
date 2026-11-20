@@ -17,11 +17,18 @@ esportazione legacy facoltativa (6a) dai residui dello store, identità e pubbli
      ``cal``, ``test`` e, con ``test_context``, ``test_ctx_head``; mai ``es``, D-04) con ``get_residuals`` e il gettone
      del lock (verifica sha256, eventuale rigenerazione), poi score, righe ``free`` e ``thr``;
   6. tabelle e, se il piano la chiede, esportazione legacy nella cartella temporanea del run; ``analysis.json`` per
-     ultimo (componenti dell'id, modelli con righe native, conteggi di C5, costanti di C14, righe NaN per motivo);
+     ultimo (componenti dell'id, modelli con righe native, conteggi di C5, costanti di C14, righe NaN per motivo,
+     righe assenti per modello e motivo, ``absent_rows``: F8 passo 4, D-74);
      rinomina atomica in ``analyses/<analysis_id>/``, ``run.json`` nel run, ``finish_run``.
 Errori: il run si chiude ``failed`` (``interrupted`` per ``KeyboardInterrupt``) e la cartella temporanea resta per
 ``clean-tmp``. Codici di uscita (passo 7): 0, 1 fit ``failed``, 2 dati o piano non validi / analisi già presente,
 3 store occupato, 4 pubblicazione non riuscita, 130 interruzione.
+
+Livelli per modello (F8 passo 4, D-74): un modello non native ha righe solo per i ``window_time_agg`` del piano che il
+fit ha salvato (``residual_aggs`` di ``meta.json``) e per i ``ts_agg`` ammessi dalla classe (``allowed_ts_aggs``). Per
+il modello di previsione restano solo ``last``/``last``: le altre combinazioni sono **assenti** (non NaN) e contate in
+``absent_rows``. ``check_models_for_plan`` (controllo preliminare, codice 2) rifiuta un piano che lascerebbe un modello
+senza righe e l'esportazione legacy con un modello fuori da ``registry.LEGACY_NUCLEUS``.
 
 Seed dell'esportazione legacy: quello del ciclo di ``main.py`` (``seeds[0]`` per i deterministici). La colonna ``seed``
 delle tabelle usa ``set_seed_value`` del ``meta.json`` (V12).
@@ -110,10 +117,38 @@ def _plan(plan: Union[Mapping[str, Any], str, Path]) -> ap.AnalysisPlan:
     raise TypeError(f"piano non valido: {type(plan).__name__} (attesa una mappa o un percorso YAML)")
 
 
+def check_models_for_plan(plan: ap.AnalysisPlan, cfg) -> None:
+    """Coerenza piano–modelli verificabile senza dati (F8 passo 4, D-74), ``ConfigError`` (codice 2):
+      * l'esportazione legacy accetta solo i modelli con corrispettivo storico (``registry.LEGACY_NUCLEUS``,
+        ``legacy_export.refused_models``);
+      * ogni modello non native deve avere almeno un livello di ``window_time_agg`` e uno di ``ts_agg`` tra quelli del
+        piano (``analysis_grid.model_levels`` con le aggregazioni della classe): altrimenti non avrebbe righe."""
+    from src.pipeline.legacy_export import refused_models
+    from src.utils.schema import RESIDUAL_AGGS, model_class
+    if plan.legacy_export is not None:
+        bad = refused_models(cfg.run_models)
+        if bad:
+            raise ConfigError(f"legacy_export: modelli {bad} senza corrispettivo in main.py, ammessi solo quelli di "
+                              "registry.LEGACY_NUCLEUS (D-74, D-69); togliere legacy_export dal piano o il modello da "
+                              "run_models")
+    for m in cfg.run_models:
+        cls = model_class(m)
+        if cls.native_only:
+            continue
+        lv = ag.model_levels(plan, tuple(a for a in RESIDUAL_AGGS if a in cls.residual_aggs), cls.allowed_ts_aggs)
+        for what, levels, have in (("window_time_agg", plan.window_time_aggs, lv.window_time_aggs),
+                                   ("ts_agg", plan.ts_aggs, lv.ts_aggs)):
+            if not have:
+                raise ConfigError(f"{m}: nessun livello di {what} del piano {list(levels)} è disponibile per il "
+                                  f"modello (residui {list(cls.residual_aggs)}, ts_agg ammessi "
+                                  f"{list(cls.allowed_ts_aggs or plan.ts_aggs)}): il modello non avrebbe righe (D-74)")
+
+
 def _preflight(cfg, plan: ap.AnalysisPlan, datasets_dir):
     if cfg.kind == "official":
         raise AnalysisRefused("kind: official non disponibile prima di F10 (D-72)")
     ap.check_plan_for_experiment(plan, cfg)
+    check_models_for_plan(plan, cfg)
     spec = load_dataset_spec(spec_path_for(cfg.data.dataset, datasets_dir))
     if spec.split_file is None:
         raise AnalysisRefused(f"dataset {spec.name!r} senza divisione dev/eval (split_file: null): machine_role non "
@@ -153,7 +188,15 @@ def _residual_names(meta: Mapping[str, Any], plan: ap.AnalysisPlan) -> Tuple[str
     nessuno per un fit failed; mai ``es``. Entrano nell'id (D-72 B12)."""
     if meta.get("status") != "complete":
         return ()
-    return ag.residual_names(plan, bool(meta["model"]["native_only"]))
+    native = bool(meta["model"]["native_only"])
+    return ag.residual_names(plan, native, None if native else tuple(meta["model"]["residual_aggs"]))
+
+
+def _levels(meta: Mapping[str, Any], plan: ap.AnalysisPlan) -> "ag.ModelLevels":
+    """Livelli di un fit non native: aggregazioni salvate (``meta.json``) e ``ts_agg`` ammessi dalla classe (D-74)."""
+    from src.utils.schema import model_class
+    return ag.model_levels(plan, tuple(meta["model"]["residual_aggs"]),
+                           model_class(meta["model"]["name"]).allowed_ts_aggs)
 
 
 def _legacy_names(meta: Mapping[str, Any], plan: ap.AnalysisPlan) -> Tuple[str, str]:
@@ -216,7 +259,7 @@ def _segment_problems(meta: Mapping[str, Any], segs, window_size: int, step: int
 
 def _legacy_export(store: Store, cfg, plan, manifest, machines, segs_by_machine, tasks, metas, lock, out_dir: Path,
                    datasets_dir) -> Dict[str, Any]:
-    from src.pipeline.legacy_export import LegacyExporter, score_variants
+    from src.pipeline.legacy_export import LegacyExporter, refused_models, score_variants
     le = plan.legacy_export
     exporter = LegacyExporter(out_dir, le.threshold_percentile, le.timestamp_agg)
     w, step = cfg.windows.window_size, cfg.windows.step
@@ -235,6 +278,9 @@ def _legacy_export(store: Store, cfg, plan, manifest, machines, segs_by_machine,
                     continue
                 task = by_key[(machine, model, None if det else int(seed))]
                 meta = metas[task.fit_key]
+                if refused_models([meta["model"]["name"]]):     # difesa: il controllo preliminare lo rifiuta già
+                    raise ConfigError(f"legacy_export: {meta['model']['name']} senza corrispettivo in main.py "
+                                      "(registry.LEGACY_NUCLEUS, D-74, D-69)")
                 if meta["status"] != "complete":
                     err = meta.get("error") or {}
                     exporter.record_failure(machine, int(seed), model, f"{err.get('type')}: {err.get('message')}")
@@ -281,6 +327,7 @@ def _tables(store: Store, cfg, plan, manifest, machines, segs, tasks, metas, loc
     """Righe free / thr / fits di tutte le macchine; informazioni per analysis.json."""
     free, thr, fits = [], [], []
     scale, native_models = {}, set()
+    absent: Dict[str, Dict[str, Dict[str, int]]] = {}              # modello → motivo → tabella → righe (D-74)
     w, step = cfg.windows.window_size, cfg.windows.step
     preproc = _preproc_id(cfg)
     for machine in machines:
@@ -305,7 +352,13 @@ def _tables(store: Store, cfg, plan, manifest, machines, segs, tasks, metas, loc
             native = bool(meta["model"]["native_only"])
             res = {n: rc.get_residuals(store, task.fit_key, *n.split(rc.SEP), lock=lock, data_dir=cfg.data.data_dir,
                                        datasets_dir=datasets_dir) for n in _residual_names(meta, plan)}
-            fs = ag.fit_scores(res, plan, native, meta["model"]["kwargs"].get("top_k") if native else None, geom)
+            levels = None if native else _levels(meta, plan)
+            for reason, counts in (levels.absent.items() if levels is not None else ()):
+                acc = absent.setdefault(meta["model"]["name"], {}).setdefault(reason, {"free": 0, "thr": 0})
+                for t, n in counts.items():
+                    acc[t] += n
+            fs = ag.fit_scores(res, plan, native, meta["model"]["kwargs"].get("top_k") if native else None, geom,
+                               levels=levels)
             ident = dict(base, model=meta["model"]["name"], config_id=meta["model"]["config_id"],
                          fit_key=task.fit_key, seed=int(meta["seed"]["set_seed_value"]),
                          deterministic=bool(meta["model"]["deterministic"]))
@@ -320,7 +373,8 @@ def _tables(store: Store, cfg, plan, manifest, machines, segs, tasks, metas, loc
     reasons = {t: dict(sorted(Counter(frames[t]["nan_reason"].dropna()).items())) for t in ("free", "thr")}
     info = {"rows": {t: int(len(df)) for t, df in frames.items()}, "nan_reasons": reasons,
             "native_models": sorted(native_models), "scale_counts": scale, "constants": dict(CONSTANTS),
-            "failed_fits": int((frames["fits"]["status"] == "failed").sum())}
+            "failed_fits": int((frames["fits"]["status"] == "failed").sum()),
+            "absent_rows": {m: {r: dict(c) for r, c in sorted(rs.items())} for m, rs in sorted(absent.items())}}
     return frames, info
 
 
@@ -406,7 +460,7 @@ def _execute(store: Store, cfg, plan, manifest, machines, segs, tasks, metas, lo
             "outputs": {"tables": info["rows"], "legacy_export": legacy},
             "nan_reasons": info["nan_reasons"], "native_models": info["native_models"],
             "scale_counts": info["scale_counts"], "constants": info["constants"],
-            "failed_fits": info["failed_fits"],
+            "failed_fits": info["failed_fits"], "absent_rows": info["absent_rows"],
         }
         store.write_analysis_file(tmp, ANALYSIS_JSON,
                                   (json.dumps(doc, indent=1, sort_keys=True, allow_nan=False) + "\n").encode("utf-8"))

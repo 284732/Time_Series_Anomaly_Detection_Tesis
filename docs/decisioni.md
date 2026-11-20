@@ -2420,6 +2420,34 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
     verifica lo stesso esito di `write_one` di `tests/test_f7_golden.py`. Golden rigenerata una volta: `outputs`
     invariati, aggiunto solo `identity_outputs`.
   - **Documenti:** piano F8 (passi 1, 3, 5).
+- **Nota (2026-11-20, F8 passo 4, golden di F7; utente, alla revisione del passo, su raccomandazione di Claude
+  Project, opzione (b)):**
+  - **Problema:** le statistiche e il report registrano l'`analysis_code_version` degli ingressi (`stats.json`,
+    `inputs[]`; tabella degli ingressi del report). Con `ANALYSIS_CODE_VERSION` 1 → 2 (D-74) il valore cambia anche se
+    le statistiche non cambiano, e la regola di F7 rifiutava la riscrittura a parità di `STATS_CODE_VERSION` /
+    `REPORT_CODE_VERSION` e di ambiente. Il caso si ripresenterà a ogni aumento di `ANALYSIS_CODE_VERSION` (per esempio
+    VUS-PR in F10). Aumentare le versioni di statistiche e report è scartato: il loro codice non è cambiato.
+  - **Criterio (`tests/test_f7_golden.py`):**
+    - la golden registra la versione dell'analisi degli ingressi (`input_analysis_code_versions`,
+      {esperimento: versione});
+    - la forma d'identità la nasconde come `analysis_id` (segnaposto `<analysis_code_version>`): per struttura in
+      `stats.json`; nel report solo nella cella che segue il segnaposto dell'`analysis_id` dell'ingresso, mai per valore
+      altrove;
+    - **caso ammesso nuovo** a parità di versione: versione degli ingressi diversa da quella registrata **e** uscite
+      identiche in forma d'identità; qualunque altra differenza, comprese quelle delle tabelle statistiche, è un
+      rifiuto;
+    - versione degli ingressi uguale o non registrata: regole di F7 invariate.
+  - **Test:** versione cambiata e solo la versione diversa → ammessa; versione cambiata e un valore di tabella diverso →
+    rifiutata; versione uguale e uscite diverse → rifiutata; golden senza versione registrata → regole precedenti;
+    sulle uscite vere, cambiare solo la versione lascia uguale la forma d'identità e cambiare un altro campo no. Prove
+    di difetto (5 mutazioni in memoria, tutte rilevate): caso nuovo senza controllo della forma d'identità; versione
+    considerata sempre cambiata; versione non nascosta nel report; versione non nascosta in `stats.json`;
+    sostituzione per valore non ancorata.
+  - **Rigenerazione, in due passi** (come la nota di M1): (1) con `ANALYSIS_CODE_VERSION` = 1 impostata solo in
+    memoria, uscite identiche a quelle registrate, si aggiungono la versione degli ingressi e la nuova forma d'identità
+    (cambiata solo in `stats.json` normalizzato e in `report.md`, `report.tex`, `tables/inputs.md`, `tables/inputs.tex`);
+    (2) con la versione 2 il caso nuovo: forma d'identità identica, cambia solo la versione degli ingressi (1 → 2).
+  - **Documenti:** piano F8 (passo 4).
 
 ### D-53 · File tracciati da git (`.pyc`, dataset) — APPROVATA · 2026-11-10
 - **Decisione:** i `.pyc` non sono tracciati: i 35 file già tracciati sono tolti dal tracciamento con
@@ -2675,6 +2703,46 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
     F10 RQ1a avrà due blocchi: solo AE, con il fattore `ts_agg`; tutti i modelli, con `ts_agg = last`.
   - **Restano APERTI:** budget di tuning, griglie e parità di trattamento (D-41).
   - **Documenti:** piano F8 (passi 4, 5).
+  - **Realizzazione (passo 4 di F8, da rivedere alla revisione del passo):**
+    - `src/models/deep/lstm_forecaster.py`: `LSTMForecasterNet` (un `nn.LSTM` a un solo strato sui primi W−1 punti,
+      testa `nn.Linear(hidden_dim, F)` dallo stato nascosto finale) e `LSTMForecasterDetector` (`residual_aggs =
+      ("last",)`, `deterministic` falso, `native_only` falso); `hidden_dim`, `batch_size` e `device` obbligatori nel
+      codice del modello (nessun default); checkpoint come gli AE (D-67), con il trainer di previsione ricostruito in
+      `load`;
+    - `src/training/forecast_trainer.py` (file nuovo, così `src/training/trainer.py` resta intatto anche come file):
+      `ForecastTrainer(PyTorchTrainer)` ridefinisce `train_epoch`, `evaluate`, `get_error_matrix` (solo `last`) e
+      `get_reconstruction_errors`; `fit` (early stopping, ripristino dell'epoca migliore) è quello ereditato. Le chiavi
+      di training che `PyTorchTrainer` legge con un default storico sono obbligatorie;
+    - `src/models/base.py`: attributo di classe `allowed_ts_aggs` (`None` = tutti i `ts_agg`; previsione: `("last",)`),
+      aggiunta senza effetto sugli altri modelli;
+    - analisi (`analysis_grid.model_levels`, `analyze`): per ogni fit non native i livelli sono i `window_time_agg` del
+      piano salvati dal fit (`residual_aggs` di `meta.json`) e i `ts_agg` ammessi dalla classe. Le combinazioni tolte
+      sono assenti e contate in `analysis.json`, chiave `absent_rows` {modello: {motivo: {free, thr}}}, sempre presente
+      (vuota senza modello di previsione). **Scelta di realizzazione da rivedere:** oltre ai `ts_agg` offline
+      (motivo `offline_ts_agg`) sono assenti e contate anche le righe con `window_time_agg = mean` (motivo
+      `window_time_agg_degenerate`, conseguenza di (b): il residuo `mean` non esiste e sarebbe uguale a `last`);
+    - controllo preliminare `analyze.check_models_for_plan` (`ConfigError`, codice 2): un piano senza `last` tra i
+      `window_time_aggs` o i `ts_aggs` lascerebbe il modello senza righe ed è un errore; l'esportazione legacy rifiuta
+      i modelli senza corrispettivo storico (sotto, revisione del passo);
+    - `ANALYSIS_CODE_VERSION` 1 → 2; `registry.NEW_PIPELINE_ONLY` comprende `lstm_forecaster`.
+  - **Revisione del passo 4 (utente, 2026-11-20):**
+    - **approvate** le due scelte di realizzazione sopra: righe con `window_time_agg = mean` assenti e contate con il
+      motivo `window_time_agg_degenerate`; piano senza `last` con il modello presente → errore preliminare;
+    - **esportazione legacy, elenco di ammessi:** accetta solo i modelli di `registry.LEGACY_NUCLEUS`
+      (`legacy_export.refused_models`); ogni modello futuro è rifiutato per costruzione. Oltre a `lstm_forecaster` sono
+      ora rifiutati anche `conv_autoencoder_untrained` e `lstm_autoencoder_untrained` (D-69), che al passo 3 l'export
+      accettava pur senza corrispettivo in `main.py`. Sostituisce il primo disegno (elenco `REFUSED_MODELS` dei soli
+      rifiutati);
+    - **`residual_aggs` nel `fit_payload` (invariato):** il campo del payload (`["last", "mean"]`, da
+      `schema.RESIDUAL_AGGS`) è ciò che l'esperimento chiede ed entra nel `fit_key`; i residui salvati davvero sono
+      quelli di `meta.json` (`model.residual_aggs` e i record `residuals`): per `lstm_forecaster` solo `last`, come per
+      il rolling z-score. L'analisi legge `meta.json`. Cambiare il payload cambierebbe tutti i `fit_key` esistenti;
+    - **golden di F6, correzione della regola del passo:** la regola «golden rigenerata solo se cambiano soltanto gli
+      identificativi» era imprecisa, perché un aumento di versione cambia per forza il valore della versione. Regola
+      applicata: tabelle `free`, `thr`, `fits` identiche in forma d'identità; in `analysis.json` cambiano solo
+      `analysis_code_version` (1 → 2, nei due punti) e la chiave nuova `absent_rows: {}` (sempre presente, anche vuota),
+      cioè il contratto che giustifica l'aumento di versione. Golden rigenerata una volta;
+    - **golden di F7:** criterio nuovo nella nota del 2026-11-20 su D-73 (golden).
 
 *(D-75 è stata approvata il 2026-11-20 ed è passata alla sezione B.)*
 

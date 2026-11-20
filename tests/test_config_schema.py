@@ -214,7 +214,9 @@ def test_model_classes_and_flags_match_legacy_registry():
     cfg = validate_experiment(raw_config())
     for name in ("pca_pointwise", "rolling_zscore", "input_norm", "conv_autoencoder", "lstm_autoencoder"):
         assert cfg.models[name].deterministic is bool(main.MODEL_REGISTRY[name].deterministic)
-    assert {n for n, s in schema.MODEL_SCHEMAS.items() if s.trained} == {"conv_autoencoder", "lstm_autoencoder"}
+    trained = {n for n, s in schema.MODEL_SCHEMAS.items() if s.trained}
+    assert trained - set(NEW_PIPELINE_ONLY) == {"conv_autoencoder", "lstm_autoencoder"}     # storici invariati
+    assert trained & set(NEW_PIPELINE_ONLY) == {"lstm_forecaster"}                           # F8 passo 4 (D-74)
 
 
 def test_model_kwargs_are_explicit_and_resolve_from_seed():

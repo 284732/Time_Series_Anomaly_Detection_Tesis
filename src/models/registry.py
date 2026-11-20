@@ -29,8 +29,9 @@ OUTSIDE_NUCLEUS: Dict[str, str] = {
 
 # Nomi di MODEL_SCHEMAS che esistono solo nella nuova pipeline (F8): nessun corrispettivo in main.MODEL_REGISTRY, quindi
 # nessuna parità storica; i test ancorati alla pipeline storica (golden T0, R1, registro di main.py) li escludono per
-# nome, e i loro test sono dedicati. AE non addestrati: D-69, nota del 2026-11-20.
-NEW_PIPELINE_ONLY: Tuple[str, ...] = ("conv_autoencoder_untrained", "lstm_autoencoder_untrained")
+# nome, e i loro test sono dedicati. AE non addestrati: D-69, nota del 2026-11-20; modello di previsione: D-74, nota
+# del 2026-11-20.
+NEW_PIPELINE_ONLY: Tuple[str, ...] = ("conv_autoencoder_untrained", "lstm_autoencoder_untrained", "lstm_forecaster")
 
 
 def get(name: str) -> type:

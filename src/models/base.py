@@ -173,6 +173,9 @@ class BaseAnomalyDetector(ABC):
     residual_aggs: Tuple[str, ...] = ()
     # True se il modello non ha residui per sensore (table_schema: sensor_agg native, window_time_agg none)
     native_only: bool = False
+    # F8 (D-74 c): proiezioni finestra → timestamp ammesse per i residui del modello; None = tutte. Il modello di
+    # previsione ammette solo ``last`` (il residuo riguarda il solo punto previsto); l'analisi non produce le altre righe.
+    allowed_ts_aggs: Optional[Tuple[str, ...]] = None
 
     def __init__(self, name: str, config: Dict[str, Any]):
         """

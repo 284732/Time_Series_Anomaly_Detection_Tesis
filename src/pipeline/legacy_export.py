@@ -36,6 +36,15 @@ RANDOM_MODEL, RANDOM_VARIANT, NATIVE_VARIANT = "random_baseline", "random", "raw
 LEGACY_TOPK = 5                                    # k di main.build_score_variants
 
 
+def refused_models(models) -> list:
+    """Modelli che l'esportazione legacy rifiuta (controllo preliminare di analyze, prima di ogni scrittura): tutti
+    quelli fuori da ``registry.LEGACY_NUCLEUS`` (elenco di ammessi: nessun corrispettivo in main.py, nessuna parità da
+    verificare; ogni modello futuro è rifiutato per costruzione). Oggi: ``lstm_forecaster`` (D-74) e gli AE non
+    addestrati (D-69)."""
+    from src.models.registry import LEGACY_NUCLEUS
+    return [m for m in models if m not in LEGACY_NUCLEUS]
+
+
 def _main():
     import main  # noqa: WPS433  import tardivo e confinato (D-72 C7, B10)
     return main

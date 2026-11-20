@@ -42,6 +42,15 @@ versione:
   * ambiente cambiato, uscite diverse → ammessa solo se la golden ha ``identity_outputs`` e coincidono con quelle
     correnti, cioè le uscite differiscono soltanto nei campi d'identità che derivano dall'ambiente; altrimenti
     rifiutata (anche con una golden senza ``identity_outputs``).
+
+Modifica approvata dall'utente (2026-11-20, F8 passo 4, nota su D-73): la golden registra la versione dell'analisi degli
+ingressi (``input_analysis_code_versions``, {esperimento: ``analysis_code_version``}) e la forma d'identità la nasconde
+come ``analysis_id`` (``<analysis_code_version>``: per struttura in ``stats.json``, nel report con una sostituzione
+ancorata al segnaposto dell'``analysis_id`` nella riga dell'ingresso). Motivo: a ogni aumento di
+``ANALYSIS_CODE_VERSION`` cambia il valore registrato negli ingressi anche quando le statistiche non cambiano. Caso
+ammesso nuovo a parità di versione: versione degli ingressi diversa da quella registrata **e** forma d'identità uguale;
+qualunque altra differenza, comprese quelle delle tabelle statistiche, è un rifiuto. Con la versione degli ingressi
+uguale (o non registrata) valgono le regole sopra, invariate.
 """
 
 import argparse
@@ -67,6 +76,8 @@ RUN_DEPENDENT_KEYS = {"top": ["stats_id", "stats_plan_sha256", "components"],
                       "plan.inputs": ["config_sha256"]}
 REPORT_JSON_DROP = ["stats_id", "stats_json_sha256", "stats_plan_sha256", "files"]
 REPORT_SUFFIXES = (".md", ".tex", ".csv")
+INPUT_VERSIONS_KEY = "input_analysis_code_versions"
+INPUT_VERSION_MARK = "<analysis_code_version>"
 
 
 def _sha(data: bytes) -> str:
@@ -167,26 +178,54 @@ def _text_of(name: str, data: bytes) -> str:
     return (gzip.decompress(data) if name.endswith(".gz") else data).decode("utf-8")
 
 
+def input_versions(doc: dict) -> dict:
+    """{esperimento: analysis_code_version} degli ingressi di ``stats.json`` (registrato nella golden)."""
+    return {i["experiment"]: i["analysis_code_version"] for i in doc["inputs"]}
+
+
+def stats_json_identity_text(doc: dict, marks: dict) -> str:
+    """``stats.json`` normalizzato in forma d'identità: versione dell'analisi degli ingressi nascosta per struttura."""
+    n = normalized_stats_json(doc)
+    for i in n["inputs"]:
+        i["analysis_code_version"] = INPUT_VERSION_MARK
+    return mark(_canon(n).decode("utf-8"), marks)
+
+
+def report_marks(doc: dict, marks: dict) -> dict:
+    return dict(marks, **{doc["stats_id"]: "<stats_id>", doc["stats_plan_sha256"]: "<stats_plan_sha256>",
+                          doc["stats_plan_sha256"][:12]: "<stats_plan_sha256>"})
+
+
+def report_identity_text(text: str, doc: dict, rmarks: dict) -> str:
+    """Testo del report in forma d'identità. La versione dell'analisi di un ingresso è la cella che segue il suo
+    ``analysis_id`` (tabella degli ingressi, ``report._header``): si sostituisce solo lì (md ``| v |``, tex ``& $v$ &``,
+    csv), ancorata al segnaposto dell'``analysis_id``, mai per valore altrove."""
+    import re
+    text = mark(text, rmarks)
+    for e, v in input_versions(doc).items():
+        text = re.sub(rf"(<analysis_id:{re.escape(e)}>\s*[|&,;]\s*\$?){re.escape(str(v))}(\$?\s*[|&,;])",
+                      rf"\g<1>{INPUT_VERSION_MARK}\g<2>", text)
+    return text
+
+
 def stats_identity_outputs(stats_dir: Path) -> dict:
     doc = json.loads((Path(stats_dir) / "stats.json").read_text(encoding="utf-8"))
     marks = identity_marks(stats_dir, doc)
     out = {name: _sha(mark(_text_of(name, (Path(stats_dir) / name).read_bytes()), marks).encode("utf-8"))
            for name in doc["files"]}
-    out["stats.json (normalizzato)"] = _sha(mark(_canon(normalized_stats_json(doc)).decode("utf-8"), marks)
-                                            .encode("utf-8"))
+    out["stats.json (normalizzato)"] = _sha(stats_json_identity_text(doc, marks).encode("utf-8"))
     return out
 
 
 def report_identity_outputs(files: dict, doc: dict, stats_dir: Path) -> dict:
-    marks = dict(identity_marks(stats_dir, doc), **{doc["stats_id"]: "<stats_id>",
-                                                     doc["stats_plan_sha256"]: "<stats_plan_sha256>",
-                                                     doc["stats_plan_sha256"][:12]: "<stats_plan_sha256>"})
-    out = {name: _sha(mark(data.decode("utf-8"), marks).encode("utf-8"))
+    marks = report_marks(doc, identity_marks(stats_dir, doc))
+    out = {name: _sha(report_identity_text(data.decode("utf-8"), doc, marks).encode("utf-8"))
            for name, data in sorted(files.items()) if name.endswith(REPORT_SUFFIXES)}
     rj = json.loads(files["report.json"])
     for k in REPORT_JSON_DROP:
         rj.pop(k, None)
-    out["report.json (normalizzato)"] = _sha(mark(_canon(rj).decode("utf-8"), marks).encode("utf-8"))
+    out["report.json (normalizzato)"] = _sha(report_identity_text(_canon(rj).decode("utf-8"), doc, marks)
+                                             .encode("utf-8"))
     return out
 
 
@@ -200,11 +239,12 @@ def current(stats_dir: Path) -> dict:
     return {
         "stats": {"stats_code_version": STATS_CODE_VERSION, "environment": stats_environment(),
                   "run_dependent_keys": RUN_DEPENDENT_KEYS, "outputs": stats_outputs(stats_dir),
-                  "identity_outputs": stats_identity_outputs(stats_dir)},
+                  "identity_outputs": stats_identity_outputs(stats_dir), INPUT_VERSIONS_KEY: input_versions(s.doc)},
         "report": {"report_code_version": REPORT_CODE_VERSION, "stats_code_version": STATS_CODE_VERSION,
                    "environment": report_environment(), "decimal": GOLDEN_DECIMAL,
                    "report_json_drop": REPORT_JSON_DROP, "outputs": report_outputs(files, s.doc),
-                   "identity_outputs": report_identity_outputs(files, s.doc, stats_dir)},
+                   "identity_outputs": report_identity_outputs(files, s.doc, stats_dir),
+                   INPUT_VERSIONS_KEY: input_versions(s.doc)},
     }
 
 
@@ -217,6 +257,10 @@ def compare(golden: dict, cur: dict, versions) -> list:
         if golden.get(v) != cur.get(v):
             return [f"{v.upper()} {cur.get(v)} diversa dalla golden ({golden.get(v)}): rigenera la golden "
                     "(--write-golden)"]
+    if golden.get(INPUT_VERSIONS_KEY) != cur.get(INPUT_VERSIONS_KEY):
+        return [f"versione dell'analisi degli ingressi {cur.get(INPUT_VERSIONS_KEY)} diversa dalla golden "
+                f"({golden.get(INPUT_VERSIONS_KEY)}): rigenera la golden (--write-golden; ammessa solo con la forma "
+                "d'identità uguale)"]
     for k in ("run_dependent_keys", "report_json_drop", "decimal"):
         if golden.get(k) != cur.get(k):
             return [f"{k} diverso dalla golden: rigenera la golden (--write-golden)"]
@@ -406,7 +450,16 @@ def write_one(path: Path, cur: dict, versions) -> None:
     if path.exists():
         old = json.loads(path.read_text(encoding="utf-8"))
         same_version = all(old.get(v) == cur.get(v) for v in versions)
-        if same_version and old.get("outputs") != cur["outputs"]:
+        inputs_changed = old.get(INPUT_VERSIONS_KEY) is not None and \
+            old.get(INPUT_VERSIONS_KEY) != cur.get(INPUT_VERSIONS_KEY)
+        if same_version and old.get("outputs") != cur["outputs"] and inputs_changed:
+            # caso nuovo (F8 passo 4, nota su D-73): solo la versione dell'analisi degli ingressi, nascosta nella
+            # forma d'identità; qualunque altra differenza è un rifiuto
+            if old.get("identity_outputs") is None or old["identity_outputs"] != cur.get("identity_outputs"):
+                raise SystemExit(f"rigenerazione rifiutata per {path.name}: versione dell'analisi degli ingressi "
+                                 f"cambiata ({old.get(INPUT_VERSIONS_KEY)} -> {cur.get(INPUT_VERSIONS_KEY)}) ma le "
+                                 "uscite differiscono anche in forma d'identità; prima si aumenta la versione")
+        elif same_version and old.get("outputs") != cur["outputs"]:
             if old.get("environment") == cur["environment"]:
                 raise SystemExit(f"rigenerazione rifiutata per {path.name}: uscite cambiate con la stessa versione "
                                  f"({versions[0]} = {cur.get(versions[0])}); prima si aumenta la versione")
@@ -437,3 +490,95 @@ if __name__ == "__main__":
         _write_golden()
     else:
         sys.exit("Usa: python tests/test_f7_golden.py --write-golden")
+
+
+# ---------------------------------------------------------------- versione dell'analisi degli ingressi (F8 passo 4)
+def _gv(versions, outputs=None, identity=None, env="L1"):
+    g = _golden(env=env, outputs=outputs, identity=identity)
+    g[INPUT_VERSIONS_KEY] = dict(versions)
+    return g
+
+
+def test_write_golden_input_version_changed_identity_equal_allowed(tmp_path):
+    """Versione degli ingressi cambiata, stesso ambiente, uscite diverse solo nei campi d'identità (versione compresa)
+    → ammessa."""
+    path = tmp_path / "g.json"
+    path.write_text(json.dumps(_gv({"e": 1}, {"a": "1"}, {"a": "i1"})), encoding="utf-8")
+    new = _gv({"e": 2}, {"a": "2"}, {"a": "i1"})
+    write_one(path, new, STATS_VERSIONS)
+    assert json.loads(path.read_text(encoding="utf-8")) == new
+
+
+def test_write_golden_input_version_changed_value_changed_refused(tmp_path):
+    """Versione degli ingressi cambiata e un valore di tabella diverso (forma d'identità diversa) → rifiuto."""
+    path = tmp_path / "g.json"
+    old = _gv({"e": 1}, {"a": "1", "t": "x"}, {"a": "i1", "t": "ix"})
+    path.write_text(json.dumps(old), encoding="utf-8")
+    with pytest.raises(SystemExit, match="versione dell'analisi degli ingressi"):
+        write_one(path, _gv({"e": 2}, {"a": "2", "t": "y"}, {"a": "i1", "t": "iy"}), STATS_VERSIONS)
+    assert json.loads(path.read_text(encoding="utf-8")) == old
+
+
+def test_write_golden_input_version_equal_changed_outputs_refused(tmp_path):
+    """Versione degli ingressi uguale: regole di F7 invariate (stesso ambiente, uscite diverse → rifiuto, anche con la
+    forma d'identità uguale)."""
+    path = tmp_path / "g.json"
+    old = _gv({"e": 1}, {"a": "1"}, {"a": "i1"})
+    path.write_text(json.dumps(old), encoding="utf-8")
+    with pytest.raises(SystemExit, match="stessa versione"):
+        write_one(path, _gv({"e": 1}, {"a": "2"}, {"a": "i1"}), STATS_VERSIONS)
+    assert json.loads(path.read_text(encoding="utf-8")) == old
+
+
+def test_write_golden_without_recorded_input_versions_keeps_the_old_rules(tmp_path):
+    """Golden senza la versione degli ingressi registrata (formato precedente): nessun caso nuovo."""
+    path = tmp_path / "g.json"
+    old = _golden(env="L1", outputs={"a": "1"}, identity={"a": "i1"})
+    path.write_text(json.dumps(old), encoding="utf-8")
+    with pytest.raises(SystemExit, match="stessa versione"):
+        write_one(path, _gv({"e": 2}, {"a": "2"}, {"a": "i1"}), STATS_VERSIONS)
+
+
+def test_compare_asks_to_regenerate_when_the_input_version_changes():
+    g = _gv({"e": 1}, {"a": "1"}, {"a": "i1"})
+    assert compare(g, copy.deepcopy(g), STATS_VERSIONS) == []
+    c = _gv({"e": 2}, {"a": "2"}, {"a": "i1"})
+    assert "rigenera" in compare(g, c, STATS_VERSIONS)[0] and "ingressi" in compare(g, c, STATS_VERSIONS)[0]
+
+
+def _bumped_doc(doc: dict, delta: int = 1) -> dict:
+    d = copy.deepcopy(doc)
+    for i in d["inputs"]:
+        i["analysis_code_version"] = i["analysis_code_version"] + delta
+    return d
+
+
+def test_identity_form_hides_the_input_version_and_nothing_else(report_stats):
+    """Sulle uscite vere: cambiare solo la versione degli ingressi lascia uguale la forma d'identità di stats.json e
+    del report; cambiare un altro valore degli ingressi (preproc) no."""
+    from src.reporting import report as rp
+    from src.reporting.source import load_source
+    sdir = report_stats["stats_dir"]
+    s = load_source(sdir)
+    doc = s.doc
+    marks = identity_marks(sdir, doc)
+    assert input_versions(doc) and all(isinstance(v, int) for v in input_versions(doc).values())
+    base = stats_json_identity_text(doc, marks)
+    assert stats_json_identity_text(_bumped_doc(doc), marks) == base
+    other = copy.deepcopy(doc)
+    other["inputs"][0]["preproc"] = "altro"
+    assert stats_json_identity_text(other, marks) != base
+    rmarks = report_marks(doc, marks)
+    files = rp.render_files(s, GOLDEN_DECIMAL)
+    bdoc = _bumped_doc(doc)
+    s.doc = bdoc
+    bumped = rp.render_files(s, GOLDEN_DECIMAL)
+    s.doc = doc
+    names = [n for n in files if n.endswith(REPORT_SUFFIXES)]
+    differ = [n for n in names if files[n] != bumped[n]]
+    assert set(differ) >= {"tables/inputs.md", "tables/inputs.tex"}              # la versione è nel report
+    for n in names:                                  # ognuno con il proprio doc, come in report_identity_outputs
+        assert report_identity_text(files[n].decode("utf-8"), doc, rmarks) == \
+            report_identity_text(bumped[n].decode("utf-8"), bdoc, rmarks), n
+    text = report_identity_text(files["tables/inputs.md"].decode("utf-8"), doc, rmarks)
+    assert text.count(INPUT_VERSION_MARK) == len(doc["inputs"])

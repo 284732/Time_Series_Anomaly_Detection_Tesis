@@ -28,10 +28,12 @@ def test_nucleus_is_models_with_declared_residuals():
     assert registry.NUCLEUS == registry.nucleus() == expected
     assert registry.NUCLEUS == ("pca", "pca_pointwise", "conv_autoencoder", "lstm_autoencoder",
                                 "rolling_zscore", "input_norm",
-                                "conv_autoencoder_untrained", "lstm_autoencoder_untrained")     # F8 passo 3
+                                "conv_autoencoder_untrained", "lstm_autoencoder_untrained",     # F8 passo 3
+                                "lstm_forecaster")                                              # F8 passo 4
     assert registry.LEGACY_NUCLEUS == ("pca", "pca_pointwise", "conv_autoencoder", "lstm_autoencoder",
                                        "rolling_zscore", "input_norm")
-    assert registry.NEW_PIPELINE_ONLY == ("conv_autoencoder_untrained", "lstm_autoencoder_untrained")
+    assert registry.NEW_PIPELINE_ONLY == ("conv_autoencoder_untrained", "lstm_autoencoder_untrained",
+                                          "lstm_forecaster")
 
 
 def test_registry_matches_main_model_registry():

@@ -8,6 +8,9 @@ Dai residui per sensore (``cal__<agg>``, ``test__<agg>`` e, con ``test_context``
     sensori; ``n_cal_points`` delle righe ``free`` = numero di finestre di cal, 0 senza normalizer (V11); conteggi di
     C5 per (``window_time_agg``, normalizer);
   * aggregazione dei sensori ``mean`` / ``max`` / ``top5`` (k = 5, come lo storico) con ``scoring.aggregate_scores``;
+  * livelli per modello (F8 passo 4, D-74, ``model_levels``): ``window_time_agg`` tra quelli salvati dal fit e
+    ``ts_agg`` tra quelli ammessi dalla classe; le combinazioni tolte sono assenti e contate per motivo (modello di
+    previsione: solo ``last``/``last``);
   * modelli ``native_only``: convenzione none/native (score = media dei ``top_k`` residui ``last``, uguale a
     ``score_anomalies``), una combinazione per (scenario, ``ts_agg``) (C8, precisazione 1);
   * proiezione con ``protocol.window_scores_to_timestamps`` per ogni ``ts_agg``; scenario ``primary``: finestre del test
@@ -93,13 +96,17 @@ def _name(segment: str, agg: str) -> str:
     return f"{segment}{SEP}{agg}"
 
 
-def residual_names(plan: AnalysisPlan, native_only: bool) -> Tuple[str, ...]:
+def residual_names(plan: AnalysisPlan, native_only: bool,
+                   residual_aggs: Optional[Tuple[str, ...]] = None) -> Tuple[str, ...]:
     """Residui da leggere per un fit (ordinati): mai es; ``test_ctx_head`` solo con lo scenario ``test_context``;
-    con l'esportazione legacy anche la sua aggregazione."""
+    con l'esportazione legacy anche la sua aggregazione. ``residual_aggs`` (quelle salvate dal fit, ``meta.json``):
+    solo le ``window_time_aggs`` del piano che il fit ha salvato (modello di previsione: ``last``, D-74 b); ``None`` =
+    tutte quelle del piano (comportamento precedente, identico per i modelli con ``last`` e ``mean``)."""
     if native_only:
         aggs = {NATIVE_AGG}
     else:
-        aggs = set(plan.window_time_aggs)
+        aggs = set(plan.window_time_aggs if residual_aggs is None
+                   else (a for a in plan.window_time_aggs if a in residual_aggs))
         if plan.legacy_export is not None:
             aggs.add(plan.legacy_export.window_time_agg)
     segments = ["cal", "test"] + ([TEST_CTX_HEAD] if CONTEXT in plan.scenarios else [])
@@ -191,12 +198,17 @@ def random_scores(seed: int, t_cal: int, t_test: int) -> Tuple[np.ndarray, np.nd
 
 
 def fit_scores(residuals: Mapping[str, np.ndarray], plan: AnalysisPlan, native_only: bool, top_k: Optional[int],
-               geom: Geometry) -> FitScores:
+               geom: Geometry, levels: Optional["ModelLevels"] = None) -> FitScores:
     """Score per timestamp di ogni combinazione del piano per un fit; un residuo non finito rende la combinazione un
-    errore registrato (``errors``), le altre si calcolano."""
+    errore registrato (``errors``), le altre si calcolano. ``levels`` (``model_levels``, modelli non native): livelli
+    di ``window_time_agg`` e ``ts_agg`` del modello; ``None`` = tutti quelli del piano."""
     out = FitScores()
     ctx = CONTEXT in plan.scenarios
+    wtas = plan.window_time_aggs if levels is None else levels.window_time_aggs
+    tsas = plan.ts_aggs if levels is None else levels.ts_aggs
     if native_only:
+        if levels is not None:
+            raise ValueError("levels si applica solo ai modelli con residui per sensore (non native)")
         r = lambda seg: residuals.get(_name(seg, NATIVE_AGG))  # noqa: E731
         cw, tw, xw = native_window_scores(r("cal"), r("test"), r(TEST_CTX_HEAD) if ctx else None, top_k)
         for scenario in plan.scenarios:
@@ -204,7 +216,7 @@ def fit_scores(residuals: Mapping[str, np.ndarray], plan: AnalysisPlan, native_o
                 combo = Combo(scenario, *NATIVE[:2], NATIVE[2], ts_agg)
                 _store(out, combo, lambda: project(cw, tw, xw, geom, ts_agg, scenario), 0)
         return out
-    for wagg in plan.window_time_aggs:
+    for wagg in wtas:
         cal_res, test_res = residuals[_name("cal", wagg)], residuals[_name("test", wagg)]
         ctx_res = residuals[_name(TEST_CTX_HEAD, wagg)] if ctx else None
         out.cal_windows[wagg] = int(len(cal_res))
@@ -216,7 +228,7 @@ def fit_scores(residuals: Mapping[str, np.ndarray], plan: AnalysisPlan, native_o
         for sensor_agg, kind in plan.scorings:
             cw, tw, xw = window_scores(cal_res, test_res, ctx_res, sensor_agg, norms[kind])
             for scenario in plan.scenarios:
-                for ts_agg in plan.ts_aggs:
+                for ts_agg in tsas:
                     combo = Combo(scenario, wagg, sensor_agg, kind, ts_agg)
                     _store(out, combo, lambda: project(cw, tw, xw, geom, ts_agg, scenario),
                            normalizer_cal_points(kind, cal_res))
@@ -297,6 +309,47 @@ def _threshold_specs(plan: AnalysisPlan, ts_agg: str):
     if plan.oracle:
         specs.append((mt.ORACLE, None, None, pa_of(mt.ORACLE)))
     return specs
+
+
+# ---------------------------------------------------------------- F8 passo 4: livelli per modello (D-74 b, c)
+ABSENT_OFFLINE_TS_AGG = "offline_ts_agg"                       # ts_agg non ammesso dal modello (D-74 c)
+ABSENT_DEGENERATE_WTA = "window_time_agg_degenerate"           # window_time_agg non salvato, degenerato (D-74 b)
+
+
+@dataclass(frozen=True)
+class ModelLevels:
+    """Livelli di ``window_time_agg`` e ``ts_agg`` di un modello non native e righe assenti per motivo, per fit:
+    {motivo: {"free": n, "thr": n}} (solo motivi con righe)."""
+    window_time_aggs: Tuple[str, ...]
+    ts_aggs: Tuple[str, ...]
+    absent: Dict[str, Dict[str, int]]
+
+
+def rows_per_combo(plan: AnalysisPlan, ts_agg: str) -> Dict[str, int]:
+    """Righe free e thr che ``metric_rows`` emette per una combinazione con questo ``ts_agg`` (stesse regole)."""
+    thr = sum(len(mt.metric_names(policy, pa)) for policy, _, _, pas in _threshold_specs(plan, ts_agg) for pa in pas)
+    return {"free": len(ts.FREE_METRICS) + len(ts.FREE_DIAGNOSTIC_METRICS), "thr": thr}
+
+
+def model_levels(plan: AnalysisPlan, residual_aggs: Tuple[str, ...],
+                 allowed_ts_aggs: Optional[Tuple[str, ...]]) -> ModelLevels:
+    """Livelli del piano che il modello può avere: ``window_time_agg`` tra quelli salvati dal fit (``residual_aggs``
+    di ``meta.json``), ``ts_agg`` tra quelli ammessi dalla classe (``allowed_ts_aggs``, ``None`` = tutti). Le
+    combinazioni tolte non producono righe (assenti, non NaN, D-74) e si contano per motivo: ``offline_ts_agg`` se il
+    ``ts_agg`` non è ammesso (qualunque ``window_time_agg``), altrimenti ``window_time_agg_degenerate``."""
+    wtas = tuple(a for a in plan.window_time_aggs if a in residual_aggs)
+    tsas = tuple(a for a in plan.ts_aggs if allowed_ts_aggs is None or a in allowed_ts_aggs)
+    absent: Dict[str, Dict[str, int]] = {}
+    per_level = len(plan.scenarios) * len(plan.scorings)
+    for wagg in plan.window_time_aggs:
+        for ts_agg in plan.ts_aggs:
+            if wagg in wtas and ts_agg in tsas:
+                continue
+            reason = ABSENT_OFFLINE_TS_AGG if ts_agg not in tsas else ABSENT_DEGENERATE_WTA
+            acc = absent.setdefault(reason, {"free": 0, "thr": 0})
+            for t, n in rows_per_combo(plan, ts_agg).items():
+                acc[t] += per_level * n
+    return ModelLevels(wtas, tsas, absent)
 
 
 def _geometric_cal_points(policy: str, n_past: Optional[int], geom: Geometry, m_cal: np.ndarray) -> int:

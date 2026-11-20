@@ -177,6 +177,10 @@ MODEL_SCHEMAS: Dict[str, ModelSchema] = {
     "lstm_autoencoder_untrained": ModelSchema(
         "src.models.deep.ae_untrained:LSTMAutoencoderUntrainedDetector", False,
         {"hidden_dim": _int(1), "latent_dim": _int(1), SCORE_BATCH_KEY: _int(1)}, untrained_of="lstm_autoencoder"),
+    # modello di previsione (D-74, nota del 2026-11-20): solo hidden_dim (stesso nome e significato dell'LSTM-AE), un
+    # solo strato e orizzonte 1 fissi; blocco training condiviso con gli AE; solo nuova pipeline
+    "lstm_forecaster": ModelSchema("src.models.deep.lstm_forecaster:LSTMForecasterDetector", True,
+                                   {"hidden_dim": _int(1)}),
 }
 
 
