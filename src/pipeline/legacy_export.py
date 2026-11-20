@@ -8,7 +8,11 @@ Riuso: ``main.evaluate_variant``, ``main.save_scores`` e ``main.make_summary_row
 tardivo e solo in questo percorso (``_main``): in ``split3`` senza esportazione legacy ``main.py`` non si importa mai
 (B10). Fatto verificato (2026-11-13): importare ``main.py`` non cambia thread di torch, generatori globali, handler del
 logger radice e del progetto, né il backend di matplotlib (valore grezzo di ``rcParams``); importa
-``matplotlib.pyplot`` e una libreria di terze parti (``charset_normalizer``) registra un proprio handler.
+``matplotlib.pyplot``. Handler di terze parti, riverificati il 2026-11-20 nell'ambiente di riferimento (D-55, Python
+3.13.9, dove ``charset_normalizer`` non è installato): con torch già importato l'import di ``main.py`` non registra
+alcun handler su alcun logger; in un processo nuovo gli handler che
+compaiono sono solo quelli dei logger ``torch.*`` (e ``c10d``, ``strobelight_*``) registrati dall'import di torch, che
+``main.py`` importa. L'handler di ``charset_normalizer`` notato il 2026-11-13 veniva dall'ambiente precedente.
 
 Ricostruzione delle varianti (``main.build_score_variants`` riceve un modello, qui ci sono i residui):
   * modelli ``native_only`` (rolling z-score): variante ``raw`` = media dei ``top_k`` residui più grandi, identica bit a

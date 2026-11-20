@@ -2394,6 +2394,14 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
     native.
   - **Golden di F6 (punto «Segnalato, non modificato» sopra):** allineamento alla regola di F7 (`identity_outputs`)
     approvato; si fa al passo 1 di F8.
+  - **Scostamento dal criterio di F7 (passo 1 di F8, approvato dall'utente alla revisione):** la forma d'identità
+    della golden di F6 (`tests/test_f6_analyze_golden.py`) sostituisce **campi precisi** con un segnaposto (la colonna
+    `analysis_id` di `free` e `thr`; `analysis_id` e `components.environment.lock_sha256` di `analysis.json`; `fits`
+    non ne contiene), invece della sostituzione testuale di F7. Motivo: nasconde esattamente ciò che deriva
+    dall'ambiente; un campo nuovo che dipende dall'ambiente e non è elencato fa rifiutare la riscrittura, quindi il
+    criterio sbaglia nella direzione più severa. La regola di riscrittura è la stessa di F7: un test con 7 casi
+    verifica lo stesso esito di `write_one` di `tests/test_f7_golden.py`. Golden rigenerata una volta: `outputs`
+    invariati, aggiunto solo `identity_outputs`.
   - **Documenti:** piano F8 (passi 1, 3, 5).
 
 ### D-53 · File tracciati da git (`.pyc`, dataset) — APPROVATA · 2026-11-10
