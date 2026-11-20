@@ -6,10 +6,11 @@ analisi si fanno in processo dagli stessi file (``fit`` e ``analyze`` da riga di
 fumo di F5 e F6); poi, in sottoprocesso: ``stats`` con due ``--input`` e piano YAML → ``status`` → ``report`` → un
 secondo ``report`` sulla stessa uscita, rifiutato. Codici di uscita 0, 0, 0, 2.
 
-Fatto verificato (passo 12): un esperimento ``split3`` scritto su file non è caricabile finché ``base.yaml`` dichiara
-``split.val_ratio`` (``legacy2``): l'unione profonda dei livelli non toglie chiavi e lo schema di ``split3`` la
-rifiuta. Per questo la prova usa ``legacy2`` (scenario ``primary``; ``test_context`` richiede ``split3``, D-60).
-Il cambio di ``base.yaml`` è previsto in F8.
+Fatto verificato (passo 12): un esperimento ``split3`` scritto su file non era caricabile finché ``base.yaml``
+dichiarava ``split.val_ratio`` (``legacy2``): l'unione profonda dei livelli non toglieva chiavi e lo schema di
+``split3`` la rifiutava. Per questo la prova usa ``legacy2`` (scenario ``primary``; ``test_context`` richiede
+``split3``, D-60). Da F8 passo 2 (D-77) ``split`` si sostituisce per intero e il caricamento funziona (test in fondo
+al file); la prova completa ``split3`` da file è il passo 6 di F8.
 """
 
 import copy
@@ -111,15 +112,21 @@ def test_stats_status_report_from_the_command_line(e2e):
     assert json.loads((out / "report.json").read_text(encoding="utf-8")) == rj        # uscita intatta
 
 
-def test_a_split3_experiment_file_is_not_loadable_while_base_yaml_is_legacy2(tmp_path):
-    """Documenta il fatto verificato del docstring: se F8 cambia base.yaml, questo test va rivisto."""
-    from src.pipeline.fit_plan import validated_config
-    from src.utils.schema import ConfigError
+def test_a_split3_experiment_file_is_loadable_over_the_legacy2_base_yaml(tmp_path):
+    """Capovolto in F8 passo 2 (D-77, ``split`` atomico): prima un esperimento ``split3`` scritto su file era rifiutato
+    perché l'unione con ``base.yaml`` (``legacy2``) portava ``split.val_ratio``. Ora si carica e risolve alla **stessa**
+    config della mappa (stesso ``config_sha256`` e stessi ``fit_key``), quindi niente di ``base.yaml`` sopravvive nel
+    blocco ``split``; una chiave del modo non attivo resta un errore (``tests/test_f8_config_loading.py``)."""
+    from src.pipeline.fit_plan import plan_tasks, validated_config
+    from src.utils import config as cfgmod
     from tests.fixtures.f5 import synth_spec
     raw = synth_spec(str(tmp_path / "d"), str(tmp_path / "s"), mode="split3", step=1, seeds=[42],
                      run_models=("pca",))
     p = tmp_path / "e.yaml"
     p.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
-    validated_config(copy.deepcopy(raw))                                 # come mappa: valida
-    with pytest.raises(ConfigError, match="val_ratio"):
-        validated_config(str(p))                                         # come file unito a base.yaml: no
+    as_map = validated_config(copy.deepcopy(raw))                        # come mappa
+    from_file = validated_config(str(p))                                 # come file unito a base.yaml
+    assert from_file.split.mode == "split3" and from_file.split.val_ratio is None
+    assert cfgmod.config_sha256(from_file) == cfgmod.config_sha256(as_map)
+    dv = {m: "dv-x" for m in as_map.data.machines}
+    assert [t.fit_key for t in plan_tasks(from_file, list(dv), dv)] == [t.fit_key for t in plan_tasks(as_map, list(dv), dv)]

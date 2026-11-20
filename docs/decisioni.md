@@ -2440,6 +2440,14 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
     qualunque), `config_sha256` e `fit_key` di `parity_repro` restano quelli di M1. I file veri non si toccano;
   - un esperimento `split3` e uno `legacy2` si caricano da file; una chiave del modo non attivo è un errore;
   - `tests/test_f7_cli_e2e.py:114` si capovolge in «ora si carica» senza diventare più permissivo.
+- **Limite dell'indipendenza e sua copertura (passo 2, approvato alla revisione):** l'indipendenza di `parity_repro`
+  vale per i **valori**. Una **chiave** nuova in un blocco che `parity_repro` dichiara arriverebbe comunque con
+  l'unione profonda, ma:
+  - se è aggiunta solo in `base.yaml` o in `configs/models/`, lo schema la rifiuta come chiave sconosciuta (errore);
+  - se è aggiunta anche allo schema, entra in `parity_repro`, cambia `config_sha256` (e, se tocca il fit, i
+    `fit_key`) e fa fallire il test di uguaglianza con M1 (`tests/test_f8_config_loading.py`).
+
+  In nessun caso il cambiamento è silenzioso.
 - **Alternative scartate:** A2 (`split` tolto da `base.yaml`), A3 (lo schema ignora le chiavi dell'altro modo: chiave
   ignorata in silenzio), A4 (`null` come cancellazione: ambiguo, `clip: null` è un valore), A5 (due livelli base:
   nuova chiave o nuovo flag di CLI).

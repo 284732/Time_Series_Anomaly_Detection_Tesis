@@ -71,8 +71,20 @@ DEFAULT_MODELS_DIR = _ROOT / "configs" / "models"
 FIT_KEY_LEN = 20   # caratteri esadecimali dello sha256
 
 
+# Blocchi di primo livello che un livello sostituisce per intero invece di unirli (D-77, A1): le chiavi di ``split``
+# dipendono dal modo (``legacy2``: val_ratio; ``split3``: fractions), quindi un'unione profonda porterebbe nel livello
+# successivo le chiavi dell'altro modo. Lo schema resta rigido: una chiave del modo non attivo è un errore.
+ATOMIC_BLOCKS: tuple = ("split",)
+
+
 def merge_layers(*layers: Dict[str, Any]) -> Dict[str, Any]:
-    """Unione profonda: le mappe si uniscono ricorsivamente, liste e scalari si sostituiscono."""
+    """Unione profonda: le mappe si uniscono ricorsivamente, liste e scalari si sostituiscono. Eccezione (D-77): i
+    blocchi di primo livello in ``ATOMIC_BLOCKS`` (solo ``split``) si sostituiscono per intero; più in profondità una
+    chiave con lo stesso nome si unisce come le altre."""
+    return _merge(layers, top=True)
+
+
+def _merge(layers, top: bool) -> Dict[str, Any]:
     out: Dict[str, Any] = {}
     for layer in layers:
         if layer is None:
@@ -80,10 +92,10 @@ def merge_layers(*layers: Dict[str, Any]) -> Dict[str, Any]:
         if not isinstance(layer, dict):
             raise _schema.ConfigError(f"livello di config non valido: {layer!r}")
         for k, v in layer.items():
-            if isinstance(v, dict) and isinstance(out.get(k), dict):
-                out[k] = merge_layers(out[k], v)
+            if isinstance(v, dict) and isinstance(out.get(k), dict) and not (top and k in ATOMIC_BLOCKS):
+                out[k] = _merge((out[k], v), top=False)
             elif isinstance(v, dict):
-                out[k] = merge_layers(v)
+                out[k] = _merge((v,), top=False)                # copia: nessun riferimento condiviso
             else:
                 out[k] = v
     return out
@@ -141,7 +153,8 @@ def load_models_layer(models_dir: Union[str, Path]) -> Dict[str, Any]:
 
 def load_experiment(path: Union[str, Path], base_path: Union[str, Path] = DEFAULT_BASE,
                     models_dir: Union[str, Path] = DEFAULT_MODELS_DIR) -> "_schema.ExperimentConfig":
-    """Carica ``base.yaml``, poi ``models/*.yaml``, poi l'esperimento; unisce e valida."""
+    """Carica ``base.yaml``, poi ``models/*.yaml``, poi l'esperimento; unisce (``merge_layers``: unione profonda,
+    ``split`` sostituito per intero dal livello che lo dichiara, D-77) e valida."""
     raw = merge_layers(_read_yaml(Path(base_path)), load_models_layer(models_dir), _read_yaml(Path(path)))
     return _schema.validate_experiment(raw)
 
