@@ -2531,6 +2531,25 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
   passa entrambe le chiavi (`main.py` passa `config["models"][key]`, che in `repro_*.yaml` e nello snapshot F1 contiene
   solo `epochs`; la nuova pipeline traduce `training.max_epochs` in `epochs` in `schema.model_kwargs`). Il controllo
   tutela D-39: il valore scelto non può essere contraddetto in silenzio da una seconda chiave. Nessun valore fissato.
+- **Nota (2026-11-21, F8 passo 7, la voce resta APERTA): epoche dei run esistenti, solo fatti.** Sola lettura dello
+  store (`store/fits/*/meta.json`) e di `results/results_tests/*/summary_timestamp_metrics.csv` (colonna `Epochs` =
+  `stopped_epoch`); nessun training. Tutti i run sono solo su machine-1-1 e machine-3-8 (dev, D-52), seed 42, con
+  `max_epochs` 40 e patience 5. Regola del trainer (`src/training/trainer.py`): stop per early stopping quando
+  `stop − best ≥ patience`, altrimenti al tetto di `max_epochs`.
+
+  | run | conv 1-1 | lstm 1-1 | conv 3-8 | lstm 3-8 |
+  |---|---|---|---|---|
+  | store M1, `parity_repro` (best / stop) | 39 / 40, tetto | 8 / 13, ES | 17 / 22, ES | 21 / 26, ES |
+  | `results_repro_last_01`, `_mean_01` (stop, `efdacc6`) | 40 | 13 | 22 | 26 |
+  | `results_repro_last`, `_mean` (stop, `843da6a`) | 40 | 19 | 22 | 21 |
+
+  - **Fatto (M1):** `best_epoch` e `stopped_epoch` sono registrati, quindi la causa dello stop è certa (conv 1-1 al
+    tetto di 40; gli altri tre per early stopping).
+  - **Run storici:** solo `stopped_epoch`. Uno stop prima di 40 è early stopping (best = stop − 5). Uno stop a 40 non
+    si distingue da un early stopping proprio all'epoca 40: per `_01` si risolve con M1 (parità esatta,
+    `docs/m1_parita.md`), quindi è il tetto; per `843da6a` resta un'**inferenza**.
+  - Le epoche dell'LSTM differiscono tra `843da6a` e `efdacc6`, che differiscono per lo scaler (D-50).
+  - Tabella: `reports_local/d39/epochs.csv` (esclusa da git).
 
 ### D-40 · Preprocessing canonico — APERTA
 - **Opzioni:** storico (minmax su fit, senza clip né pavimento; raccomandato) oppure con pavimento o clip.
@@ -2559,6 +2578,38 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
   - **Uscite:** script in sola lettura, risultati in `reports_local/d40/` (esclusa da git); i numeri si riportano
     senza conclusioni sulla decisione, che resta dell'utente.
   - **Documenti:** piano F8 (passo 7).
+- **Nota (2026-11-21, F8 passo 7, la voce resta APERTA): esito della verifica, solo fatti, nessuna decisione.**
+  - **Come:** `scripts/verify_d40.py` (test: `tests/test_f8_d40_check.py`); uscite in `reports_local/d40/` (esclusa da
+    git: `per_sensor.csv`, `per_machine.csv`, `worst_cases.csv`, `meta.json`, `summary.md`). Hash del dataset
+    verificati prima del run (84 file coincidenti). Solo `train/` e `test/` delle 6 macchine dev; nessuna label, nessun
+    training. Confini da `src/data/segments.py::segment_bounds`: fit = 60% (`split3`, frazioni D-05), train storico =
+    80% (`legacy2`, `val_ratio` 0,2), W = 100. Scaler storico `SMDScaler` minmax, `min_range = 0`, nessun clip; con
+    range esattamente nullo lo scaler usa scala 1.
+  - **Soglia dichiarata:** «quasi nullo» = range sul segmento di fit dello scaler < 0,01 (amplificazione ≥ 100×); il
+    range esattamente nullo è contato a parte. Massimo assoluto contato oltre 2.
+  - **Per macchina** (ogni cella: scaler su fit 60% / scaler su train 80%):
+
+    | macchina | range nullo | quasi nullo (< 0,01) | \|max\| > 2 nel test | \|max\| peggiore (sensore) | sensori con range fit < range train80 |
+    |---|---|---|---|---|---|
+    | 1-1 | 8 / 8 | 10 / 10 | 24 / 24 | 787 (33) / 787 (33) | 20 |
+    | 1-7 | 4 / 4 | 4 / 4 | 2 / 2 | 12,6 (9) / 12,6 (9) | 6 |
+    | 2-6 | 8 / 8 | 10 / 10 | 14 / 14 | 113 (25) / 112 (23) | 7 |
+    | 2-8 | 7 / 7 | 12 / 12 | 27 / 27 | 497 (29) / 333 (33) | 10 |
+    | 3-11 | 9 / 9 | 11 / 11 | 12 / 12 | 922 (9) / 922 (9) | 18 |
+    | 3-8 | 8 / 8 | 8 / 8 | 17 / 16 | 89 (31) / 26 (31) | 14 |
+
+  - **Casi peggiori** (range nel test ≈ 1 in tutti): 3-11 s9 (range su fit 0,0011; \|max\| 922 / 922); 1-1 s33
+    (0,0013; 787 / 787); 2-8 s29 (0,0020; 497 / 332); 1-1 s32 (0,0023; 431 / 431); 2-8 s33 (0,0030; 333 / 333). Elenco
+    completo (5 per macchina) in `worst_cases.csv`.
+  - **Altre soglie** (fit / train80; ordine 1-1, 1-7, 2-6, 2-8, 3-11, 3-8): \|max\| > 10: 6/5, 1/1, 4/4, 14/14, 6/6,
+    1/1; \|max\| > 100: 2/2, 0/0, 2/2, 5/5, 2/2, 0/0. Range < 0,001 coincide con il range nullo su tutte le macchine.
+  - **Sensori quasi nulli ma non nulli** (uguali con i due scaler): 1-1 {32, 33}; 2-6 {23, 25}; 2-8 {6, 29, 31, 32, 33};
+    3-11 {5, 9}; nessuno su 1-7 e 3-8.
+  - **I 44 sensori a range nullo** (gli stessi su fit e su train80):
+    - 1-1 {4, 7, 16, 17, 26, 28, 36, 37}; 1-7 {7, 26, 36, 37}; 2-6 {4, 7, 16, 17, 26, 28, 36, 37};
+      2-8 {7, 16, 17, 26, 28, 36, 37}; 3-11 {7, 10, 16, 17, 24, 26, 28, 31, 37}; 3-8 {4, 7, 16, 17, 26, 28, 36, 37};
+    - 36 restano costanti anche nel test; 8 sono costanti nel train ma nel test coprono un range di 1 e dopo lo
+      scaler arrivano a \|max\| = 1 (scala 1): 1-1 {26, 28}, 2-8 {16, 17, 28}, 3-11 {10, 31}, 3-8 {28}.
 
 ### D-41 · Budget di tuning — APERTA
 - **Da decidere:** K per famiglia (proposta 8), griglie, criterio di selezione (proposta: AP normalizzata media sulle 6

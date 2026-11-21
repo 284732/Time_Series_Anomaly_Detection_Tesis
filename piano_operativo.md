@@ -985,6 +985,10 @@ D-53 approvata (2026-11-10): `.pyc` tolti dal tracciamento, `dataset/` resta tra
     - **6 — prova sintetica completa** `split3` da file con tutti i modelli (`fit` → `analyze` → `stats`), D-16;
     - **7 — verifica di D-40** (nota del 2026-11-20 su D-40): script in sola lettura, solo le 6 macchine dev, uscite in
       `reports_local/d40/`; numeri senza conclusioni sulla decisione.
+  - **Stato (2026-11-21): prerequisiti completati (passi 0–7).** Commit su `main`: 0 `723c9c2`, 1 `f179254`,
+    2 `b2f7ec7`, 3 `51aaeae`, 4 `80ec3de`, 5 `7c72508`, 6 `1027870`; 7 = il commit «F8 passo 7» che contiene questa
+    nota (un commit non può citare il proprio hash). Esiti del passo 7 nelle note del 2026-11-21 su D-40 e D-39 (solo
+    fatti); D-38, D-39, D-40 restano APERTE e `configs/base.yaml` è invariato.
   - **Dopo il passo 7, F8 vera e propria:** decisioni D-38, D-39, D-40; valori canonici in `configs/base.yaml`;
     `configs/experiments/protocol_switch_dev.yaml`; esperimento legacy contro canonico sulle 6 macchine dev (lo lancia
     l'utente), con il controllo dei non finiti (nota del 2026-11-19 sopra) e le correzioni dichiarate tenute separate
