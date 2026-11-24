@@ -1,0 +1,21 @@
+# F8, esperimento legacy contro canonico (piano F8, nota del 2026-11-24): piano PRIMARIO, per le quattro varianti
+# V0, V3, V2, V1 di configs/experiments/protocol_switch_dev/. Solo lo scenario primary (test_context non è ammesso in
+# legacy2, D-60), così la maschera del test è la stessa nelle quattro varianti ([W-1, T-W+1), D-20, D-22).
+# Fattori di protocollo della letteratura misurati dentro ogni variante: proiezione offline (ts_agg), PA, oracolo,
+# metrica. Scoring: le quattro varianti storiche di main.py (raw_mean, z_mean, z_max, z_top5). Soglia statica al 98°
+# percentile di cal, come i run di D-50. Nessuna soglia mobile: i livelli sono D-42 APERTA (la correzione D-72 C1 si
+# misura quando entreranno nelle analisi). Nessun export legacy: rifiuta i modelli senza corrispettivo in main.py.
+scenarios: [primary]
+window_time_aggs: [last, mean]
+scorings:
+  - {sensor_agg: mean, normalizer: none}
+  - {sensor_agg: mean, normalizer: std}
+  - {sensor_agg: max, normalizer: std}
+  - {sensor_agg: top5, normalizer: std}
+ts_aggs: [last, mean, max]
+thresholds:
+  static_pct: [98.0]
+  roll_quantile: []
+  roll_robust_z: []
+  oracle: true
+pa: [static_pct, oracle]

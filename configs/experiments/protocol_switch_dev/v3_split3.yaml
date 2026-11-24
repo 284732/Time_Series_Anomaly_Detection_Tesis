@@ -1,0 +1,46 @@
+# F8, esperimento legacy contro canonico (piano F8, nota del 2026-11-24): variante V3 della catena
+# V0 -> V3 -> V2 -> V1, un cambio per passaggio, ordine fissato prima dei run.
+#   V0 legacy:                legacy2,         min_range 0,    epoche 40 / 5   (valori storici di parity_repro)
+#   V3:                       split3 60/20/20, min_range 0,    epoche 40 / 5   (V0 -> V3: P1 + fit 80% -> 60%, D-05, D-65)
+#   V2:                       split3 60/20/20, min_range 0,    epoche 100 / 10 (V3 -> V2: D-39)
+#   V1 canonico:              split3 60/20/20, min_range 0,02, epoche 100 / 10 (V2 -> V1: D-40)
+# Questo file: split3 con scaler ed epoche storiche
+# Ogni valore che entra in config_sha256 o nel fit_key è dichiarato qui (come parity_repro, D-77): nulla si eredita
+# da base.yaml né da configs/models/. Iperparametri: quelli storici di M1 (parity_repro) per i modelli in comune;
+# AE non addestrati appaiati ai loro AE (D-69); lstm_forecaster.hidden_dim = 64 PROVVISORIO (= LSTM-AE, D-41 aperta);
+# baseline ai default storici (configs/models/baselines.yaml). Seed: 42 per primo (riuso dei fit di M1 in V0); 43 e
+# 44 proposti da Claude il 2026-11-24, scelti prima dei run e senza guardare dati (da confermare). Solo le 6 macchine
+# dev (configs/dev_machines.yaml, D-51). Lo lancia l'utente (CLAUDE.md §4).
+experiment:
+  name: protocol_switch_dev_v3_split3
+  kind: exploratory
+  seeds: [42, 43, 44]
+paths: {store_root: store}
+device: cpu
+data:
+  dataset: smd
+  data_dir: dataset
+  machines: [machine-1-1, machine-1-7, machine-2-6, machine-2-8, machine-3-11, machine-3-8]
+split:
+  mode: split3
+  fractions: [0.6, 0.2, 0.2]
+preprocessing: {scaler_type: minmax, min_range: 0.0, clip: null}
+windows: {window_size: 100, step: 1, train_step: 5}
+training: {max_epochs: 40, patience: 5, min_delta: 1.0e-06, learning_rate: 0.001, weight_decay: 1.0e-05, batch_size: 64}
+models:
+  pca: {n_components: 0.9, random_state: 42}
+  pca_pointwise: {n_components: 0.9}
+  conv_autoencoder:
+    channels: [32, 64]
+    latent_dim: 16
+  lstm_autoencoder: {hidden_dim: 64, latent_dim: 16}
+  conv_autoencoder_untrained:
+    channels: [32, 64]
+    latent_dim: 16
+    score_batch_size: 64
+  lstm_autoencoder_untrained: {hidden_dim: 64, latent_dim: 16, score_batch_size: 64}
+  lstm_forecaster: {hidden_dim: 64}
+  rolling_zscore: {top_k: 5, eps: 0.01}
+  input_norm: {}
+run_models: [pca, pca_pointwise, conv_autoencoder, lstm_autoencoder, conv_autoencoder_untrained, lstm_autoencoder_untrained,
+  lstm_forecaster, rolling_zscore, input_norm]

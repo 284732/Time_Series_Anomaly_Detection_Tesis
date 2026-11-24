@@ -1,0 +1,18 @@
+# F8, esperimento legacy contro canonico (piano F8, nota del 2026-11-24): piano CON CONTESTO, solo per la variante V1
+# (configs/experiments/protocol_switch_dev/v1_canonical.yaml): test_context richiede split3 con step 1 (D-60). La
+# variante con contesto cambia la maschera del test (primi W-1 punti inclusi, D-20) e si confronta a parte (rischi
+# del piano F8). Tutto il resto è identico al piano primario (configs/analysis/protocol_switch_primary.yaml).
+scenarios: [primary, test_context]
+window_time_aggs: [last, mean]
+scorings:
+  - {sensor_agg: mean, normalizer: none}
+  - {sensor_agg: mean, normalizer: std}
+  - {sensor_agg: max, normalizer: std}
+  - {sensor_agg: top5, normalizer: std}
+ts_aggs: [last, mean, max]
+thresholds:
+  static_pct: [98.0]
+  roll_quantile: []
+  roll_robust_z: []
+  oracle: true
+pa: [static_pct, oracle]

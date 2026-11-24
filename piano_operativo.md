@@ -1046,6 +1046,9 @@ D-53 approvata (2026-11-10): `.pyc` tolti dal tracciamento, `dataset/` resta tra
     (esperimento `legacy2` sopra una base `split3`) con la stessa forza.
   - **`CLAUDE.md`:** al passo 1 una riga di fatto in §3.3 (protocollo canonico in `configs/base.yaml`);
     aggiornamento completo dopo il report di F8 (passo 6).
+  - **Da fare al passo 6 (revisione del passo 2, utente, 2026-11-24):** una riga in D-40 sul pavimento in float32:
+    il range su fit è float32, quindi il denominatore effettivo è float32(τ) = 0,0199999996 e la scala vale
+    50,0000011; limite esatto |z| ≤ 1/float32(τ) (fatto rilevato da `tests/test_f8_leakage_e2e.py`).
   - **Passi** (regola abituale: dopo ogni passo snapshot F1, golden, suite completa, riepilogo completo, poi stop per
     la revisione dell'utente; nessun commit senza richiesta):
     - **0 — registro e piano** (solo documenti): questa nota e le voci sopra;
@@ -1127,6 +1130,9 @@ D-53 approvata (2026-11-10): `.pyc` tolti dal tracciamento, `dataset/` resta tra
 - **Dipendenze:** M1 superata; F11 completata o almeno F8.
 - **Test:** suite completa; lo snapshot legacy si archivia o si rimuove insieme a `main.py`.
 - **Impatto sui risultati:** nessuno.
+- **Nota (2026-11-24, da F8 passo 2, utente):** messaggio di log degli AE non addestrati: «up to 0 epochs (early
+  stopping, patience=5)», dove 5 è il default storico di `PyTorchTrainer` (il trainer riceve solo `epochs` = 0).
+  Nessun effetto (zero epoche, nessun early stopping): correggere solo il testo.
 
 ---
 
