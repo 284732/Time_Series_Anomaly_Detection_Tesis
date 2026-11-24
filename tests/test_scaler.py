@@ -53,6 +53,26 @@ def test_near_constant_column_is_amplified_and_min_range_floor_fixes_it():
     assert np.allclose(legacy[:, [0, 2]], floored[:, [0, 2]])   # le altre colonne non cambiano
 
 
+def test_zero_range_column_uses_tau_as_denominator_continuously():
+    """D-40 (F8 passo 2): con ``min_range`` = τ > 0 un sensore a range ESATTAMENTE nullo su fit ha scala 1/τ (non 1,
+    come con lo storico τ = 0), e lo stesso denominatore di un sensore con range positivo < τ (transizione continua,
+    ``scaler.py:69-70``)."""
+    tau = 0.02
+    tr = _data(0)
+    tr[:, 3] = 0.4                                       # range esattamente nullo
+    tr[:, 4] = 0.4 + 1e-6 * tr[:, 4]                     # range positivo, minuscolo (< τ)
+    te = np.full((2, tr.shape[1]), 0.9, dtype=np.float32)
+    floored = SMDScaler("minmax", min_range=tau).fit(tr)
+    legacy = SMDScaler("minmax", min_range=0.0).fit(tr)
+    assert floored.scale_[3] == pytest.approx(1.0 / tau)       # 50, non 1
+    assert floored.scale_[4] == floored.scale_[3]               # stesso denominatore τ: nessun salto in 0
+    assert legacy.scale_[3] == 1.0 and legacy.scale_[4] > 1e5  # storico: salto da 1 a 1/range
+    out = floored.transform(te)
+    assert out[0, 3] == pytest.approx((0.9 - 0.4) / tau, rel=1e-6)     # 25 = 0.5 · 50
+    assert np.abs(out).max() <= 1.0 / tau + 1e-4                       # dati in [0, 1]: |z| ≤ 1/τ (D-26)
+    assert np.array_equal(out[:, [0, 1, 2, 5]], legacy.transform(te)[:, [0, 1, 2, 5]])  # range ≥ τ: invariati
+
+
 def test_clip_applies_uniformly_to_fit_and_other_segments():
     tr = _data(0)
     sc = SMDScaler("standard", clip=(-3.0, 3.0))
