@@ -781,6 +781,181 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
 - **Collegamenti:** D-10, D-36, D-41, D-54, D-71.
 - **Documenti:** piano F8 (nota del 2026-11-20), F11.
 
+### D-38 · `train_step` — APPROVATA · 2026-11-24
+- **Testo della voce APERTA (storico, invariato):**
+  - **Opzioni:** 5 (storico) oppure 1; in ogni caso identico per tutti i modelli. **Serve entro:** F8.
+- **Decisione:** `train_step` = 5, identico per tutti i modelli che si addestrano su finestre: Conv-AE, LSTM-AE, PCA a
+  finestre, modello di previsione (`lstm_forecaster`). La PCA puntuale si fitta su tutti i punti di fit
+  (`fit_on_points`, `src/pipeline/fit.py:98-102`), quindi `train_step` non la riguarda; `rolling_zscore` e
+  `input_norm` non apprendono parametri. Lo scoring resta a ogni istante (`step` = 1, D-60). Finestre della loss di
+  early stopping: regola di D-63 (`score_windows(es, step)[::max(1, train_step // step)]`, solo dentro es).
+- **Motivazione:** con passo 5 le finestre (W = 100) si sovrappongono già al 95%; il passo 1 costerebbe circa 5 volte
+  per epoca, soprattutto in F9, in F11 e nei rilanci.
+- **Limite da dichiarare (misura del 2026-11-24, sola lettura, solo le 6 macchine dev, `reports_local/f8_pre/`):** con
+  il fit al 60% le finestre di training sono 2.824–3.430 per macchina (1-1 3.398; 1-7 2.824; 2-6 3.430; 2-8 2.825;
+  3-11 3.424; 3-8 3.425), sempre meno di W·F = 3.800 (rapporto 0,74–0,90); il train più corto di SMD (23.687 righe)
+  dà 2.823 finestre. La covarianza campionaria della PCA a finestre ha quindi rango ≤ N − 1 < W·F. Con lo storico
+  (train all'80%) erano 3.772–4.579, già sotto 3.800 su 1-7 e 2-8.
+- **Conseguenza:** nella griglia di F9 un `n_components` intero va limitato a ≤ N − 1 (note del 2026-11-24 su D-41 e
+  D-57).
+- **Effetto sui numeri:** nessuno, è il valore storico.
+- **Approvazione:** utente, 2026-11-24, su raccomandazione di Claude Project.
+- **Collegamenti:** D-03, D-41, D-57, D-60, D-63.
+- **Documenti:** piano F8 (nota del 2026-11-24); `configs/base.yaml` (passo 1 di F8).
+
+### D-39 · `max_epochs` e patience — APPROVATA · 2026-11-24
+- **Testo della voce APERTA (storico, invariato):**
+  - **Proposta:** 100 e 10. **Serve entro:** F8.
+  - **Nota (2026-11-11, F4, la voce resta APERTA):** il trainer accetta `max_epochs` come alias opzionale di `epochs`
+    (se assente non cambia nulla; entrambe presenti e diverse → `ValueError`). Fatto verificato: oggi nessun percorso
+    passa entrambe le chiavi (`main.py` passa `config["models"][key]`, che in `repro_*.yaml` e nello snapshot F1 contiene
+    solo `epochs`; la nuova pipeline traduce `training.max_epochs` in `epochs` in `schema.model_kwargs`). Il controllo
+    tutela D-39: il valore scelto non può essere contraddetto in silenzio da una seconda chiave. Nessun valore fissato.
+  - **Nota (2026-11-21, F8 passo 7, la voce resta APERTA): epoche dei run esistenti, solo fatti.** Sola lettura dello
+    store (`store/fits/*/meta.json`) e di `results/results_tests/*/summary_timestamp_metrics.csv` (colonna `Epochs` =
+    `stopped_epoch`); nessun training. Tutti i run sono solo su machine-1-1 e machine-3-8 (dev, D-52), seed 42, con
+    `max_epochs` 40 e patience 5. Regola del trainer (`src/training/trainer.py`): stop per early stopping quando
+    `stop − best ≥ patience`, altrimenti al tetto di `max_epochs`.
+
+    | run | conv 1-1 | lstm 1-1 | conv 3-8 | lstm 3-8 |
+    |---|---|---|---|---|
+    | store M1, `parity_repro` (best / stop) | 39 / 40, tetto | 8 / 13, ES | 17 / 22, ES | 21 / 26, ES |
+    | `results_repro_last_01`, `_mean_01` (stop, `efdacc6`) | 40 | 13 | 22 | 26 |
+    | `results_repro_last`, `_mean` (stop, `843da6a`) | 40 | 19 | 22 | 21 |
+
+    - **Fatto (M1):** `best_epoch` e `stopped_epoch` sono registrati, quindi la causa dello stop è certa (conv 1-1 al
+      tetto di 40; gli altri tre per early stopping).
+    - **Run storici:** solo `stopped_epoch`. Uno stop prima di 40 è early stopping (best = stop − 5). Uno stop a 40 non
+      si distingue da un early stopping proprio all'epoca 40: per `_01` si risolve con M1 (parità esatta,
+      `docs/m1_parita.md`), quindi è il tetto; per `843da6a` resta un'**inferenza**.
+    - Le epoche dell'LSTM differiscono tra `843da6a` e `efdacc6`, che differiscono per lo scaler (D-50).
+    - Tabella: `reports_local/d39/epochs.csv` (esclusa da git).
+- **Decisione:** `max_epochs` = 100, `patience` = 10. Lo stesso blocco `training` vale per Conv-AE, LSTM-AE e modello
+  di previsione. Fatto verificato nel codice (2026-11-24): `lstm_forecaster` ha `trained` vero
+  (`src/utils/schema.py:182-183`), quindi `schema.model_kwargs` gli passa lo stesso `cfg.training` degli AE
+  (`schema.py:432-436`) e il blocco entra nel suo `fit_key` (`src/utils/config.py:223-227`); `ForecastTrainer` rende
+  obbligatorie quelle chiavi (`src/training/forecast_trainer.py:23-44`) ed eredita `fit` di `PyTorchTrainer` (early
+  stopping e ripristino dell'epoca migliore, `src/training/trainer.py:80-132`). Gli AE non addestrati (D-69) restano
+  fuori: zero epoche; per loro vale solo il vincolo `score_batch_size` = `training.batch_size` (`schema.py:350`).
+- **Fuori da questa voce:** `min_delta` (1e−6), `learning_rate` (1e−3), `weight_decay` (1e−5) e `batch_size` (64)
+  restano ai valori storici (nota del 2026-11-24 nel piano F8; griglia di D-41).
+- **Conteggio dei fit fermati al tetto (report di F8):** un fit si è fermato al tetto se `stopped_epoch` =
+  `max_epochs` e `stopped_epoch` − `best_epoch` < `patience` (regola del trainer: `stopped_epoch` da solo non
+  distingue il tetto da un early stopping proprio all'ultima epoca); un `best_epoch` nullo (val loss mai migliorata,
+  per esempio non finita) si conta a parte. Le colonne `best_epoch` e `stopped_epoch` sono nella tabella `fits`.
+- **Vincolo:** il valore non si cambia dopo aver visto i risultati di F8.
+- **Natura del cambiamento:** cambio di design dichiarato (storico 40 / 5); tocca solo i modelli addestrati, quindi può
+  spostare Δ(DL − PCA). Si isola nel passaggio V3 → V2 dell'esperimento di F8 (nota del 2026-11-24 nel piano).
+- **Approvazione:** utente, 2026-11-24, su raccomandazione di Claude Project.
+- **Collegamenti:** D-41, D-69, D-74.
+- **Documenti:** piano F8 (nota del 2026-11-24); `configs/base.yaml` (passo 1 di F8).
+
+### D-40 · Preprocessing canonico — APPROVATA · 2026-11-24
+- **Testo della voce APERTA (storico, invariato):**
+  - **Opzioni:** storico (minmax su fit, senza clip né pavimento; raccomandato) oppure con pavimento o clip.
+    **Serve entro:** F8.
+  - **Nota (2026-11-10, la voce resta APERTA):**
+    - **Osservazione su dati sintetici (F1):** nel banco di prova sintetico un sensore quasi costante nel train
+      (deviazione 0,05 nel test) dopo lo scaler minmax senza pavimento (`min_range = 0`) arrivava a ±27 e dominava
+      tutti gli score per finestra: PCA a finestre e AE avevano AUC e AP vicine al caso e le 4 varianti di scoring erano
+      quasi identiche. Il generatore è stato ritarato (2,5 volte la deviazione del train, circa ±1,9) solo perché lo
+      snapshot distinguesse i percorsi di scoring.
+    - **Ipotesi (non verificata su SMD):** su alcune macchine reali l'amplificazione 1/range dei sensori quasi costanti
+      nel train potrebbe penalizzare PCA a finestre e AE rispetto alle baseline. Se confermata, è un artefatto del
+      protocollo pertinente alla domanda della tesi, e indebolisce la raccomandazione "storico, senza pavimento".
+    - **Verifica proposta, prima di decidere D-40:** in sola lettura su `dataset/`, per ogni macchina e sensore, range
+      nel train, range nel test e valore massimo assoluto dopo lo scaler storico; contare i sensori con valore massimo
+      maggiore di 2 nel test. Nessun training. Gli esiti si guardano prima solo sulle 6 macchine di sviluppo [D-51].
+    - **Collegamenti:** F1, F8, D-26.
+  - **Nota di rimando (2026-11-10, la voce resta APERTA):** con D-65 lo scaler in `split3` si fitta solo su fit (60%):
+    la verifica proposta sopra misura gli intervalli anche su fit, non solo sulla parte di train storica (80%).
+  - **Nota (2026-11-20, la voce resta APERTA; utente, su raccomandazione di Claude Project): verifica autorizzata.**
+    - **Perimetro:** sola lettura su `dataset/`; nessun training; nessuna label; **solo le 6 macchine di sviluppo**
+      (`configs/dev_machines.yaml`, D-51), mai le 22 di valutazione.
+    - **Misure, per macchina e sensore:** range su fit (60%) e sul train storico (80%); range nel test; valore massimo
+      assoluto nel test dopo lo scaler storico (minmax senza clip né pavimento); conteggio dei sensori con massimo
+      maggiore di 2 nel test.
+    - **Uscite:** script in sola lettura, risultati in `reports_local/d40/` (esclusa da git); i numeri si riportano
+      senza conclusioni sulla decisione, che resta dell'utente.
+    - **Documenti:** piano F8 (passo 7).
+  - **Nota (2026-11-21, F8 passo 7, la voce resta APERTA): esito della verifica, solo fatti, nessuna decisione.**
+    - **Come:** `scripts/verify_d40.py` (test: `tests/test_f8_d40_check.py`); uscite in `reports_local/d40/` (esclusa da
+      git: `per_sensor.csv`, `per_machine.csv`, `worst_cases.csv`, `meta.json`, `summary.md`). Hash del dataset
+      verificati prima del run (84 file coincidenti). Solo `train/` e `test/` delle 6 macchine dev; nessuna label, nessun
+      training. Confini da `src/data/segments.py::segment_bounds`: fit = 60% (`split3`, frazioni D-05), train storico =
+      80% (`legacy2`, `val_ratio` 0,2), W = 100. Scaler storico `SMDScaler` minmax, `min_range = 0`, nessun clip; con
+      range esattamente nullo lo scaler usa scala 1.
+    - **Soglia dichiarata:** «quasi nullo» = range sul segmento di fit dello scaler < 0,01 (amplificazione ≥ 100×); il
+      range esattamente nullo è contato a parte. Massimo assoluto contato oltre 2.
+    - **Per macchina** (ogni cella: scaler su fit 60% / scaler su train 80%):
+
+      | macchina | range nullo | quasi nullo (< 0,01) | \|max\| > 2 nel test | \|max\| peggiore (sensore) | sensori con range fit < range train80 |
+      |---|---|---|---|---|---|
+      | 1-1 | 8 / 8 | 10 / 10 | 24 / 24 | 787 (33) / 787 (33) | 20 |
+      | 1-7 | 4 / 4 | 4 / 4 | 2 / 2 | 12,6 (9) / 12,6 (9) | 6 |
+      | 2-6 | 8 / 8 | 10 / 10 | 14 / 14 | 113 (25) / 112 (23) | 7 |
+      | 2-8 | 7 / 7 | 12 / 12 | 27 / 27 | 497 (29) / 333 (33) | 10 |
+      | 3-11 | 9 / 9 | 11 / 11 | 12 / 12 | 922 (9) / 922 (9) | 18 |
+      | 3-8 | 8 / 8 | 8 / 8 | 17 / 16 | 89 (31) / 26 (31) | 14 |
+
+    - **Casi peggiori** (range nel test ≈ 1 in tutti): 3-11 s9 (range su fit 0,0011; \|max\| 922 / 922); 1-1 s33
+      (0,0013; 787 / 787); 2-8 s29 (0,0020; 497 / 332); 1-1 s32 (0,0023; 431 / 431); 2-8 s33 (0,0030; 333 / 333). Elenco
+      completo (5 per macchina) in `worst_cases.csv`.
+    - **Altre soglie** (fit / train80; ordine 1-1, 1-7, 2-6, 2-8, 3-11, 3-8): \|max\| > 10: 6/5, 1/1, 4/4, 14/14, 6/6,
+      1/1; \|max\| > 100: 2/2, 0/0, 2/2, 5/5, 2/2, 0/0. Range < 0,001 coincide con il range nullo su tutte le macchine.
+    - **Sensori quasi nulli ma non nulli** (uguali con i due scaler): 1-1 {32, 33}; 2-6 {23, 25}; 2-8 {6, 29, 31, 32, 33};
+      3-11 {5, 9}; nessuno su 1-7 e 3-8.
+    - **I 44 sensori a range nullo** (gli stessi su fit e su train80):
+      - 1-1 {4, 7, 16, 17, 26, 28, 36, 37}; 1-7 {7, 26, 36, 37}; 2-6 {4, 7, 16, 17, 26, 28, 36, 37};
+        2-8 {7, 16, 17, 26, 28, 36, 37}; 3-11 {7, 10, 16, 17, 24, 26, 28, 31, 37}; 3-8 {4, 7, 16, 17, 26, 28, 36, 37};
+      - 36 restano costanti anche nel test; 8 sono costanti nel train ma nel test coprono un range di 1 e dopo lo
+        scaler arrivano a \|max\| = 1 (scala 1): 1-1 {26, 28}, 2-8 {16, 17, 28}, 3-11 {10, 31}, 3-8 {28}.
+- **Decisione:** scaler `minmax` fittato solo su fit (D-65), `clip: null`, pavimento sul denominatore `min_range` =
+  τ = **0,02** (amplificazione massima 1/τ = 50).
+- **Criterio di τ:** «il τ più grande tra {0,01; 0,02; 0,05; 0,1} che, su ogni macchina dev, tocca al massimo 1
+  sensore con range su fit ≥ 0,01». Misura del 2026-11-24 (sola lettura, `reports_local/f8_pre/`): sensori con range
+  su fit in [0,01; τ), nell'ordine 1-1, 1-7, 2-6, 2-8, 3-11, 3-8: τ = 0,02 → 1, 0, 1, 0, 1, 1; τ = 0,05 → 3, 0, 1, 5,
+  4, 1; τ = 0,1 → 4, 1, 2, 9, 4, 1. Il criterio dà τ = 0,02.
+- **Da dichiarare sulla scelta di τ:**
+  - il criterio è stato scritto **dopo** la misura del 2026-11-24, con i dati della nota del 2026-11-21 già noti;
+  - usa solo i range su fit delle 6 macchine dev: nessuna label, nessun valore del test, nessuna prestazione;
+  - τ è espresso nelle unità del dataset distribuito, già normalizzato min-max su train+test (D-26).
+- **Sensori a range nullo:** si tiene la transizione continua: con τ > 0 il loro denominatore è τ, non 1
+  (`src/preprocessing/scaler.py:69-70`, verificato il 2026-11-24). Per ogni range in [0, τ) il denominatore vale τ.
+- **Effetti da dichiarare (misura del 2026-11-24):**
+  - poiché i dati sono in [0, 1] (D-26), |z| ≤ 1/max(range su fit, τ) ≤ 1/τ = 50 per costruzione;
+  - |max| nel test: da 787, 12,6, 113, 497, 922, 89,2 (storico, τ = 0) a 50, 12,6, 50, 50, 50, 50;
+  - gli 8 sensori a range nullo su fit ma variabili nel test (nota del 2026-11-21: 1-1 {26, 28}, 2-8 {16, 17, 28},
+    3-11 {10, 31}, 3-8 {28}) passano da |max| 1 a 1/τ = 50 e su 4 macchine (1-1, 2-8, 3-11, 3-8) raggiungono il
+    massimo del test;
+  - il numero di sensori con |max| > 2 nel test aumenta: da 24, 2, 14, 27, 12, 17 a 26, 2, 14, 30, 14, 18; con
+    |max| > 10 da 6, 1, 4, 14, 6, 1 a 8, 1, 4, 17, 8, 2; con |max| > 100 da 2, 0, 2, 5, 2, 0 a 0 ovunque.
+- **Motivazione (corretta rispetto al testo dell'utente del 2026-11-24, su verifica nel codice):** con lo scaler
+  storico (`min_range` = 0) la verifica del 2026-11-21 mostra amplificazioni fino a circa 900× su sensori quasi
+  costanti. L'amplificazione decide lo score, nelle finestre colpite, dei modelli che usano direttamente i dati
+  scalati: AE (addestrati e non), modello di previsione, PCA a finestre, `rolling_zscore` (`eps` in unità scalate),
+  `input_norm`. L'effetto sul confronto di RQ2 ha direzione ignota. La **PCA puntuale** ristandardizza internamente
+  ogni sensore con la deviazione standard su fit (`src/models/traditional/pca_pointwise.py:31-35`, `:43`): per i
+  sensori con range positivo è invariante rispetto allo scaler minmax (a meno degli arrotondamenti float32), quindi τ
+  non la cambia e la sua amplificazione interna 1/std resta; τ agisce su di lei solo sui sensori a range nullo
+  (std < 1e−8 → 1), che passano da 1 a 1/τ. Conseguenza per D-37: nota del 2026-11-24.
+- **Alternative scartate:**
+  - scala 1 solo per il range esattamente nullo: reintroduce la discontinuità (range 0 → scala 1, range ε → 1/ε) che
+    crea l'amplificazione storica;
+  - rimozione dei sensori costanti su fit: cambio strutturale di F (W·F, schema dei residui), e scarta sensori che
+    variano nel test;
+  - storico senza pavimento come canonico: resta come variante misurata (sotto).
+- **Lo storico (`min_range` = 0)** resta come variante misurata nell'esperimento di F8 (passaggio V2 → V1) e come
+  livello candidato del fattore scaler di RQ1b (D-42 resta APERTA). Per `standard` e `robust` `min_range` ha unità
+  diverse (deviazione standard, IQR / 1,349; `scaler.py:68-69`): τ = 0,02 vale per `minmax` e non si trasferisce in
+  automatico a quei livelli (D-42).
+- **Natura del cambiamento:** cambio di design dichiarato; tocca tutti i modelli (la PCA puntuale solo sui sensori a
+  range nullo).
+- **Approvazione:** utente, 2026-11-24, su raccomandazione di Claude Project (criterio e valore di τ fissati
+  dall'utente dopo la misura del 2026-11-24, prima di qualunque codice).
+- **Collegamenti:** D-26, D-37, D-42, D-65.
+- **Documenti:** piano F8 (nota del 2026-11-24); `configs/base.yaml` (passo 1 di F8).
+
 ---
 
 ## C. Software e riproducibilità — decisioni approvate
@@ -2520,101 +2695,23 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
 - **Opzioni:** PCA a finestre (stesso input degli AE, raccomandata) oppure la migliore tra le due PCA scelta sulle
   macchine di sviluppo. Distinta da D-06 (dati di fit).
 - **Serve entro:** F10.
-
-### D-38 · `train_step` — APERTA
-- **Opzioni:** 5 (storico) oppure 1; in ogni caso identico per tutti i modelli. **Serve entro:** F8.
-
-### D-39 · `max_epochs` e patience — APERTA
-- **Proposta:** 100 e 10. **Serve entro:** F8.
-- **Nota (2026-11-11, F4, la voce resta APERTA):** il trainer accetta `max_epochs` come alias opzionale di `epochs`
-  (se assente non cambia nulla; entrambe presenti e diverse → `ValueError`). Fatto verificato: oggi nessun percorso
-  passa entrambe le chiavi (`main.py` passa `config["models"][key]`, che in `repro_*.yaml` e nello snapshot F1 contiene
-  solo `epochs`; la nuova pipeline traduce `training.max_epochs` in `epochs` in `schema.model_kwargs`). Il controllo
-  tutela D-39: il valore scelto non può essere contraddetto in silenzio da una seconda chiave. Nessun valore fissato.
-- **Nota (2026-11-21, F8 passo 7, la voce resta APERTA): epoche dei run esistenti, solo fatti.** Sola lettura dello
-  store (`store/fits/*/meta.json`) e di `results/results_tests/*/summary_timestamp_metrics.csv` (colonna `Epochs` =
-  `stopped_epoch`); nessun training. Tutti i run sono solo su machine-1-1 e machine-3-8 (dev, D-52), seed 42, con
-  `max_epochs` 40 e patience 5. Regola del trainer (`src/training/trainer.py`): stop per early stopping quando
-  `stop − best ≥ patience`, altrimenti al tetto di `max_epochs`.
-
-  | run | conv 1-1 | lstm 1-1 | conv 3-8 | lstm 3-8 |
-  |---|---|---|---|---|
-  | store M1, `parity_repro` (best / stop) | 39 / 40, tetto | 8 / 13, ES | 17 / 22, ES | 21 / 26, ES |
-  | `results_repro_last_01`, `_mean_01` (stop, `efdacc6`) | 40 | 13 | 22 | 26 |
-  | `results_repro_last`, `_mean` (stop, `843da6a`) | 40 | 19 | 22 | 21 |
-
-  - **Fatto (M1):** `best_epoch` e `stopped_epoch` sono registrati, quindi la causa dello stop è certa (conv 1-1 al
-    tetto di 40; gli altri tre per early stopping).
-  - **Run storici:** solo `stopped_epoch`. Uno stop prima di 40 è early stopping (best = stop − 5). Uno stop a 40 non
-    si distingue da un early stopping proprio all'epoca 40: per `_01` si risolve con M1 (parità esatta,
-    `docs/m1_parita.md`), quindi è il tetto; per `843da6a` resta un'**inferenza**.
-  - Le epoche dell'LSTM differiscono tra `843da6a` e `efdacc6`, che differiscono per lo scaler (D-50).
-  - Tabella: `reports_local/d39/epochs.csv` (esclusa da git).
-
-### D-40 · Preprocessing canonico — APERTA
-- **Opzioni:** storico (minmax su fit, senza clip né pavimento; raccomandato) oppure con pavimento o clip.
-  **Serve entro:** F8.
-- **Nota (2026-11-10, la voce resta APERTA):**
-  - **Osservazione su dati sintetici (F1):** nel banco di prova sintetico un sensore quasi costante nel train
-    (deviazione 0,05 nel test) dopo lo scaler minmax senza pavimento (`min_range = 0`) arrivava a ±27 e dominava
-    tutti gli score per finestra: PCA a finestre e AE avevano AUC e AP vicine al caso e le 4 varianti di scoring erano
-    quasi identiche. Il generatore è stato ritarato (2,5 volte la deviazione del train, circa ±1,9) solo perché lo
-    snapshot distinguesse i percorsi di scoring.
-  - **Ipotesi (non verificata su SMD):** su alcune macchine reali l'amplificazione 1/range dei sensori quasi costanti
-    nel train potrebbe penalizzare PCA a finestre e AE rispetto alle baseline. Se confermata, è un artefatto del
-    protocollo pertinente alla domanda della tesi, e indebolisce la raccomandazione "storico, senza pavimento".
-  - **Verifica proposta, prima di decidere D-40:** in sola lettura su `dataset/`, per ogni macchina e sensore, range
-    nel train, range nel test e valore massimo assoluto dopo lo scaler storico; contare i sensori con valore massimo
-    maggiore di 2 nel test. Nessun training. Gli esiti si guardano prima solo sulle 6 macchine di sviluppo [D-51].
-  - **Collegamenti:** F1, F8, D-26.
-- **Nota di rimando (2026-11-10, la voce resta APERTA):** con D-65 lo scaler in `split3` si fitta solo su fit (60%):
-  la verifica proposta sopra misura gli intervalli anche su fit, non solo sulla parte di train storica (80%).
-- **Nota (2026-11-20, la voce resta APERTA; utente, su raccomandazione di Claude Project): verifica autorizzata.**
-  - **Perimetro:** sola lettura su `dataset/`; nessun training; nessuna label; **solo le 6 macchine di sviluppo**
-    (`configs/dev_machines.yaml`, D-51), mai le 22 di valutazione.
-  - **Misure, per macchina e sensore:** range su fit (60%) e sul train storico (80%); range nel test; valore massimo
-    assoluto nel test dopo lo scaler storico (minmax senza clip né pavimento); conteggio dei sensori con massimo
-    maggiore di 2 nel test.
-  - **Uscite:** script in sola lettura, risultati in `reports_local/d40/` (esclusa da git); i numeri si riportano
-    senza conclusioni sulla decisione, che resta dell'utente.
-  - **Documenti:** piano F8 (passo 7).
-- **Nota (2026-11-21, F8 passo 7, la voce resta APERTA): esito della verifica, solo fatti, nessuna decisione.**
-  - **Come:** `scripts/verify_d40.py` (test: `tests/test_f8_d40_check.py`); uscite in `reports_local/d40/` (esclusa da
-    git: `per_sensor.csv`, `per_machine.csv`, `worst_cases.csv`, `meta.json`, `summary.md`). Hash del dataset
-    verificati prima del run (84 file coincidenti). Solo `train/` e `test/` delle 6 macchine dev; nessuna label, nessun
-    training. Confini da `src/data/segments.py::segment_bounds`: fit = 60% (`split3`, frazioni D-05), train storico =
-    80% (`legacy2`, `val_ratio` 0,2), W = 100. Scaler storico `SMDScaler` minmax, `min_range = 0`, nessun clip; con
-    range esattamente nullo lo scaler usa scala 1.
-  - **Soglia dichiarata:** «quasi nullo» = range sul segmento di fit dello scaler < 0,01 (amplificazione ≥ 100×); il
-    range esattamente nullo è contato a parte. Massimo assoluto contato oltre 2.
-  - **Per macchina** (ogni cella: scaler su fit 60% / scaler su train 80%):
-
-    | macchina | range nullo | quasi nullo (< 0,01) | \|max\| > 2 nel test | \|max\| peggiore (sensore) | sensori con range fit < range train80 |
-    |---|---|---|---|---|---|
-    | 1-1 | 8 / 8 | 10 / 10 | 24 / 24 | 787 (33) / 787 (33) | 20 |
-    | 1-7 | 4 / 4 | 4 / 4 | 2 / 2 | 12,6 (9) / 12,6 (9) | 6 |
-    | 2-6 | 8 / 8 | 10 / 10 | 14 / 14 | 113 (25) / 112 (23) | 7 |
-    | 2-8 | 7 / 7 | 12 / 12 | 27 / 27 | 497 (29) / 333 (33) | 10 |
-    | 3-11 | 9 / 9 | 11 / 11 | 12 / 12 | 922 (9) / 922 (9) | 18 |
-    | 3-8 | 8 / 8 | 8 / 8 | 17 / 16 | 89 (31) / 26 (31) | 14 |
-
-  - **Casi peggiori** (range nel test ≈ 1 in tutti): 3-11 s9 (range su fit 0,0011; \|max\| 922 / 922); 1-1 s33
-    (0,0013; 787 / 787); 2-8 s29 (0,0020; 497 / 332); 1-1 s32 (0,0023; 431 / 431); 2-8 s33 (0,0030; 333 / 333). Elenco
-    completo (5 per macchina) in `worst_cases.csv`.
-  - **Altre soglie** (fit / train80; ordine 1-1, 1-7, 2-6, 2-8, 3-11, 3-8): \|max\| > 10: 6/5, 1/1, 4/4, 14/14, 6/6,
-    1/1; \|max\| > 100: 2/2, 0/0, 2/2, 5/5, 2/2, 0/0. Range < 0,001 coincide con il range nullo su tutte le macchine.
-  - **Sensori quasi nulli ma non nulli** (uguali con i due scaler): 1-1 {32, 33}; 2-6 {23, 25}; 2-8 {6, 29, 31, 32, 33};
-    3-11 {5, 9}; nessuno su 1-7 e 3-8.
-  - **I 44 sensori a range nullo** (gli stessi su fit e su train80):
-    - 1-1 {4, 7, 16, 17, 26, 28, 36, 37}; 1-7 {7, 26, 36, 37}; 2-6 {4, 7, 16, 17, 26, 28, 36, 37};
-      2-8 {7, 16, 17, 26, 28, 36, 37}; 3-11 {7, 10, 16, 17, 24, 26, 28, 31, 37}; 3-8 {4, 7, 16, 17, 26, 28, 36, 37};
-    - 36 restano costanti anche nel test; 8 sono costanti nel train ma nel test coprono un range di 1 e dopo lo
-      scaler arrivano a \|max\| = 1 (scala 1): 1-1 {26, 28}, 2-8 {16, 17, 28}, 3-11 {10, 31}, 3-8 {28}.
+- **Nota di rimando (2026-11-24, da D-40, la voce resta APERTA):** la PCA puntuale ristandardizza internamente ogni
+  sensore con la deviazione standard su fit (`src/models/traditional/pca_pointwise.py:31-35`), quindi il pavimento
+  dello scaler (τ = 0,02, D-40) su di lei agisce solo sui sensori a range nullo, mentre agisce su tutti i sensori quasi
+  costanti per gli AE, il modello di previsione e la PCA a finestre. Con la PCA puntuale come riferimento di RQ2 il
+  pavimento sarebbe asimmetrico tra DL e riferimento; con la PCA a finestre no. Da considerare nella decisione.
 
 ### D-41 · Budget di tuning — APERTA
 - **Da decidere:** K per famiglia (proposta 8), griglie, criterio di selezione (proposta: AP normalizzata media sulle 6
   macchine di sviluppo, una configurazione globale per famiglia), seed nel tuning (proposta 3), se scoring e normalizer
   robusto rientrano nel budget. **Serve entro:** F9.
+- **Nota (2026-11-24, da D-38, la voce resta APERTA):** nella griglia di F9 un `n_components` intero della PCA a
+  finestre va limitato a ≤ N − 1, con N = finestre di training su fit (`train_step` = 5, fit 60%): 2.824–3.430 sulle 6
+  macchine dev, minimo su SMD 2.823 (train più corto, 23.687 righe). Misura in sola lettura, `reports_local/f8_pre/`.
+  Vedi anche D-57.
+- **Nota (2026-11-24, la voce resta APERTA):** W = 100, `learning_rate`, `weight_decay`, `min_delta` e `batch_size`
+  sono valori storici fissi senza voce nel registro (fuori da D-39); non sono tarati, salvo quelli che entreranno nella
+  griglia di questa voce. Da dichiarare in tesi (nota del 2026-11-24 nel piano F8).
 
 ### D-42 · Livelli dei fattori per RQ1a e RQ1b — APERTA · **Serve entro:** F10.
 - **Nota (2026-11-10, la voce resta APERTA):**
@@ -2683,6 +2780,10 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
 - **Revisione (2026-11-11):** le righe «In F2» e «Serve entro» sono state corrette su decisione dell'utente (piano F4,
   C4); prima dicevano «Correzione del modello in F4» e «F4 (implementazione), D-41 (griglia)». La voce resta APERTA.
 - **Collegamenti:** D-37, D-41, `CLAUDE.md` §5.
+- **Nota (2026-11-24, da D-38, la voce resta APERTA):** con `train_step` = 5 e fit al 60% la PCA a finestre ha meno
+  finestre di training che feature (N = 2.824–3.430 sulle dev, minimo SMD 2.823, contro W·F = 3.800): un
+  `n_components` intero va limitato a ≤ N − 1 nella griglia di F9 (D-41). Il vincolo vale qualunque sia l'opzione
+  scelta qui (solver `full` o `auto`).
 
 ### D-74 · Modello di previsione (integra D-10) — APERTA · 2026-11-16
 - **Origine:** D-71 (approvata): si aggiunge un modello di previsione ai run ufficiali, con conclusioni dichiarate per
@@ -2818,6 +2919,7 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
       mutazioni in memoria, tutte rilevate).
 
 *(D-75 è stata approvata il 2026-11-20 ed è passata alla sezione B.)*
+*(D-38, D-39 e D-40 sono state approvate il 2026-11-24 e sono passate alla sezione B.)*
 
 ---
 

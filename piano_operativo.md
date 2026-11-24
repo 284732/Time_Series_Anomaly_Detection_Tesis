@@ -66,9 +66,9 @@ D-53 approvata (2026-11-10): `.pyc` tolti dal tracciamento, `dataset/` resta tra
 9-bis. ~~Metodo di decomposizione della varianza per RQ1a~~ — **risolta da D-25** (approvata 2026-11-16): somme dei quadrati classiche a blocchi bilanciati, una risposta per metrica.
 
 **Gruppo B — prima degli esperimenti esplorativi (F8–F9):**
-10. `train_step` [D-38].
-11. `max_epochs` e patience [D-39] (proposta: 100 e 10).
-12. Preprocessing canonico [D-40].
+10. ~~`train_step` [D-38]~~ — **risolta da D-38** (approvata 2026-11-24): 5 per tutti i modelli a finestre.
+11. ~~`max_epochs` e patience [D-39] (proposta: 100 e 10)~~ — **risolta da D-39** (approvata 2026-11-24): 100 e 10.
+12. ~~Preprocessing canonico [D-40]~~ — **risolta da D-40** (approvata 2026-11-24): minmax su fit con pavimento τ = 0,02.
 13. Budget di tuning, griglie, criterio di selezione, seed per il tuning, ruolo di scoring e normalizer robusto nel budget [D-41].
 14. Sensibilità delle proporzioni dello split [D-46].
 
@@ -995,6 +995,72 @@ D-53 approvata (2026-11-10): `.pyc` tolti dal tracciamento, `dataset/` resta tra
     dai fattori di protocollo (nota del 2026-11-12).
   - **Tempi (D-54):** consegna entro il 2027-01-31, chiusura del progetto nella prima metà di dicembre 2026; l'opzione 1
     di D-75 si fa solo se F11 è chiusa entro il 2026-12-10.
+- **Nota (2026-11-24, F8 vera e propria; utente, su raccomandazione di Claude Project).**
+  - **Misure preliminari** (sola lettura, solo le 6 macchine dev, nessuna label, nessun training; uscite in
+    `reports_local/f8_pre/`, esclusa da git): pavimento τ dello scaler su fit 60% (misura 1a) e finestre di training
+    con `train_step` = 5 (misura 1c). Esiti nelle voci D-38 e D-40.
+  - **Decisioni:** D-38 (`train_step` = 5), D-39 (100 / 10, stesso blocco `training` per il modello di previsione),
+    D-40 (minmax su fit, `clip: null`, `min_range` = τ = 0,02, criterio scritto dopo la misura 1a) approvate; note
+    del 2026-11-24 su D-37, D-41 e D-57 (le voci restano APERTE).
+  - **Valori storici senza voce nel registro:** W = 100, `learning_rate` (1e−3), `weight_decay` (1e−5), `min_delta`
+    (1e−6) e `batch_size` (64) restano fissi ai valori storici; non sono tarati, salvo quelli che entreranno nella
+    griglia di D-41. Da dichiarare in tesi.
+  - **Scostamenti approvati dal punto «File» di F8:**
+    - `configs/experiments/protocol_switch_dev/v0…v3.yaml` (4 file) al posto di un solo
+      `protocol_switch_dev.yaml`: lo schema ammette un solo `split`, `preprocessing` e `training` per esperimento;
+    - `scripts/protocol_switch_report.py`, in sola lettura sullo store, con uscita in una cartella nuova;
+    - due piani di analisi: primario per V0–V3 (scenario `primary`), con contesto solo per V1 (`test_context` non è
+      ammesso in `legacy2`, D-60).
+  - **Esperimento `protocol_switch_dev`** (solo le 6 macchine dev; 3 seed, 42 per primo; lo lancia l'utente). Catena
+    di varianti con un cambio per passaggio, ordine fissato prima dei run:
+
+    | variante | split | τ | epoche (max / patience) |
+    |---|---|---|---|
+    | V0 legacy | `legacy2` | 0 | 40 / 5 |
+    | V3 | `split3` | 0 | 40 / 5 |
+    | V2 | `split3` | 0 | 100 / 10 |
+    | V1 canonico | `split3` | 0,02 | 100 / 10 |
+
+    - modelli: `pca`, `pca_pointwise`, `conv_autoencoder`, `lstm_autoencoder`, `conv_autoencoder_untrained`,
+      `lstm_autoencoder_untrained`, `lstm_forecaster`, `rolling_zscore`, `input_norm`; tutti i valori espliciti nei
+      file (come `parity_repro`, D-77), iperparametri storici di M1; `lstm_forecaster.hidden_dim` = 64, provvisorio
+      (D-41);
+    - il `fit_key` non contiene il nome dell'esperimento: in V3 i modelli non addestrati si riusano da V2 (Δ = 0
+      atteso per costruzione, controllo), e V0 riusa i fit di M1 su machine-1-1 e machine-3-8 con seed 42 (da
+      verificare con `status`).
+  - **Report: quattro tipi di differenza:**
+    - fattori di protocollo della letteratura (PA, oracolo, proiezione offline, metrica, contesto): contrasti dentro
+      ogni variante, confrontati tra V0 e V1;
+    - correzioni dichiarate: P1 (V0 → V3); D-72 C15 (righe `nan_reason = nonfinite_residual_cal` e `n_nonfinite_cal`
+      della tabella `fits`, nota del 2026-11-19); D-72 C1 non è osservabile in questo esperimento (`main.py` non ha mai
+      usato `rules.py`, entrambe le modalità usano `thresholds.py`, il piano non ha soglie mobili perché D-42 è
+      APERTA): nessun numero storico interessato. C1 resta tra le correzioni dichiarate e si misura quando le soglie
+      mobili entreranno nelle analisi (livelli di D-42);
+    - cambi di protocollo approvati: fit 80% → 60% (D-05, D-65), V0 → V3;
+    - cambi di design dichiarati: D-39 (V3 → V2), D-40 (V2 → V1); D-38 resta al valore storico.
+  - **Da dichiarare nel report:** per gli AE il passaggio V0 → V3 confonde P1 e riduzione dei dati; per i modelli
+    deterministici dà solo l'effetto dei dati; l'esito della catena dipende dall'ordine dei passaggi. Si riportano
+    anche i fit fermati al tetto per variante (criterio di D-39), le finestre di training e i tempi dai `meta.json`.
+  - **Test da adattare al passo 1:** `tests/test_legacy_config_equivalence.py` punta a una copia storica di
+    `base.yaml` in `tests/fixtures/`, senza diventare più permissivo; `tests/test_f7_cli_e2e.py:115` si rovescia
+    (esperimento `legacy2` sopra una base `split3`) con la stessa forza.
+  - **`CLAUDE.md`:** al passo 1 una riga di fatto in §3.3 (protocollo canonico in `configs/base.yaml`);
+    aggiornamento completo dopo il report di F8 (passo 6).
+  - **Passi** (regola abituale: dopo ogni passo snapshot F1, golden, suite completa, riepilogo completo, poi stop per
+    la revisione dell'utente; nessun commit senza richiesta):
+    - **0 — registro e piano** (solo documenti): questa nota e le voci sopra;
+    - **1 — `configs/base.yaml` canonico:** `split` → `{mode: split3, fractions: [0.6, 0.2, 0.2]}` (D-05, D-65, D-77
+      A1); `preprocessing.min_range` → 0,02 (D-40); `training.max_epochs` / `patience` → 100 / 10 (D-39); tolti i
+      commenti «provvisorio» di D-38, D-39, D-40; i due test sopra; un test che fissa i valori canonici;
+      `parity_repro` identico a M1 (`tests/test_f8_config_loading.py` invariato); la riga di `CLAUDE.md` §3.3;
+    - **2 — test di leakage end-to-end** (sintetici, D-16; config canonica con τ > 0 e tutti i modelli): perturbare
+      es, cal o test lascia invariati scaler e PCA; perturbare il test lascia invariati normalizer, soglie statiche e
+      storia di cal delle soglie mobili; perturbare es cambia solo l'early stopping; un sensore a range esattamente
+      nullo ha scala 1/τ; `legacy2` riproducibile (snapshot F1);
+    - **3 — config V0–V3 e i due piani di analisi**, con test di caricamento e delle relazioni tra `fit_key`;
+    - **4 — `scripts/protocol_switch_report.py`** con test sintetici;
+    - **5 — run** di `fit` e `analyze` delle 4 varianti (li lancia l'utente), poi il report;
+    - **6 — report di F8** da approvare; poi `CLAUDE.md` completo e «Ordine consigliato e parallelismi».
 
 ### F9 — Tuning e sensibilità (esperimenti esplorativi)
 - **Obiettivo:** scegliere le configurazioni globali per famiglia, con budget pari, sulle 6 macchine dev.
