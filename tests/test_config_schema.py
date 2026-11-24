@@ -29,14 +29,26 @@ def _experiment_yaml(tmp_path, **extra):
 
 
 # --- livelli reali: base.yaml + models/*.yaml --------------------------------------------------
-def test_real_layers_validate_with_historical_values(tmp_path):
-    cfg = cfgmod.load_experiment(_experiment_yaml(tmp_path))
-    assert cfg.split.mode == "legacy2" and cfg.split.val_ratio == 0.2
+# Da F8 passo 1 il base.yaml reale ha i valori canonici (D-05, D-38, D-39, D-40); quelli storici restano verificati
+# sulla copia tests/fixtures/base_legacy2.yaml (base.yaml del commit d4d9d19), con le stesse asserzioni di prima.
+HISTORIC_BASE = cfgmod._ROOT / "tests" / "fixtures" / "base_legacy2.yaml"
+LAYER_VALUES = {
+    "canonical": (cfgmod.DEFAULT_BASE, ("split3", None, (0.6, 0.2, 0.2)), 0.02, (100, 10)),
+    "historic": (HISTORIC_BASE, ("legacy2", 0.2, None), 0.0, (40, 5)),
+}
+
+
+@pytest.mark.parametrize("layer", sorted(LAYER_VALUES))
+def test_real_layers_validate_with_canonical_and_historical_values(tmp_path, layer):
+    base, split, min_range, epochs = LAYER_VALUES[layer]
+    cfg = cfgmod.load_experiment(_experiment_yaml(tmp_path), base_path=base)
+    assert (cfg.split.mode, cfg.split.val_ratio, cfg.split.fractions) == split
     assert (cfg.windows.window_size, cfg.windows.step, cfg.windows.train_step) == (100, 1, 5)
-    assert (cfg.preprocessing.scaler_type, cfg.preprocessing.min_range, cfg.preprocessing.clip) == ("minmax", 0.0, None)
+    assert (cfg.preprocessing.scaler_type, cfg.preprocessing.min_range, cfg.preprocessing.clip) == \
+        ("minmax", min_range, None)
     t = cfg.training
     assert (t.max_epochs, t.patience, t.min_delta, t.learning_rate, t.weight_decay, t.batch_size) == \
-        (40, 5, 1e-6, 1e-3, 1e-5, 64)
+        epochs + (1e-6, 1e-3, 1e-5, 64)
     assert dict(cfg.models["pca"].params) == {"n_components": 0.9, "random_state": 42}
     assert dict(cfg.models["conv_autoencoder"].params) == {"channels": (32, 64), "latent_dim": 16}
     assert dict(cfg.models["lstm_autoencoder"].params) == {"hidden_dim": 64, "latent_dim": 16}

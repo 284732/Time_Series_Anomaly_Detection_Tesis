@@ -76,7 +76,7 @@ numerico» è il confronto tra due run dello `store/` (D-14).
 
 Stadi (`python -m src.cli <comando>`):
 1. `fit <esperimento.yaml>` (`src/pipeline/fit.py`, `fit_plan.py`): manifest e segmenti (`src/data/segments.py`;
-   modalità `legacy2` oggi, `split3` da F8), scaler, finestre (`src/data/windows.py`), `set_seed`, fit, checkpoint e
+   `split3` canonico da F8, `legacy2` per la parità), scaler, finestre (`src/data/windows.py`), `set_seed`, fit, checkpoint e
    residui per sensore (`last`, `mean`, D-33) in `store/fits/<fit_key>/`, con `meta.json` e provenance (D-70).
 2. `analyze <esperimento.yaml> <piano.yaml>` (`src/pipeline/analyze.py`, `analysis_grid.py`): nessun fit; tabelle
    lunghe `free`, `thr`, `fits` (`table_schema.py`) in `store/runs/<kind>/<esperimento>/analyses/<analysis_id>/`,
@@ -84,7 +84,9 @@ Stadi (`python -m src.cli <comando>`):
 3. `stats` (`src/stats/`) e `report` (`src/reporting/`), D-73.
 4. `status [--verify]` e `clean-tmp` per lo stato e l'integrità dello store.
 
-Il protocollo in vigore resta quello storico (`legacy2`, `configs/base.yaml`) fino a F8.
+Da F8 passo 1 (2026-11-24) `configs/base.yaml` ha i valori canonici (`split3` 60/20/20, minmax su fit con
+`min_range` 0,02, `train_step` 5, epoche 100 / patience 10: D-05, D-38, D-39, D-40); i valori storici restano in
+`configs/experiments/parity_repro.yaml` (D-77). F8 è in corso fino all'approvazione del report legacy contro canonico.
 
 **Pipeline storica, congelata (D-13).** Resta nel repository fino a F12 come riferimento: non si modifica e non serve
 più come oracolo. Entry point `main.py` → `prepare_machine_data` + `run_machine`:
@@ -121,7 +123,7 @@ Descritta in `proposta_architettura_target.md` e realizzata secondo `piano_opera
 implementati e validati in `legacy2` (§3.3): stadio di fit (checkpoint e residui per sensore, `fit_key` = hash della
 config rilevante + `FIT_CODE_VERSION`), stadio di analisi (nessun fit, tabella lunga), stadio di statistica e report.
 Restano da fare il protocollo canonico (F8) e le fasi successive. Le scelte già approvate sono in
-`docs/decisioni.md` (D-03…D-26, D-32, D-33, D-34, D-36, D-45, D-50, D-51, D-52, D-54, D-55, D-56, D-58…D-69, D-70, D-71, D-72, D-73, D-75, D-76, D-77); quelle ancora aperte sono nella
+`docs/decisioni.md` (D-03…D-26, D-32, D-33, D-34, D-36, D-45, D-50, D-51, D-52, D-54, D-55, D-56, D-58…D-69, D-70, D-71, D-72, D-73, D-75, D-76, D-77; D-38, D-39, D-40 dal 2026-11-24); quelle ancora aperte sono nella
 sezione D del registro.
 
 ## 4. Protezione di dataset, risultati e configurazioni storiche

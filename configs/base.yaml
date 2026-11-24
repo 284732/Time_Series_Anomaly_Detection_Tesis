@@ -1,7 +1,10 @@
-# Livello base della nuova pipeline (F2). Valori STORICI (main.py, configs/config_tests/repro_*.yaml):
-# diventano canonici solo in F8. I valori legati a decisioni aperte sono marcati "provvisorio".
+# Livello base della nuova pipeline. Da F8 (passo 1, 2026-11-24) valori CANONICI del protocollo: split3 60/20/20
+# [D-05], scaler minmax su fit con pavimento [D-40, D-65], train_step [D-38], epoche e patience [D-39].
+# I valori storici (main.py, configs/config_tests/repro_*.yaml) restano in configs/experiments/parity_repro.yaml,
+# che li dichiara tutti (D-77), e nella copia tests/fixtures/base_legacy2.yaml usata dai test di equivalenza.
+# I valori senza voce nel registro sono marcati "storico": fissi, non tarati salvo quelli della griglia di D-41.
 # Ogni esperimento aggiunge: experiment (name, kind, seeds), paths.store_root, data.machines, run_models.
-# Il piano di analisi (scoring, normalizer, soglie, metriche) non sta qui: arriva in F6.
+# Il piano di analisi (scoring, normalizer, soglie, metriche) non sta qui: configs/analysis/.
 
 device: cpu
 
@@ -9,24 +12,24 @@ data:
   dataset: smd
   data_dir: dataset
 
-split:
-  mode: legacy2            # split storico in 2 parti; split3 (fit/es/cal, D-05) da F8
-  val_ratio: 0.2
+split:                     # blocco atomico: un livello che lo dichiara lo sostituisce per intero (D-77 A1)
+  mode: split3             # fit / es / cal, cronologico [D-05]; es solo per l'early stopping [D-04]
+  fractions: [0.6, 0.2, 0.2]
 
-preprocessing:             # provvisorio: valore storico, D-40 APERTA
+preprocessing:             # [D-40]: fittato solo su fit [D-65]
   scaler_type: minmax
-  min_range: 0.0
+  min_range: 0.02          # pavimento tau sul denominatore (amplificazione massima 1/tau = 50)
   clip: null
 
 windows:
-  window_size: 100
-  step: 1
-  train_step: 5            # provvisorio: valore storico, D-38 APERTA
+  window_size: 100         # storico (nessuna voce nel registro)
+  step: 1                  # scoring a ogni istante; richiesto dal contesto all'inizio del test [D-60]
+  train_step: 5            # [D-38], identico per tutti i modelli a finestre
 
-training:                  # solo modelli addestrati (Conv-AE, LSTM-AE)
-  max_epochs: 40           # provvisorio: valore storico, D-39 APERTA
-  patience: 5              # provvisorio: valore storico, D-39 APERTA
-  min_delta: 1.0e-6        # default storico del trainer
-  learning_rate: 1.0e-3    # default storico del trainer
-  weight_decay: 1.0e-5     # default storico del trainer
-  batch_size: 64
+training:                  # modelli addestrati: Conv-AE, LSTM-AE, lstm_forecaster [D-39, D-74]
+  max_epochs: 100          # [D-39]
+  patience: 10             # [D-39]
+  min_delta: 1.0e-6        # storico (default del trainer)
+  learning_rate: 1.0e-3    # storico (default del trainer)
+  weight_decay: 1.0e-5     # storico (default del trainer)
+  batch_size: 64           # storico

@@ -1,7 +1,11 @@
 """
 Run di riferimento D-50: la config effettiva di ``main.py`` (con i default impliciti applicati) coincide con la config
-esplicita ``legacy2`` del nuovo schema (``base.yaml`` + ``models/*.yaml`` + livello esperimento). Legge solo configs/
-e il sorgente del codice; nessuna lettura di dataset/ o results/.
+esplicita ``legacy2`` del nuovo schema (``base.yaml`` + ``models/*.yaml`` + livello esperimento). Legge solo configs/,
+tests/fixtures/ e il sorgente del codice; nessuna lettura di dataset/ o results/.
+
+Da F8 passo 1 ``configs/base.yaml`` ha i valori canonici (D-05, D-38, D-39, D-40): il livello base di questo test è la
+copia storica ``tests/fixtures/base_legacy2.yaml`` (il ``base.yaml`` del commit ``d4d9d19``), con le stesse asserzioni
+di prima; il controllo resta «ogni valore del nuovo schema = config effettiva di ``main.py``».
 
 Default impliciti coinvolti (chiavi assenti in ``configs/config_tests/repro_*.yaml``):
   * ``main.prepare_machine_data``: ``train_fraction`` = 1.0, ``min_range`` = 0.0, ``clip_enabled`` = False
@@ -26,6 +30,7 @@ from src.models.traditional.pca_detector import PCADetector
 
 ROOT = cfgmod._ROOT
 REPRO = [ROOT / "configs" / "config_tests" / "repro_last.yaml", ROOT / "configs" / "config_tests" / "repro_mean.yaml"]
+HISTORIC_BASE = ROOT / "tests" / "fixtures" / "base_legacy2.yaml"   # base.yaml storico (prima di F8 passo 1)
 
 # Default impliciti con l'ancora nel sorgente da cui provengono (se il codice cambia, il test lo segnala).
 DATASET_DEFAULTS = {"train_fraction": 1.0, "min_range": 0.0, "clip_enabled": False}
@@ -94,7 +99,7 @@ def _new_effective(repro: dict, tmp_path):
            "run_models": repro["run_models"]}
     p = tmp_path / "exp.yaml"
     p.write_text(yaml.safe_dump(exp), encoding="utf-8")
-    cfg = cfgmod.load_experiment(p)
+    cfg = cfgmod.load_experiment(p, base_path=HISTORIC_BASE)
     seed = cfg.seeds[0]
     models = {}
     for m in cfg.run_models:

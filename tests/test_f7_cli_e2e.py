@@ -9,8 +9,9 @@ secondo ``report`` sulla stessa uscita, rifiutato. Codici di uscita 0, 0, 0, 2.
 Fatto verificato (passo 12): un esperimento ``split3`` scritto su file non era caricabile finché ``base.yaml``
 dichiarava ``split.val_ratio`` (``legacy2``): l'unione profonda dei livelli non toglieva chiavi e lo schema di
 ``split3`` la rifiutava. Per questo la prova usa ``legacy2`` (scenario ``primary``; ``test_context`` richiede
-``split3``, D-60). Da F8 passo 2 (D-77) ``split`` si sostituisce per intero e il caricamento funziona (test in fondo
-al file); la prova completa ``split3`` da file è il passo 6 di F8.
+``split3``, D-60). Da F8 passo 2 (D-77) ``split`` si sostituisce per intero e il caricamento funziona; la prova
+completa ``split3`` da file è il passo 6 di F8. Da F8 passo 1 della fase vera e propria ``base.yaml`` è ``split3``
+(canonico): questa prova ``legacy2`` si carica sopra una base ``split3`` (test in fondo al file, rovesciato).
 """
 
 import copy
@@ -112,21 +113,24 @@ def test_stats_status_report_from_the_command_line(e2e):
     assert json.loads((out / "report.json").read_text(encoding="utf-8")) == rj        # uscita intatta
 
 
-def test_a_split3_experiment_file_is_loadable_over_the_legacy2_base_yaml(tmp_path):
-    """Capovolto in F8 passo 2 (D-77, ``split`` atomico): prima un esperimento ``split3`` scritto su file era rifiutato
-    perché l'unione con ``base.yaml`` (``legacy2``) portava ``split.val_ratio``. Ora si carica e risolve alla **stessa**
-    config della mappa (stesso ``config_sha256`` e stessi ``fit_key``), quindi niente di ``base.yaml`` sopravvive nel
-    blocco ``split``; una chiave del modo non attivo resta un errore (``tests/test_f8_config_loading.py``)."""
+def test_a_legacy2_experiment_file_is_loadable_over_the_split3_base_yaml(tmp_path):
+    """Rovesciato in F8 passo 1 (fase vera e propria): ``base.yaml`` ora dichiara ``split3`` con ``fractions``
+    (canonico, D-05). Un esperimento ``legacy2`` scritto su file si carica e risolve alla **stessa** config della mappa
+    (stesso ``config_sha256`` e stessi ``fit_key``), quindi niente di ``base.yaml`` sopravvive nel blocco ``split``
+    (nessuna ``fractions``); una chiave del modo non attivo resta un errore (``tests/test_f8_config_loading.py``).
+    Prima (F8 passo 2, D-77) era la direzione opposta: ``split3`` sopra la base ``legacy2``, ora coperta sulla copia
+    storica (``tests/test_f8_canonical_base.py``)."""
     from src.pipeline.fit_plan import plan_tasks, validated_config
     from src.utils import config as cfgmod
     from tests.fixtures.f5 import synth_spec
-    raw = synth_spec(str(tmp_path / "d"), str(tmp_path / "s"), mode="split3", step=1, seeds=[42],
+    assert cfgmod._read_yaml(cfgmod.DEFAULT_BASE)["split"]["mode"] == "split3"   # premessa del test
+    raw = synth_spec(str(tmp_path / "d"), str(tmp_path / "s"), mode="legacy2", step=1, seeds=[42],
                      run_models=("pca",))
     p = tmp_path / "e.yaml"
     p.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
     as_map = validated_config(copy.deepcopy(raw))                        # come mappa
     from_file = validated_config(str(p))                                 # come file unito a base.yaml
-    assert from_file.split.mode == "split3" and from_file.split.val_ratio is None
+    assert from_file.split.mode == "legacy2" and from_file.split.val_ratio == 0.2 and from_file.split.fractions is None
     assert cfgmod.config_sha256(from_file) == cfgmod.config_sha256(as_map)
     dv = {m: "dv-x" for m in as_map.data.machines}
     assert [t.fit_key for t in plan_tasks(from_file, list(dv), dv)] == [t.fit_key for t in plan_tasks(as_map, list(dv), dv)]

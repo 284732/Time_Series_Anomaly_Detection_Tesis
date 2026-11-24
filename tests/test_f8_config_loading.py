@@ -123,14 +123,18 @@ def test_parity_repro_is_independent_of_base_and_model_layers(tmp_path):
 
 
 # ---------------------------------------------------------------- split atomico (A1)
-def test_split3_experiment_loads_from_file_over_the_legacy2_base(tmp_path):
+def test_split3_experiment_loads_from_file_over_the_real_base(tmp_path):
+    """Da F8 passo 1 il base.yaml reale è split3 (prima legacy2): stesse asserzioni; la direzione «split3 sopra una
+    base legacy2» resta coperta sulla copia storica tests/fixtures/base_legacy2.yaml (tests/test_f8_canonical_base.py)."""
     cfg = cfgmod.load_experiment(_minimal_experiment(tmp_path, split=dict(SPLIT3)))
     assert cfg.split.mode == "split3" and cfg.split.fractions == (0.6, 0.2, 0.2) and cfg.split.val_ratio is None
 
 
 def test_legacy2_experiment_loads_from_file(tmp_path):
+    # F8 passo 1 (utente, 2026-11-24): il blocco ereditato dal base.yaml reale è ora quello canonico (D-05)
     inherited = cfgmod.load_experiment(_minimal_experiment(tmp_path))
-    assert inherited.split.mode == "legacy2" and inherited.split.val_ratio == 0.2
+    assert inherited.split.mode == "split3" and inherited.split.fractions == (0.6, 0.2, 0.2) \
+        and inherited.split.val_ratio is None
     explicit = cfgmod.load_experiment(_minimal_experiment(tmp_path, split={"mode": "legacy2", "val_ratio": 0.3}))
     assert explicit.split.mode == "legacy2" and explicit.split.val_ratio == 0.3 and explicit.split.fractions is None
 

@@ -107,7 +107,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     p.add_argument("--dev-split", default=str(ROOT / "configs" / "dev_machines.yaml"))
     p.add_argument("--out", required=True)
     p.add_argument("--fractions", type=float, nargs=3, default=[0.6, 0.2, 0.2])   # D-05
-    p.add_argument("--val-ratio", type=float, default=0.2)                       # configs/base.yaml, legacy2
+    p.add_argument("--val-ratio", type=float, default=0.2)                       # train storico 80% (legacy2, parity_repro)
     p.add_argument("--window-size", type=int, default=100)                       # configs/base.yaml
     p.add_argument("--tau", type=float, default=1e-2)                            # soglia «quasi nullo»
     p.add_argument("--maxabs-threshold", type=float, default=2.0)                # nota su D-40
