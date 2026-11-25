@@ -1025,9 +1025,10 @@ D-53 approvata (2026-11-10): `.pyc` tolti dal tracciamento, `dataset/` resta tra
       `lstm_autoencoder_untrained`, `lstm_forecaster`, `rolling_zscore`, `input_norm`; tutti i valori espliciti nei
       file (come `parity_repro`, D-77), iperparametri storici di M1; `lstm_forecaster.hidden_dim` = 64, provvisorio
       (D-41);
-    - il `fit_key` non contiene il nome dell'esperimento: in V3 i modelli non addestrati si riusano da V2 (Δ = 0
-      atteso per costruzione, controllo), e V0 riusa i fit di M1 su machine-1-1 e machine-3-8 con seed 42 (da
-      verificare con `status`).
+    - il `fit_key` non contiene il nome dell'esperimento: V2 riusa da V3 i 60 fit senza training (Δ = 0 atteso per
+      costruzione, controllo), e V0 riusa i fit di M1 su machine-1-1 e machine-3-8 con seed 42 (da verificare con
+      `status`). *(rev. 2026-11-25: prima «in V3 i modelli non addestrati si riusano da V2», ordine invertito; V3 gira
+      prima di V2.)*
   - **Report: quattro tipi di differenza:**
     - fattori di protocollo della letteratura (PA, oracolo, proiezione offline, metrica, contesto): contrasti dentro
       ogni variante, confrontati tra V0 e V1;
@@ -1046,7 +1047,8 @@ D-53 approvata (2026-11-10): `.pyc` tolti dal tracciamento, `dataset/` resta tra
     (esperimento `legacy2` sopra una base `split3`) con la stessa forza.
   - **`CLAUDE.md`:** al passo 1 una riga di fatto in §3.3 (protocollo canonico in `configs/base.yaml`);
     aggiornamento completo dopo il report di F8 (passo 6).
-  - **Da fare al passo 6 (revisione del passo 2, utente, 2026-11-24):** una riga in D-40 sul pavimento in float32:
+  - **Da fare al passo 6 (revisione del passo 2, utente, 2026-11-24; fatto il 2026-11-25):** una riga in D-40 sul
+    pavimento in float32:
     il range su fit è float32, quindi il denominatore effettivo è float32(τ) = 0,0199999996 e la scala vale
     50,0000011; limite esatto |z| ≤ 1/float32(τ) (fatto rilevato da `tests/test_f8_leakage_e2e.py`).
   - **Passi** (regola abituale: dopo ogni passo snapshot F1, golden, suite completa, riepilogo completo, poi stop per
@@ -1064,6 +1066,84 @@ D-53 approvata (2026-11-10): `.pyc` tolti dal tracciamento, `dataset/` resta tra
     - **4 — `scripts/protocol_switch_report.py`** con test sintetici;
     - **5 — run** di `fit` e `analyze` delle 4 varianti (li lancia l'utente), poi il report;
     - **6 — report di F8** da approvare; poi `CLAUDE.md` completo e «Ordine consigliato e parallelismi».
+- **Stato: completata (2026-11-25).** Report approvato dall'utente il 2026-11-25.
+  - **Commit su `main`:**
+    - passo 0 `d4d9d19` (D-38, D-39, D-40 approvate; nota di F8);
+    - passo 1 `92fa23c` (`configs/base.yaml` canonico);
+    - passo 2 `6dba185` (test di leakage end-to-end);
+    - passo 2-bis `ed909aa` (invarianza del collegamento in `analyze._tables`);
+    - passo 3 `66cb836` (config V0–V3 e piani di analisi);
+    - passo 4 `91ceeb8` (`scripts/protocol_switch_report.py`);
+    - passo 6: `573de47` (report e `scripts/f8_extra/`); registro, piano e `CLAUDE.md` nel commit «F8 chiusa» che
+      contiene questa nota (un commit non può citare il proprio hash).
+  - **Run** (passo 5, lanciati dall'utente sul commit `91ceeb8`, albero pulito):
+
+    | variante | run di fit | fit nuovi / saltati | analisi |
+    |---|---|---|---|
+    | V0 | `20261124T170125-7c9a833d` | 106 / 8 (M1) | `07ff59c9b83f` |
+    | V3 | `20261124T180508-914894ed` | 114 / 0 | `c53662adf11b` |
+    | V2 | `20261124T190607-b3ad329a` | 54 / 60 (da V3) | `eadfaab3dca3` |
+    | V1 | `20261124T212456-534d69d0` | 105 / 9 (prova) | `d538a64944dd`; con contesto `523248b05cea` |
+
+    Prima di V0 l'utente ha lanciato una prova su machine-1-1 con seed 42 (`reports_local/f8_trial/v1_trial.yaml`,
+    run `20261124T164410-d3a18f91`); i suoi 9 fit sono riusati da V1. Fit 18:01–00:35 ora locale; nessun fit fallito,
+    nessun `WARNING`; `status --verify` con codice 0 su tutte le varianti.
+  - **Report:** `docs/f8_protocol_switch.md`. Uscite dello script in `reports_local/f8_protocol_switch/`, esclusa da
+    git. Calcoli aggiuntivi in sola lettura, non coperti da test, in `scripts/f8_extra/` (6 script).
+  - **Verificato in F8:**
+    - **Test sintetici:**
+      - `configs/base.yaml` canonico (D-05, D-38, D-39, D-40, D-65);
+      - leakage end-to-end con la config canonica: scaler e PCA invariati perturbando es, cal o test;
+        normalizer, soglie statiche e storia di cal delle soglie mobili invariati perturbando il test;
+      - collegamento in `analyze._tables`;
+      - scala 1/τ dei sensori a range nullo;
+      - `legacy2` riproducibile (snapshot F1);
+      - relazioni tra i `fit_key` delle varianti;
+      - script del report, con prove di difetto.
+    - **Dati reali (6 macchine dev, 3 seed):**
+      - fit condivisi V3 → V2 identici bit a bit (21.888 righe);
+      - stessi punti di valutazione ed eventi in tutte le varianti;
+      - riuso degli 8 fit di M1 in V0, con le epoche di M1;
+      - C15: 0 fit con non finiti in cal;
+      - fit al tetto contati con il criterio di D-39;
+      - coerenza interna su machine-1-7 (V2 → V1 nullo) e sui fit con lo stesso `best_epoch` (V3 → V2 identici);
+      - motivazione di D-40 sulla PCA puntuale coerente con i dati.
+  - **Non verificato in F8:**
+    - VUS-PR (D-34, prima di F10): metrica secondaria solo ROC-AUC;
+    - D-72 C1: non osservabile, perché il piano non ha soglie mobili (D-42 APERTA);
+    - interazioni tra i passaggi della catena: non misurate, l'esito dipende dall'ordine fissato;
+    - separazione di P1 dalla riduzione dei dati di fit negli AE addestrati: non separabile per costruzione;
+    - caso `n_nonfinite_cal` > 0: assente anche sulle 6 macchine dev;
+    - perché l'AP della PCA puntuale resta identica su 2-8 e 3-8 anche se cambiano i residui: ipotesi non verificata,
+      servirebbero le label;
+    - macchine di valutazione: nessuna, per regola (D-08); nessun IC né conclusione su RQ2.
+  - **Scostamenti dal piano:**
+    - quelli approvati nella nota del 2026-11-24: 4 file di config, lo script del report, due piani di analisi;
+    - passo 2-bis, aggiunto dopo la revisione del passo 2;
+    - `tests/test_f8_config_loading.py`: adattato solo il caso ereditato da `base.yaml` (al passo 1, su scelta
+      dell'utente), non «invariato» come scritto al passo 1;
+    - prova su una macchina prima dei run;
+    - `scripts/f8_extra/`.
+  - **Decisioni APERTE toccate e rimaste aperte:**
+    - con note in F8:
+      - D-37 (2026-11-24 e 2026-11-25: asimmetria del pavimento e residui della PCA puntuale fino a circa 2,07e8);
+      - D-41 (2026-11-24: `n_components` ≤ N − 1 e valori storici fissi; 2026-11-25: `lstm_forecaster` al tetto con
+        100 / 10);
+      - D-57 (2026-11-24: rango ≤ N − 1);
+    - citate senza nota:
+      - D-42 (livelli del fattore scaler e soglie mobili, quindi C1);
+      - D-74 per budget e griglie (`lstm_forecaster.hidden_dim` = 64 provvisorio);
+      - D-30 (nessuna conclusione su RQ2).
+  - **Passati a F9:**
+    - **D-41:** i 4 fit al tetto con 100 / 10 in V1 sono tutti di `lstm_forecaster` (2-6 e 3-8, seed 42 e 43). È solo
+      un fatto, D-39 invariata: da considerare nella griglia del modello di previsione.
+    - **`n_components` intero ≤ N − 1** nella griglia della PCA a finestre (D-41, D-57).
+    - **`contrasts.csv` (312 MB, quasi tutto NaN),** solo se `scripts/protocol_switch_report.py` verrà riusato. La causa
+      è `pivot_table(dropna=False)` sul prodotto completo delle chiavi, che crea righe per scoring assenti dal piano. Non
+      cambia nessun valore.
+    - **Test lenti:** valutare se separarli. La suite completa dura circa 12–16 minuti: 11 min 53 s misurati il
+      2026-11-25, circa 16 riportati dall'utente.
+    - **D-46**, dipendenza di F9.
 
 ### F9 — Tuning e sensibilità (esperimenti esplorativi)
 - **Obiettivo:** scegliere le configurazioni globali per famiglia, con budget pari, sulle 6 macchine dev.
@@ -1146,7 +1226,8 @@ F0 → F1 → F2 ─┬→ F3 → F4 → F5 → F6 ─┐
 Vincoli aggiuntivi: F3 richiede D-51 (D-31 è sostituita da D-32); F7 richiede D-36 e D-25 (entrambe approvate il 2026-11-16).
 
 - **Si può interrompere in qualunque punto:** fino a M1 nessun risultato cambia e la pipeline storica resta intatta. Ogni fase è un branch e un commit separato, su tua richiesta.
-- **`CLAUDE.md` va aggiornato tre volte:** in F0 (riconciliazione, D-02), dopo M1 (la nuova pipeline diventa quella di riferimento) e dopo F8 (il protocollo canonico cambia). Ogni nuova decisione si registra prima in `docs/decisioni.md`.
+- **`CLAUDE.md` va aggiornato tre volte:** in F0 (riconciliazione, D-02), dopo M1 (la nuova pipeline diventa quella di riferimento) e dopo F8 (il protocollo canonico cambia). Ogni nuova decisione si registra prima in `docs/decisioni.md`. *(2026-11-25: fatti tutti e tre; il terzo alla chiusura di F8.)*
+- **Stato (2026-11-25):** F0–F7, M1 e F8 chiuse; la prossima fase è F9.
 - **Dimensioni relative:** F1, F4 e F6 sono le fasi più delicate; F2 e F7 sono le più lunghe da scrivere ma le meno rischiose; F3 e F5 stanno nel mezzo.
 
 ## Cosa serve per partire

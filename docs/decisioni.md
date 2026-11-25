@@ -922,6 +922,9 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
   - τ è espresso nelle unità del dataset distribuito, già normalizzato min-max su train+test (D-26).
 - **Sensori a range nullo:** si tiene la transizione continua: con τ > 0 il loro denominatore è τ, non 1
   (`src/preprocessing/scaler.py:69-70`, verificato il 2026-11-24). Per ogni range in [0, τ) il denominatore vale τ.
+- **Pavimento in float32** (fatto rilevato al passo 2 di F8 da `tests/test_f8_leakage_e2e.py`, registrato alla chiusura
+  di F8, 2026-11-25): il range su fit è float32, quindi il denominatore effettivo è float32(τ) = 0,0199999996 e la scala
+  vale 50,0000011. Il limite esatto è |z| ≤ 1/float32(τ), non 1/τ = 50.
 - **Effetti da dichiarare (misura del 2026-11-24):**
   - poiché i dati sono in [0, 1] (D-26), |z| ≤ 1/max(range su fit, τ) ≤ 1/τ = 50 per costruzione;
   - |max| nel test: da 787, 12,6, 113, 497, 922, 89,2 (storico, τ = 0) a 50, 12,6, 50, 50, 50, 50;
@@ -2700,6 +2703,12 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
   dello scaler (τ = 0,02, D-40) su di lei agisce solo sui sensori a range nullo, mentre agisce su tutti i sensori quasi
   costanti per gli AE, il modello di previsione e la PCA a finestre. Con la PCA puntuale come riferimento di RQ2 il
   pavimento sarebbe asimmetrico tra DL e riferimento; con la PCA a finestre no. Da considerare nella decisione.
+- **Nota di rimando (2026-11-25, da F8, la voce resta APERTA), solo fatto:**
+  - **Grandezza:** nell'esperimento di F8 i residui per sensore della PCA puntuale arrivano a circa 2,07e8 (residuo
+    quadratico, machine-1-1, sensore 32, test, in V2 e in V1).
+  - **Causa:** l'amplificazione interna 1/std sui sensori quasi costanti su fit, che il pavimento τ dello scaler non
+    limita.
+  - **Fonte:** §5 di `docs/f8_protocol_switch.md` (script `scripts/f8_extra/f8_inline_checks.py`, controllo 7).
 
 ### D-41 · Budget di tuning — APERTA
 - **Da decidere:** K per famiglia (proposta 8), griglie, criterio di selezione (proposta: AP normalizzata media sulle 6
@@ -2712,6 +2721,13 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
 - **Nota (2026-11-24, la voce resta APERTA):** W = 100, `learning_rate`, `weight_decay`, `min_delta` e `batch_size`
   sono valori storici fissi senza voce nel registro (fuori da D-39); non sono tarati, salvo quelli che entreranno nella
   griglia di questa voce. Da dichiarare in tesi (nota del 2026-11-24 nel piano F8).
+- **Nota (2026-11-25, da F8, la voce resta APERTA), solo fatto:**
+  - **Fit al tetto in V1:** nell'esperimento di F8 con `max_epochs` / `patience` = 100 / 10 (variante V1) 4 fit su 54
+    si fermano al tetto secondo il criterio di D-39.
+  - **Quali:** sono tutti di `lstm_forecaster`, su machine-2-6 e machine-3-8 con seed 42 e 43 (best / stop: 94 / 100,
+    98 / 100, 96 / 100, 94 / 100). Conv-AE e LSTM-AE: 0 su 18 ciascuno.
+  - **D-39:** invariata (vincolo della voce).
+  - **Fonte:** §3.1 di `docs/f8_protocol_switch.md`.
 
 ### D-42 · Livelli dei fattori per RQ1a e RQ1b — APERTA · **Serve entro:** F10.
 - **Nota (2026-11-10, la voce resta APERTA):**

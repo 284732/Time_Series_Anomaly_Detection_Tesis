@@ -68,7 +68,7 @@ Regole di applicazione:
 - ogni nuova decisione approvata va registrata in `docs/decisioni.md` (data, motivazione, documenti toccati)
   prima di essere implementata.
 
-### 3.3 Pipeline di riferimento (dopo M1)
+### 3.3 Pipeline di riferimento (dopo M1 e F8)
 
 M1 è superata (2026-11-19, parità esatta, `docs/m1_parita.md`; note su D-14, D-17, D-50). La **nuova pipeline** è
 quella di riferimento: ogni nuovo esperimento passa da `src/cli.py`, e da qui la verifica di «nessun cambiamento
@@ -76,7 +76,7 @@ numerico» è il confronto tra due run dello `store/` (D-14).
 
 Stadi (`python -m src.cli <comando>`):
 1. `fit <esperimento.yaml>` (`src/pipeline/fit.py`, `fit_plan.py`): manifest e segmenti (`src/data/segments.py`;
-   `split3` canonico da F8, `legacy2` per la parità), scaler, finestre (`src/data/windows.py`), `set_seed`, fit, checkpoint e
+   `split3` canonico, `legacy2` solo per riprodurre lo storico), scaler, finestre (`src/data/windows.py`), `set_seed`, fit, checkpoint e
    residui per sensore (`last`, `mean`, D-33) in `store/fits/<fit_key>/`, con `meta.json` e provenance (D-70).
 2. `analyze <esperimento.yaml> <piano.yaml>` (`src/pipeline/analyze.py`, `analysis_grid.py`): nessun fit; tabelle
    lunghe `free`, `thr`, `fits` (`table_schema.py`) in `store/runs/<kind>/<esperimento>/analyses/<analysis_id>/`,
@@ -84,9 +84,16 @@ Stadi (`python -m src.cli <comando>`):
 3. `stats` (`src/stats/`) e `report` (`src/reporting/`), D-73.
 4. `status [--verify]` e `clean-tmp` per lo stato e l'integrità dello store.
 
-Da F8 passo 1 (2026-11-24) `configs/base.yaml` ha i valori canonici (`split3` 60/20/20, minmax su fit con
-`min_range` 0,02, `train_step` 5, epoche 100 / patience 10: D-05, D-38, D-39, D-40); i valori storici restano in
-`configs/experiments/parity_repro.yaml` (D-77). F8 è in corso fino all'approvazione del report legacy contro canonico.
+**Protocollo canonico in uso.** F8 è chiusa (2026-11-25, report approvato: `docs/f8_protocol_switch.md`).
+`configs/base.yaml` contiene il protocollo canonico, che ogni nuovo esperimento eredita (D-05, D-38, D-39, D-40, D-65):
+- `split3` 60/20/20;
+- minmax fittato su fit con pavimento `min_range` = τ = 0,02;
+- `train_step` 5;
+- epoche 100 / patience 10.
+
+I valori storici (`legacy2`, τ = 0, 40 / 5) restano solo nelle config esplicite di riproduzione (D-77):
+`configs/experiments/parity_repro.yaml` (M1) e `configs/experiments/protocol_switch_dev/v0_legacy.yaml` (variante V0 di
+F8). I calcoli aggiuntivi del report di F8 sono in `scripts/f8_extra/`, in sola lettura e non coperti da test.
 
 **Pipeline storica, congelata (D-13).** Resta nel repository fino a F12 come riferimento: non si modifica e non serve
 più come oracolo. Entry point `main.py` → `prepare_machine_data` + `run_machine`:
@@ -105,7 +112,9 @@ nuova.
 
 Problemi noti della pipeline storica (non da preservare), con lo stato nella nuova:
 - la validation è usata 3 volte (early stopping, normalizer z, soglia): asimmetria AE vs PCA. `legacy2` la riproduce
-  di proposito per la parità; si corregge in F8 con `split3` (correzione dichiarata P1);
+  di proposito per la parità. È corretta nel protocollo canonico con `split3` (correzione dichiarata P1); in F8 il suo
+  effetto sugli AE addestrati non si separa dalla riduzione dei dati di fit 80% → 60% (`docs/f8_protocol_switch.md`
+  §4.1, §6);
 - `src/preprocessing/split.py` (split fit/es/calib) esiste ed è testato ma **non è collegato** a `main.py`; nella
   nuova pipeline `src/data/segments.py` lo usa per `split3` (`split_bounds`), mentre per `legacy2` usa il taglio
   storico `protocol.chronological_split` con es = cal (doppio uso dichiarato, `es_is_cal`, P1);
@@ -119,12 +128,19 @@ Problemi noti della pipeline storica (non da preservare), con lo stato nella nuo
 - `configs/config.yaml` (default di `main.py`) non esiste: usare sempre una config esplicita.
 
 ### 3.4 Architettura target
-Descritta in `proposta_architettura_target.md` e realizzata secondo `piano_operativo.md`. Fino a F7 e M1 sono
-implementati e validati in `legacy2` (§3.3): stadio di fit (checkpoint e residui per sensore, `fit_key` = hash della
-config rilevante + `FIT_CODE_VERSION`), stadio di analisi (nessun fit, tabella lunga), stadio di statistica e report.
-Restano da fare il protocollo canonico (F8) e le fasi successive. Le scelte già approvate sono in
-`docs/decisioni.md` (D-03…D-26, D-32, D-33, D-34, D-36, D-45, D-50, D-51, D-52, D-54, D-55, D-56, D-58…D-69, D-70, D-71, D-72, D-73, D-75, D-76, D-77; D-38, D-39, D-40 dal 2026-11-24); quelle ancora aperte sono nella
-sezione D del registro.
+Descritta in `proposta_architettura_target.md` e realizzata secondo `piano_operativo.md`. F0–F7, M1 e F8 sono chiuse.
+Sono realizzati, validati in `legacy2` con M1 e misurati con il protocollo canonico in F8:
+- lo stadio di fit: checkpoint e residui per sensore, `fit_key` = hash della config rilevante + `FIT_CODE_VERSION`;
+- lo stadio di analisi: nessun fit, tabella lunga;
+- lo stadio di statistica e report.
+
+Restano F9 (tuning), F10 (congelamento), F11 (run ufficiali) e F12 (pulizia).
+
+**Decisioni nel registro `docs/decisioni.md` (stato al 2026-11-25):**
+- **approvate:** D-01…D-26, D-32, D-33, D-34, D-36, D-38, D-39, D-40, D-45, D-50…D-56, D-58…D-73, D-75, D-76, D-77;
+- **aperte** (sezione D del registro): D-30, D-37, D-41, D-42, D-43, D-44, D-46, D-57, D-74, quest'ultima per budget e
+  griglie;
+- D-31 è sostituita da D-32.
 
 ## 4. Protezione di dataset, risultati e configurazioni storiche
 
@@ -153,6 +169,21 @@ Split cronologico del train originale in **fit 60% / es 20% / cal 20%** (frazion
 - test → solo misurare.
 
 La PCA si fitta solo su fit (D-06).
+
+### Protocollo canonico (in vigore dalla chiusura di F8, 2026-11-25)
+- **Split:** `split3` 60/20/20 (D-05).
+- **Scaler (D-40, D-65):** minmax fittato solo su fit, `clip: null`, pavimento sul denominatore `min_range` = τ = 0,02.
+  - Per ogni range su fit in [0, τ) il denominatore è τ, compresi i sensori a range esattamente nullo (transizione
+    continua).
+  - Il denominatore effettivo è float32(τ), quindi |z| ≤ 1/float32(τ) ≈ 50.
+  - τ vale per `minmax` e non si trasferisce in automatico a `standard` o `robust` (D-42).
+- **Training (D-38, D-39):** `train_step` 5; `max_epochs` 100, `patience` 10, stesso blocco per Conv-AE, LSTM-AE e
+  modello di previsione.
+- **Valori storici senza voce nel registro:** W = 100, `learning_rate`, `weight_decay`, `min_delta` e `batch_size`
+  restano fissi; non sono tarati, salvo quelli che entreranno nella griglia di D-41.
+- **Vincolo di D-39:** il valore di `max_epochs` / `patience` non si cambia dopo aver visto i risultati di F8. D-38 e
+  D-40 non hanno un vincolo scritto nella voce: rivedere D-38 o D-40 sarebbe una nuova decisione da registrare
+  (§3.2), dichiarando che i risultati di F8 erano già noti.
 
 ### Anti-leakage
 - Scaler, normalizer degli errori, PCA, statistiche per sensore e soglie si fittano **solo** sul segmento
@@ -287,5 +318,5 @@ oracolo.
 
 - F0: riconciliazione con `docs/decisioni.md` (questa versione);
 - dopo M1: la nuova pipeline diventa quella di riferimento (§3.3–3.4, §7 comandi) — fatto il 2026-11-19;
-- dopo F8: protocollo canonico in vigore (§5);
+- dopo F8: protocollo canonico in vigore (§3.3, §3.4, §5) — fatto il 2026-11-25;
 - F12: rimozione dei riferimenti alla pipeline storica.
