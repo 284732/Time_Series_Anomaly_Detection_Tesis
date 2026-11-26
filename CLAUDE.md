@@ -18,7 +18,9 @@ su dati già osservati con altri protocolli» (D-45).
 - RQ1b design: quanto sono sensibili i modelli alle scelte di *design* (scaler, scoring, aggregazione,
   politica di soglia).
 - RQ2 confronto: Δ(DL − PCA) superiore / equivalente / inferiore / inconcludente rispetto a un margine δ
-  fissato prima dei run ufficiali. **Valore e criterio di δ: decisione aperta (D-30).**
+  fissato prima dei run ufficiali: **δ = 0,05 in AP normalizzata (D-30, approvata il 2026-11-26)**, da congelare nel
+  piano statistico ufficiale in F10. Riferimento: PCA a finestre (D-37); famiglia confermativa {Conv-AE, LSTM-AE,
+  previsione} contro `pca`, m = 3, α = 0,05 (nota del 2026-11-26 su D-36).
 - RQ3 condizioni: quali proprietà delle macchine predicono segno e grandezza di Δ.
 - RQ4 operativa: peso della politica di soglia e della deriva rispetto alla scelta del modello.
 
@@ -134,12 +136,14 @@ Sono realizzati, validati in `legacy2` con M1 e misurati con il protocollo canon
 - lo stadio di analisi: nessun fit, tabella lunga;
 - lo stadio di statistica e report.
 
-Restano F9 (tuning), F10 (congelamento), F11 (run ufficiali) e F12 (pulizia).
+Restano F9 (tuning, in corso: piano approvato il 2026-11-26, sezione F9 di `piano_operativo.md`), F10 (congelamento),
+F11 (run ufficiali) e F12 (pulizia). Le griglie di F9 stanno in `configs/tuning/grid.yaml`, fuori dal loader: mai in
+`configs/models/`, che si unisce a ogni esperimento (D-41).
 
-**Decisioni nel registro `docs/decisioni.md` (stato al 2026-11-25):**
-- **approvate:** D-01…D-26, D-32, D-33, D-34, D-36, D-38, D-39, D-40, D-45, D-50…D-56, D-58…D-73, D-75, D-76, D-77;
-- **aperte** (sezione D del registro): D-30, D-37, D-41, D-42, D-43, D-44, D-46, D-57, D-74, quest'ultima per budget e
-  griglie;
+**Decisioni nel registro `docs/decisioni.md` (stato al 2026-11-26):**
+- **approvate:** D-01…D-26, D-30, D-32, D-33, D-34, D-36…D-41, D-45, D-46, D-50…D-77;
+- **aperte** (sezione D del registro): D-42, D-43, D-44 (servono entro F10; si decidono dopo il report di selezione di
+  F9, da dichiarare);
 - D-31 è sostituita da D-32.
 
 ## 4. Protezione di dataset, risultati e configurazioni storiche
@@ -180,7 +184,7 @@ La PCA si fitta solo su fit (D-06).
 - **Training (D-38, D-39):** `train_step` 5; `max_epochs` 100, `patience` 10, stesso blocco per Conv-AE, LSTM-AE e
   modello di previsione.
 - **Valori storici senza voce nel registro:** W = 100, `learning_rate`, `weight_decay`, `min_delta` e `batch_size`
-  restano fissi; non sono tarati, salvo quelli che entreranno nella griglia di D-41.
+  restano fissi e non tarati: nessuna chiave di training o di finestra entra nelle griglie di D-41 (da dichiarare).
 - **Vincolo di D-39:** il valore di `max_epochs` / `patience` non si cambia dopo aver visto i risultati di F8. D-38 e
   D-40 non hanno un vincolo scritto nella voce: rivedere D-38 o D-40 sarebbe una nuova decisione da registrare
   (§3.2), dichiarando che i risultati di F8 erano già noti.

@@ -2,7 +2,7 @@
 # [D-05], scaler minmax su fit con pavimento [D-40, D-65], train_step [D-38], epoche e patience [D-39].
 # I valori storici (main.py, configs/config_tests/repro_*.yaml) restano in configs/experiments/parity_repro.yaml,
 # che li dichiara tutti (D-77), e nella copia tests/fixtures/base_legacy2.yaml usata dai test di equivalenza.
-# I valori senza voce nel registro sono marcati "storico": fissi, non tarati salvo quelli della griglia di D-41.
+# I valori senza voce nel registro sono marcati "storico": fissi e non tarati: nessuno entra nelle griglie di D-41.
 # Ogni esperimento aggiunge: experiment (name, kind, seeds), paths.store_root, data.machines, run_models.
 # Il piano di analisi (scoring, normalizer, soglie, metriche) non sta qui: configs/analysis/.
 

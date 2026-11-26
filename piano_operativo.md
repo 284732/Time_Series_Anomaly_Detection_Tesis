@@ -1147,8 +1147,16 @@ D-53 approvata (2026-11-10): `.pyc` tolti dal tracciamento, `dataset/` resta tra
 
 ### F9 — Tuning e sensibilità (esperimenti esplorativi)
 - **Obiettivo:** scegliere le configurazioni globali per famiglia, con budget pari, sulle 6 macchine dev.
-- **File (nuovi):** griglie in `configs/models/*.yaml`, `configs/experiments/tuning.yaml`, `configs/analysis/tuning.yaml`; ulteriori esperimenti esplorativi (preprocessing, epoche fisse, PCA su fit+es [esplorativo, D-06]) sempre sulle sole macchine dev.
-- **Dipendenze:** F8; decisioni D-41 e D-46.
+- **File (nuovi):** griglia in `configs/tuning/grid.yaml`, fuori dal loader delle config; esperimenti generati in
+  `configs/experiments/tuning/` (uno per slot, più quelli del passo 5) e `configs/experiments/tuning_pilot/`; piano
+  `configs/analysis/tuning.yaml`; configurazioni selezionate in `configs/tuning/selected.yaml`; codice in
+  `src/tuning/` e `scripts/`; dettaglio nella nota del 2026-11-26 sotto. *(rev. 2026-11-26: prima «griglie in
+  `configs/models/*.yaml`, `configs/experiments/tuning.yaml`, `configs/analysis/tuning.yaml`; ulteriori esperimenti
+  esplorativi (preprocessing, epoche fisse, PCA su fit+es [esplorativo, D-06]) sempre sulle sole macchine dev». Le
+  griglie in `configs/models/` romperebbero il caricamento: quel livello si unisce a ogni esperimento e tutti i modelli
+  presenti si validano (`src/utils/config.py:158`, `src/utils/schema.py:386`). Epoche fisse e PCA su fit+es sono fuori
+  da F9 (D-41, D-06).)*
+- **Dipendenze:** F8; decisioni D-41, D-46, D-57, D-74 (approvate il 2026-11-26).
 - **Nota (2026-11-16, da F6 passo 6.7, durata dell'analisi):** misura su dati sintetici e stima per l'esperimento
   ufficiale circa 35 minuti a un thread con 5 seed (circa 22 con 3), contro i circa 15 stimati; il costo principale è
   `roll_robust_z`. Con il primo piano di tuning si misura la durata reale e si decide allora, registrando la scelta,
@@ -1158,9 +1166,69 @@ D-53 approvata (2026-11-10): `.pyc` tolti dal tracciamento, `dataset/` resta tra
     non si toglie);
   - parallelizzazione per macchina.
   Ogni ottimizzazione deve lasciare le tabelle identiche bit a bit (prova golden del passo 8 di F6).
-- **Test:** un test sulle config verifica che il budget sia pari per costruzione; lo stadio di fit rifiuta le macchine di valutazione negli esperimenti esplorativi, salvo un flag esplicito che viene registrato.
+- **Test:** un test sulle config verifica che il budget sia pari per costruzione; gli stadi di fit **e di analisi**
+  rifiutano le macchine di valutazione negli esperimenti esplorativi, salvo un flag esplicito che viene registrato.
+  *(rev. 2026-11-26: prima solo «lo stadio di fit»; scostamento approvato, nota su D-08.)*
 - **Completata quando:** configurazioni selezionate salvate, con motivazione in `docs/decisioni.md`.
-- **Rischi:** tentazione di guardare le macchine di valutazione, impedita dal controllo sopra. Stima del costo: circa 7 ore di CPU con `train_step=5`, da verificare.
+- **Rischi:** tentazione di guardare le macchine di valutazione, impedita dal controllo sopra. Stima del costo: circa
+  15 h a muro con K = 8 (circa 11 h con K = 6), dai costi per famiglia di V1 di F8; si sostituisce con la stima del
+  pilota (passo 3). *(rev. 2026-11-26: prima «circa 7 ore di CPU con `train_step=5`, da verificare».)*
+- **Nota (2026-11-26): piano di F9 approvato dall'utente** (decisioni D-30, D-37, D-41, D-46, D-57, D-74 approvate;
+  note su D-06, D-08, D-11, D-36, D-42, D-43, D-44, D-56, D-69).
+  - **Formato:** griglia in `configs/tuning/grid.yaml`, punti elencati nell'ordine degli slot (nessun prodotto
+    cartesiano, quindi `channels` non è ambiguo), più l'ordine di spareggio. Uno script genera K esperimenti espliciti
+    (stile D-77, nulla ereditato), da committare: lo slot k contiene il k-esimo punto di ogni famiglia. Lo slot 1 è la
+    configurazione storica e riusa i fit di V1 di F8 (stesso `fit_key`, da dimostrare con un test e con `status`).
+    Alternative scartate: griglie in `configs/models/` (rompono il loader); alias nello schema o più configurazioni per
+    modello in un esperimento (modifiche a schema, tabelle e statistica; rischio per `config_sha256` e `fit_key` di M1
+    e F8).
+  - **Passi** (regola abituale: snapshot F1, golden, suite completa, riepilogo completo, poi stop per la revisione;
+    nessun commit senza richiesta):
+    - **0 — registro e piano** (solo documenti): decisioni e note sopra; contraddizioni corrette (questa sezione, il
+      commento di `configs/experiments/parity_repro.yaml`, quello di `configs/base.yaml` sulle griglie); commento
+      «(da confermare)» sui seed 43 e 44 nelle 4 config `protocol_switch_dev/*.yaml`, con
+      `tests/test_f9_config_hashes.py` che dimostra `config_sha256` (quindi `fit_key`) invariati; misura
+      `pytest --durations=30` per i test lenti;
+    - **1 — rifiuto delle macchine di valutazione** in `fit` e in `analyze` con `kind: exploratory`, salvo il flag di
+      CLI `--allow-eval-machines`, registrato nella provenance del run e dei fit creati; la chiave è assente senza il
+      flag, così le uscite di oggi restano identiche (golden F6 e F7 invariati); test scritto per primo, con prove di
+      difetto;
+    - **2 — griglia, generatore, piano di analisi di tuning, test «budget pari per costruzione»:** stesso K per le 6
+      famiglie tarate, `input_norm` K = 1, AE non addestrati assenti; slot 1 = V1 (anche nel `fit_payload`); la regola
+      K = 6 dà esattamente gli slot 1–6 per tutte le famiglie; livelli di scoring per famiglia dal piano (14, oppure 7
+      per il modello di previsione e 1 per `rolling_zscore`); file generati uguali all'uscita del generatore; solo
+      macchine dev;
+    - **3 — pilota sui tempi** in uno **store separato** (`store_pilot/`, escluso da git; nessun riuso previsto; la
+      cancellazione la decide l'utente): slot 2–8 delle tre famiglie addestrate, seed 42, 6 macchine dev,
+      `max_epochs` / `patience` 3 / 3 (solo per misurare i tempi, non tocca D-39); stima e regola K = 8 / 6 con la
+      formula di D-41 (con la mediana di `residual_seconds`); nessuna metrica letta; nota nel registro;
+    - **4 — analisi di tuning e selezione:** piano senza soglie mobili (`scenarios: [primary]`, `ts_aggs: [last]`, 2
+      `window_time_agg` × 7 coppie); modulo e script di selezione tra i K esperimenti con test (criterio, spareggio,
+      fit falliti e NaN, righe assenti contro NaN, fit mancanti da riprendere, k effettivo della PCA, fit al tetto);
+      uscita `configs/tuning/selected.yaml` più il report in `reports_local/f9_selection/` e una nota nel registro;
+    - **5 — variante di D-46:** esperimento 60/20/20 con le configurazioni selezionate (0 fit nuovi per le famiglie
+      tarate e per `input_norm`; gli AE non addestrati con l'architettura selezionata sono nuovi se l'architettura non
+      è quella dello slot 1) ed esperimento 70/15/15 con le stesse configurazioni; `f9_split_compare.py` verifica prima
+      che punti di valutazione ed eventi del test coincidano tra i due split (errore altrimenti), poi il confronto
+      descrittivo;
+    - **6 — durata di `analyze` con soglie mobili** (`roll_quantile`, `roll_robust_z`) sui fit di V1 di F8, una tantum:
+      due piani (con e senza soglie mobili), livelli provvisori solo per la misura (non anticipano D-42), letti solo i
+      tempi; serve a dimensionare F10 e F11 e alla scelta della nota del 2026-11-16 sopra;
+    - **7 — precisione attesa (descrittiva, δ già fissato):** semilarghezza attesa degli IC (1 − α/m con α = 0,05 e
+      m = 3, bootstrap-t stratificato 6/7/9, D-36, D-76) in funzione della deviazione dei Δ (quella delle dev più alcuni
+      valori dichiarati) e confronto con δ = 0,05; nessuna probabilità simulata degli esiti di RQ2 con la media dei Δ
+      delle dev;
+    - **8 — costo e disco di F11** con le configurazioni selezionate e per ogni livello di scaler di RQ1b (D-42 aperta):
+      dalle lunghezze di train e test delle 22 macchine di valutazione (sola lettura delle lunghezze, nessuna label;
+      dichiarato), dai tempi per epoca e dalle epoche dei fit di F9.
+  - **Esecuzione:** fit sequenziali (il lock dello store è esclusivo per tutta la durata di `fit` e `analyze`:
+    `src/pipeline/fit.py:372`, `src/pipeline/analyze.py:397`); i run li lancia l'utente.
+  - **Dai «Passati a F9» di F8:** `contrasts.csv` invariato (F9 non riusa `scripts/protocol_switch_report.py`); test
+    lenti: `pytest.ini` invariato, la suite completa resta l'esito di ogni passo, `-m "not slow"` solo nelle iterazioni
+    dentro un passo, marcatura `slow` dei test lenti dopo la misura `--durations` del passo 0.
+  - **Dichiarazioni:** quelle di D-41 (AP selezionata ottimistica, training e finestre non tarati, `input_norm` con 14
+    scelte di scoring, modello di previsione senza `window_time_agg`, PCA su fit+es ed epoche fisse non eseguite) e
+    D-42, D-43, D-44 decise dopo il report di selezione di F9.
 - **Impatto sui risultati:** sceglie gli iperparametri finali. Questi risultati sono **esplorativi**, non della tesi.
 
 ### F10 — Congelamento del piano di analisi
@@ -1199,7 +1267,9 @@ D-53 approvata (2026-11-10): `.pyc` tolti dal tracciamento, `dataset/` resta tra
 - **Obiettivo:** risultati della tesi sulle 22 macchine di valutazione.
 - **File:** nessuno nuovo; si eseguono solo la config dell'esperimento e i due piani congelati in F10. *(rev.
   2026-11-16: prima «File (nuovi): `configs/experiments/official.yaml`», ora scritta e congelata in F10, nota su D-09.)*
-- **Esecuzione:** `fit` → `analyze` → `stats` → `report`. Stima: circa 6 ore di CPU per i fit.
+- **Esecuzione:** `fit` → `analyze` → `stats` → `report`. Stima: circa 14 h a muro e circa 7–8 GB per esperimento,
+  con le architetture storiche (dai costi di V1 di F8); si rifà al passo 8 di F9 con le configurazioni selezionate.
+  *(rev. 2026-11-26: prima «circa 6 ore di CPU per i fit».)*
 - **Completata quando:** IC, decisioni RQ2 e analisi RQ1, RQ3 e RQ4 sono generati dal piano congelato e da un commit noto; il registro è aggiornato.
 - **Rischi:** un fit fallito si gestisce secondo la regola di esclusione congelata, non decidendo dopo.
 - **Impatto sui risultati:** sono i risultati.
@@ -1227,7 +1297,7 @@ Vincoli aggiuntivi: F3 richiede D-51 (D-31 è sostituita da D-32); F7 richiede D
 
 - **Si può interrompere in qualunque punto:** fino a M1 nessun risultato cambia e la pipeline storica resta intatta. Ogni fase è un branch e un commit separato, su tua richiesta.
 - **`CLAUDE.md` va aggiornato tre volte:** in F0 (riconciliazione, D-02), dopo M1 (la nuova pipeline diventa quella di riferimento) e dopo F8 (il protocollo canonico cambia). Ogni nuova decisione si registra prima in `docs/decisioni.md`. *(2026-11-25: fatti tutti e tre; il terzo alla chiusura di F8.)*
-- **Stato (2026-11-25):** F0–F7, M1 e F8 chiuse; la prossima fase è F9.
+- **Stato (2026-11-26):** F0–F7, M1 e F8 chiuse; F9 in corso (piano approvato il 2026-11-26).
 - **Dimensioni relative:** F1, F4 e F6 sono le fasi più delicate; F2 e F7 sono le più lunghe da scrivere ma le meno rischiose; F3 e F5 stanno nel mezzo.
 
 ## Cosa serve per partire

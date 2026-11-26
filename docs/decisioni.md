@@ -86,6 +86,9 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
 - **Decisione:** nel protocollo canonico PCA e PCA puntuale si fittano solo su fit (stessi dati da cui gli AE apprendono
   i parametri). PCA su fit+es resta disponibile solo come esperimento esplorativo sulle macchine di sviluppo.
 - **Documenti:** proposta §4.1; piano F8, F9.
+- **Nota di rimando (2026-11-26, il testo sopra resta invariato):** l'esperimento esplorativo PCA su fit+es non si
+  esegue in F9 (decisione dell'utente del 2026-11-26, D-41); da dichiarare nella tesi. Il codice non ha l'opzione
+  (`src/pipeline/fit.py::fit_inputs` usa solo fit).
 
 ### D-07 · Metriche: primaria e secondarie — APPROVATA · 2026-11-09
 - **Decisione:** primaria AP normalizzata (AP − p)/(1 − p). Secondarie ROC-AUC e VUS-PR. F1 e metriche con soglia solo per RQ4.
@@ -97,6 +100,17 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
 - **Decisione:** tuning ed esperimenti esplorativi solo sulle 6 macchine di sviluppo (con label); run ufficiali sulle 22
   di valutazione. Leave-one-group-out scartato. Identità delle 6 macchine: D-51.
 - **Documenti:** proposta §4.5, §11; piano gruppo B punto 10.
+- **Nota (2026-11-26, F9, il testo sopra resta invariato; utente):**
+  - **fatto verificato (2026-11-25):** oggi il controllo non esiste nel codice. `fit` rifiuta solo `kind: official`
+    (`src/pipeline/fit.py:222-223`) e accetta `data.machines: eval` con `kind: exploratory`;
+  - **decisione:** con `kind: exploratory` `fit` **e `analyze`** rifiutano ogni macchina di valutazione (codice 2, prima
+    di qualunque scrittura), salvo il flag di CLI `--allow-eval-machines`, che si registra nella provenance del run e
+    dei fit creati (passo 1 di F9);
+  - **scostamento dal piano F9 (approvato):** il piano prevedeva il rifiuto solo nello stadio di fit. Si estende ad
+    `analyze` perché il `fit_key` non contiene il `kind`: dopo F11 un esperimento esplorativo sulle macchine di
+    valutazione potrebbe usare i fit ufficiali con il solo `analyze`;
+  - **perché un flag e non una chiave di config:** un campo nuovo in `ExperimentConfig` cambierebbe il `config_sha256`
+    di tutte le config esistenti, che si calcola dalla config risolta completa (`src/utils/config.py::config_sha256`).
 
 ### D-09 · 5 seed nella valutazione — APPROVATA · 2026-11-09
 - **Decisione:** 5 seed per gli AE nei run ufficiali; modelli deterministici una sola volta. Seed per il tuning: D-41.
@@ -125,6 +139,9 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
 - **Documenti:** proposta §4.4; piano gruppo A punto 4, F6.
 - **Nota di rimando (2026-11-12, F6, il testo sopra resta invariato):** la definizione operativa (centro, scala,
   pavimento) e la registrazione dei sensori con la scala sul pavimento sono in D-72 (C5).
+- **Nota di rimando (2026-11-26, il testo sopra resta invariato):** il normalizer robusto entra nel budget di tuning
+  come opzione di scoring: le coppie (mean, robust), (max, robust), (top5, robust) fanno parte della griglia di scoring
+  di F9 (D-41).
 
 ### D-12 · RQ1 divisa in RQ1a e RQ1b — APPROVATA · 2026-11-09
 - **Decisione:** RQ1a = quanto cambiano numeri e ranking cambiando *come si misura* (fattori di misura: PA, oracolo,
@@ -506,6 +523,14 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
   - **Esito (2026-11-17):** solo il metodo (2), bootstrap-t stratificato, rispetta le bande, nella suite e nella prova
     una tantum (R = B = 10.000). È adottato con D-76, che rivede il metodo (A). I dettagli marcati «[Claude]» non
     hanno influito: un solo metodo superava il punto a).
+- **Nota (2026-11-26, F9, il testo sopra resta invariato; utente): α e famiglia confermativa fissati prima del passo 7
+  di F9.**
+  - **α = 0,05.**
+  - **Famiglia confermativa:** {`conv_autoencoder` vs `pca`, `lstm_autoencoder` vs `pca`, `lstm_forecaster` vs `pca`},
+    **m = 3**, come in D-71; riferimento `pca` (D-37). IC di Bonferroni al 1 − α/m = 1 − 0,05/3 (metodo: D-76).
+  - **Motivo:** il passo 7 di F9 (semilarghezza attesa degli IC) usa α e m; fissarli dopo averla vista ne farebbe
+    dipendere la scelta.
+  - **Restano da congelare** in `configs/stats/official.yaml` in F10 (D-73 P5), con B.
 
 ### D-45 · Secondo dataset — APPROVATA · 2026-11-16
 - **Testo della voce APERTA (storico, invariato):**
@@ -660,6 +685,10 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
     non serve), seed nel `fit_key`, BatchNorm e controllo di parità sono fissati; la regola di `plan.py` è in D-73
     (nota del 2026-11-20).
   - **Documenti:** piano F8 (passo 3).
+- **Nota di rimando (2026-11-26, F9, il testo sopra resta invariato):** gli AE non addestrati non si tarano: usano
+  l'architettura selezionata in F9 del loro AE e restano fuori dagli esperimenti di tuning (D-41). Nell'esperimento
+  60/20/20 con le configurazioni selezionate (passo 5 di F9) i loro fit sono nuovi se l'architettura selezionata non è
+  quella dello slot 1, già presente in V1 di F8.
 
 ### D-71 · Perimetro dei modelli DL — APPROVATA · 2026-11-16
 - **Testo della voce APERTA (storico, invariato):**
@@ -959,6 +988,365 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
 - **Collegamenti:** D-26, D-37, D-42, D-65.
 - **Documenti:** piano F8 (nota del 2026-11-24); `configs/base.yaml` (passo 1 di F8).
 
+### D-30 · Margine δ — APPROVATA · 2026-11-26
+- **Testo della voce APERTA (storico, invariato):**
+  - **Opzioni:** (a) δ = 0,05 in AP normalizzata; (b) δ ricavato solo dalle macchine di sviluppo con una regola dichiarata;
+    (c) altro valore motivato. Criterio scartato: δ ≥ spread del protocollo sugli stessi dati (circolare).
+  - **Vincolo:** va fissato prima dei run ufficiali e congelato in `configs/analysis/official.yaml`.
+  - **Serve entro:** F10. Il codice di F7 deve trattare δ come parametro, senza valore predefinito.
+  - **Nota di rimando (2026-11-16, F7, la voce resta APERTA):** δ è una chiave obbligatoria del piano statistico (D-73
+    P5), senza default; δ ≤ 0 è un errore. La regola a quattro esiti si applica agli IC di Bonferroni al 1 − α/m
+    (D-36): l'equivalenza è più conservativa del TOST classico. Il «Vincolo» sopra va letto così: δ si congela in
+    `configs/stats/official.yaml` (D-73 P5), non in `configs/analysis/official.yaml`.
+- **Decisione:** δ = **0,05** in AP normalizzata (opzione (a)).
+- **Quando:** fissato il 2026-11-26, dopo il report di F8 (approvato il 2026-11-25) e prima di qualunque risultato di F9.
+- **Da dichiarare (nella tesi):**
+  - il report di F8 (`docs/f8_protocol_switch.md`) non contiene confronti DL − PCA: solo Δ tra varianti del protocollo,
+    contrasti di protocollo e τ di Kendall tra i ranking dei modelli per `ap_norm` e per ROC-AUC (§4.5); il §4.5
+    riporta anche il numero di macchine con lo stesso modello al primo posto nei due ranking, senza dire quale;
+  - i valori per modello sulle 6 macchine dev erano però disponibili nei CSV locali (`reports_local/f8_protocol_switch/`);
+  - SMD era già stato osservato nei run storici e in M1 (D-45, D-52).
+- **Applicazione:** regola a quattro esiti sugli IC di Bonferroni al 1 − α/m (D-36; α e famiglia: nota del 2026-11-26
+  su D-36). δ si congela in `configs/stats/official.yaml` (D-73 P5) in F10; il codice lo tratta già come chiave
+  obbligatoria senza default.
+- **Approvazione:** utente, 2026-11-26.
+- **Collegamenti:** D-36, D-45, D-52, D-71, D-73, D-76.
+- **Documenti:** piano F9 (nota del 2026-11-26), F10.
+
+### D-37 · PCA di riferimento per RQ2 — APPROVATA · 2026-11-26
+- **Testo della voce APERTA (storico, invariato):**
+  - **Opzioni:** PCA a finestre (stesso input degli AE, raccomandata) oppure la migliore tra le due PCA scelta sulle
+    macchine di sviluppo. Distinta da D-06 (dati di fit).
+  - **Serve entro:** F10.
+  - **Nota di rimando (2026-11-24, da D-40, la voce resta APERTA):** la PCA puntuale ristandardizza internamente ogni
+    sensore con la deviazione standard su fit (`src/models/traditional/pca_pointwise.py:31-35`), quindi il pavimento
+    dello scaler (τ = 0,02, D-40) su di lei agisce solo sui sensori a range nullo, mentre agisce su tutti i sensori quasi
+    costanti per gli AE, il modello di previsione e la PCA a finestre. Con la PCA puntuale come riferimento di RQ2 il
+    pavimento sarebbe asimmetrico tra DL e riferimento; con la PCA a finestre no. Da considerare nella decisione.
+  - **Nota di rimando (2026-11-25, da F8, la voce resta APERTA), solo fatto:**
+    - **Grandezza:** nell'esperimento di F8 i residui per sensore della PCA puntuale arrivano a circa 2,07e8 (residuo
+      quadratico, machine-1-1, sensore 32, test, in V2 e in V1).
+    - **Causa:** l'amplificazione interna 1/std sui sensori quasi costanti su fit, che il pavimento τ dello scaler non
+      limita.
+    - **Fonte:** §5 di `docs/f8_protocol_switch.md` (script `scripts/f8_extra/f8_inline_checks.py`, controllo 7).
+- **Decisione:** riferimento di RQ2 = **PCA a finestre** (`pca`), con la configurazione e lo scoring selezionati in F9
+  (D-41). La PCA puntuale (`pca_pointwise`) resta nei run come baseline descrittiva, fuori dal riferimento di RQ2 e
+  dalla famiglia confermativa.
+- **Motivazione:** stesso input degli AE e del modello di previsione (finestre W·F); il pavimento τ dello scaler (D-40)
+  agisce in modo simmetrico tra DL e riferimento (nota del 2026-11-24 sopra).
+- **Conseguenza:** famiglia confermativa {`conv_autoencoder` vs `pca`, `lstm_autoencoder` vs `pca`, `lstm_forecaster`
+  vs `pca`}, m = 3 (D-71; nota del 2026-11-26 su D-36).
+- **Da fissare in F10, con D-42:** il ruolo della PCA puntuale nel piano statistico. In RQ2 può comparire solo come
+  riga descrittiva (`rq2.baselines`), mai come riferimento né nella famiglia.
+  - **Vincolo del codice (verificato il 2026-11-26):** `rq2.baselines` deve essere contenuto in `descriptive_baselines`
+    (`src/stats/plan.py:495-503`). Una coppia (model, `config_id`) in `descriptive_baselines` non può essere un modello
+    o un `delta_reference` dei blocchi di RQ1a e RQ1b né un modello di RQ4 (`src/stats/plan.py:415-442`).
+  - **Quindi, nello stesso piano statistico:** riga descrittiva di RQ2 ed esclusione dai blocchi di RQ1a, RQ1b e RQ4
+    vanno insieme. Se la PCA puntuale deve essere un livello del fattore modello in RQ1, in RQ2 resta assente.
+- **Approvazione:** utente, 2026-11-26.
+- **Collegamenti:** D-06, D-36, D-40, D-41, D-71, D-73.
+- **Documenti:** piano F9 (nota del 2026-11-26), F10.
+
+### D-41 · Budget di tuning — APPROVATA · 2026-11-26
+- **Testo della voce APERTA (storico, invariato):**
+  - **Da decidere:** K per famiglia (proposta 8), griglie, criterio di selezione (proposta: AP normalizzata media sulle 6
+    macchine di sviluppo, una configurazione globale per famiglia), seed nel tuning (proposta 3), se scoring e normalizer
+    robusto rientrano nel budget. **Serve entro:** F9.
+  - **Nota (2026-11-24, da D-38, la voce resta APERTA):** nella griglia di F9 un `n_components` intero della PCA a
+    finestre va limitato a ≤ N − 1, con N = finestre di training su fit (`train_step` = 5, fit 60%): 2.824–3.430 sulle 6
+    macchine dev, minimo su SMD 2.823 (train più corto, 23.687 righe). Misura in sola lettura, `reports_local/f8_pre/`.
+    Vedi anche D-57.
+  - **Nota (2026-11-24, la voce resta APERTA):** W = 100, `learning_rate`, `weight_decay`, `min_delta` e `batch_size`
+    sono valori storici fissi senza voce nel registro (fuori da D-39); non sono tarati, salvo quelli che entreranno nella
+    griglia di questa voce. Da dichiarare in tesi (nota del 2026-11-24 nel piano F8).
+  - **Nota (2026-11-25, da F8, la voce resta APERTA), solo fatto:**
+    - **Fit al tetto in V1:** nell'esperimento di F8 con `max_epochs` / `patience` = 100 / 10 (variante V1) 4 fit su 54
+      si fermano al tetto secondo il criterio di D-39.
+    - **Quali:** sono tutti di `lstm_forecaster`, su machine-2-6 e machine-3-8 con seed 42 e 43 (best / stop: 94 / 100,
+      98 / 100, 96 / 100, 94 / 100). Conv-AE e LSTM-AE: 0 su 18 ciascuno.
+    - **D-39:** invariata (vincolo della voce).
+    - **Fonte:** §3.1 di `docs/f8_protocol_switch.md`.
+- **Decisione (utente, 2026-11-26), insieme a D-74 per budget e griglie:**
+  - **K per famiglia:** 8 punti per `pca`, `pca_pointwise`, `conv_autoencoder`, `lstm_autoencoder`, `lstm_forecaster`,
+    `rolling_zscore`; `input_norm` K = 1 (nessun iperparametro). Gli AE non addestrati (D-69) non si tarano: usano
+    l'architettura selezionata del loro AE e restano fuori dagli esperimenti di tuning.
+  - **Griglie, in ordine di slot** (slot 1 = configurazione storica, uguale a V1 di F8; file `configs/tuning/grid.yaml`,
+    passo 2 di F9):
+    - `conv_autoencoder` (`channels`, `latent_dim`): 1 [32, 64], 16 · 2 [16, 32], 8 · 3 [16, 32], 16 · 4 [16, 32], 32 ·
+      5 [32, 64], 8 · 6 [32, 64], 32 · 7 [16, 32], 4 · 8 [32, 64], 4;
+    - `lstm_autoencoder` (`hidden_dim`, `latent_dim`): 1 64, 16 · 2 32, 8 · 3 32, 16 · 4 32, 32 · 5 64, 8 · 6 64, 32 ·
+      7 32, 4 · 8 64, 4;
+    - `lstm_forecaster` (`hidden_dim`): 1 64 · 2 8 · 3 16 · 4 32 · 5 48 · 6 128 · 7 24 · 8 96 (D-74);
+    - `pca` e `pca_pointwise` (`n_components`, solo float, D-57): 1 0,9 · 2 0,5 · 3 0,7 · 4 0,8 · 5 0,95 · 6 0,99 ·
+      7 0,6 · 8 0,97; `pca.random_state` = 42 fisso in tutti gli slot (con un float non influisce; serve al riuso dei fit
+      di V1 nello slot 1);
+    - `rolling_zscore` (`top_k`, `eps`): 1 5, 0,01 · 2 1, 0,01 · 3 1, 0,1 · 4 5, 0,1 · 5 10, 0,01 · 6 10, 0,1 ·
+      7 3, 0,01 · 8 3, 0,1.
+  - **Regola K = 6 (fissata il 2026-11-26, prima di qualunque dato del pilota):** se la stima del pilota supera 20 h, per
+    tutte le famiglie si tengono gli slot 1–6 e si tolgono gli slot 7–8.
+    - Stima = somma, sui fit nuovi degli slot 2–8, di (secondi per epoca del pilota × mediana di `stopped_epoch` dei fit
+      di V1 della stessa famiglia + mediana di `residual_seconds` dei fit di V1 della stessa famiglia) per i modelli
+      addestrati; PCA, PCA puntuale e baseline con il loro `total_seconds` di V1.
+    - «20 h» sono **secondi trascorsi di un processo sequenziale (tempo a muro)**, come `fit_seconds`,
+      `residual_seconds` e `total_seconds` di `meta.json`, non tempo di CPU.
+    - Correzione del 2026-11-26, prima di qualunque dato del pilota: aggiunta la mediana di `residual_seconds`.
+    - Il pilota misura solo tempi: nessuna metrica letta, nessuna analisi; store separato (passo 3 di F9).
+  - **Chiavi di training e di finestra:** nessuna nelle griglie. W = 100, `learning_rate`, `weight_decay`, `min_delta`
+    e `batch_size` restano ai valori storici; `max_epochs` / `patience` 100 / 10 (D-39); `train_step` 5 (D-38). Fissi e
+    non tarati, da dichiarare.
+  - **Seed:** 42, 43, 44. **Macchine:** solo le 6 dev (D-08, D-51).
+  - **Griglia di scoring (parte del budget di selezione):** `window_time_agg` {`last`, `mean`} × 7 coppie
+    (`sensor_agg`, `normalizer`) = {(mean, none), (mean, std), (max, std), (top5, std), (mean, robust), (max, robust),
+    (top5, robust)}:
+    - 14 combinazioni per punto per `conv_autoencoder`, `lstm_autoencoder`, `pca`, `pca_pointwise` e `input_norm`
+      (fatto verificato il 2026-11-26: `input_norm` ha `residual_aggs = (last, mean)`, non è native e ammette tutti i
+      `ts_agg`, `src/models/traditional/input_norm.py:23-25`);
+    - 7 per `lstm_forecaster` (solo `last`, D-74 d);
+    - `rolling_zscore`: native, nessuna scelta di scoring.
+  - **Criterio:** AP normalizzata (`ap_norm`, tabella `free`, `diagnostic` falso), scenario `primary` (D-20),
+    `ts_agg = last`: lo scenario e la proiezione dell'analisi primaria di RQ2 (protocollo causale e senza soglia,
+    `piano_tesi_v1.md` §1; `src/stats/plan.py:108`, `FIXED` di RQ2). Media sui seed per macchina, poi media sulle 6
+    macchine a pesi uguali; una configurazione globale per famiglia (punto della griglia e scoring).
+  - **Spareggio a parità esatta (dichiarato in `configs/tuning/grid.yaml`):**
+    1. meno parametri addestrabili (F = 38, W = 100) dove definiti (Conv-AE, LSTM-AE, modello di previsione); PCA e
+       PCA puntuale: frazione minore;
+    2. slot più basso;
+    3. ordine dichiarato dello scoring: `window_time_agg` `last` prima di `mean`; coppie nell'ordine (mean, none),
+       (mean, std), (max, std), (top5, std), (mean, robust), (max, robust), (top5, robust).
+    L'ordine sta in `grid.yaml` e non nel piano di analisi, perché `plan_sha256` normalizza l'ordine delle liste.
+  - **Fit al tetto:** riportati per configurazione con il criterio di D-39; nessuna esclusione (D-39 invariata).
+  - **Fit falliti e NaN nella selezione (solo F9, non anticipa D-44 APERTA):**
+    - un fit con stato `failed` rende non selezionabile tutto il suo punto della griglia;
+    - un'AP NaN su anche una sola coppia macchina-seed rende non selezionabile quella combinazione (punto × scoring);
+    - in entrambi i casi la configurazione si riporta con il conteggio e il motivo, senza sostituzioni, imputazioni o
+      rilanci;
+    - un fit non completo per interruzione si riprende, non è un fallimento;
+    - le righe assenti per costruzione (modello di previsione con `window_time_agg = mean`, D-74) non sono NaN;
+    - se in una famiglia non resta nessuna combinazione selezionabile, la selezione si ferma con un errore (nessun
+      ripiego automatico).
+- **Da dichiarare (nella tesi):**
+  - con 8 × 14 combinazioni per famiglia l'AP selezionata sulle dev è ottimistica; non riguarda RQ2, valutata sulle
+    macchine di valutazione;
+  - gli AE e le PCA scelgono anche `window_time_agg`, il modello di previsione no (D-74 d): l'opzione non esiste;
+  - `input_norm` ha K = 1 ma 14 scelte di scoring;
+  - training e finestre non tarati (sopra);
+  - D-42, D-43 e D-44 (F10) si decideranno dopo aver visto le prestazioni per modello sulle dev nel report di selezione
+    di F9: inevitabile (note del 2026-11-26 su quelle voci).
+- **Superato:** il vincolo `n_components` intero ≤ N − 1 (note del 2026-11-24 sopra e su D-57) non si applica, perché
+  la griglia della PCA usa solo float (D-57).
+- **Fuori da F9 (da dichiarare):** PCA su fit+es (D-06) ed epoche fisse; il piano F9 li prevedeva, non si eseguono.
+- **Costo previsto (stima da V1 di F8, da sostituire con quella del pilota):** circa 2,2 h a muro e 0,84 GB per slot di
+  fit nuovi; circa 15 h con K = 8, circa 11 h con K = 6.
+- **Approvazione:** utente, 2026-11-26.
+- **Collegamenti:** D-06, D-08, D-09, D-11, D-20, D-38, D-39, D-42, D-43, D-44, D-51, D-57, D-69, D-74.
+- **Documenti:** piano F9 (nota del 2026-11-26); `configs/tuning/grid.yaml` (passo 2 di F9).
+
+### D-46 · Sensibilità delle proporzioni dello split — APPROVATA · 2026-11-26
+- **Testo della voce APERTA (storico, invariato):**
+  - **Opzioni:** nessuna; oppure una sola variante (es. 70/15/15) sulle macchine di sviluppo in F9. **Serve entro:** F9.
+- **Decisione:** una sola variante **70/15/15** sulle 6 macchine dev, con le configurazioni selezionate in F9 (D-41),
+  seed 42, 43, 44, senza ripetere il tuning. Il protocollo canonico resta 60/20/20 (D-05 invariata).
+- **Confronto:** solo descrittivo, contro un esperimento 60/20/20 con le stesse configurazioni (passo 5 di F9). `stats`
+  non ammette lo split come fattore: gli esperimenti di un blocco di RQ1b devono avere `fit_payload` identici salvo il
+  preprocessing (`src/stats/inputs.py`, controllo 9). Prima del confronto si verifica che punti di valutazione ed
+  eventi del test coincidano tra i due split, come in F8; se non coincidono, errore.
+- **Fatti verificati (2026-11-25):** le frazioni entrano nel payload di base (`src/utils/config.py:197`), quindi la
+  variante cambia il `fit_key` di tutti i modelli, deterministici e baseline random compresi; la colonna `split_mode`
+  registra solo `split3`, non le frazioni: i due split si distinguono per esperimento.
+- **Natura:** esperimento esplorativo; nessun effetto sul protocollo canonico.
+- **Approvazione:** utente, 2026-11-26.
+- **Collegamenti:** D-05, D-41, D-65.
+- **Documenti:** piano F9 (nota del 2026-11-26, passo 5).
+
+### D-57 · PCA a finestre con `n_components` intero: determinismo — APPROVATA · 2026-11-26
+- **Testo della voce APERTA (aperta il 2026-11-10; storico, invariato):**
+  - **Fatto verificato (codice, piano F2, K6):** con `n_components` intero, `PCADetector` usa `svd_solver="auto"`; con più
+    di 1.000 feature (W·F = 3.800) e poche componenti scikit-learn sceglie il solver randomizzato, e `random_state` vale il
+    seed (`setdefault` in `main.py`). Il modello è marcato deterministico, ma non lo è. Con `n_components` float (0,9,
+    run storici e M1) il solver è `full` e il problema non si presenta. La PCA puntuale (38 feature) usa
+    `covariance_eigh` ed è deterministica.
+  - **Impatto:** nessuno sui run storici e su M1. Rilevante per il `fit_key` (il seed è escluso per i modelli
+    deterministici) e per D-41 se la griglia di tuning contiene `n_components` interi.
+  - **Opzioni:** (a) forzare `svd_solver="full"`: deterministica, costo maggiore, da misurare; (b) lasciare `auto` e
+    trattare la PCA come non deterministica quando `n_components` è intero (seed nel `fit_key`, varianza tra seed da
+    riportare).
+  - **Raccomandazione:** (a). La PCA è il riferimento di RQ2 (D-37): una varianza tra seed dovuta solo al solver
+    aggiungerebbe rumore al confronto senza un significato metodologico.
+  - **In F2:** `random_state` esplicito; il validatore rifiuta la combinazione incoerente.
+  - **In F4 (rev. 2026-11-11):** F4 non corregge il solver; `PCADetector` resta invariato e il validatore F2 continua a
+    rifiutare la combinazione incoerente. Il checkpoint (D-67) salva le componenti fittate, quindi i residui dopo `load`
+    non dipendono dal solver; `FitInfo` registra il solver richiesto e quello effettivo. Nessun default nuovo per
+    `n_components` o `svd_solver`.
+  - **Serve entro:** prima di D-41 (griglia di F9).
+  - **Revisione (2026-11-11):** le righe «In F2» e «Serve entro» sono state corrette su decisione dell'utente (piano F4,
+    C4); prima dicevano «Correzione del modello in F4» e «F4 (implementazione), D-41 (griglia)». La voce resta APERTA.
+  - **Collegamenti:** D-37, D-41, `CLAUDE.md` §5.
+  - **Nota (2026-11-24, da D-38, la voce resta APERTA):** con `train_step` = 5 e fit al 60% la PCA a finestre ha meno
+    finestre di training che feature (N = 2.824–3.430 sulle dev, minimo SMD 2.823, contro W·F = 3.800): un
+    `n_components` intero va limitato a ≤ N − 1 nella griglia di F9 (D-41). Il vincolo vale qualunque sia l'opzione
+    scelta qui (solver `full` o `auto`).
+- **Correzione (2026-11-26):** il testo storico sopra dice «La PCA puntuale (38 feature) usa `covariance_eigh`». Con
+  `n_components` float la PCA puntuale usa `full` (`src/models/traditional/pca_pointwise.py:23-24`;
+  `svd_solver_effective = full` nei 6 fit `pca_pointwise` di V1 di F8). `covariance_eigh` si avrebbe solo con un intero
+  (scikit-learn 1.9.0: 38 ≤ 1.000 feature e N ≥ 10 · 38). Il testo storico resta invariato.
+- **Decisione:** nella tesi la PCA a finestre usa **solo `n_components` float** (solver `full`, deterministico: il
+  percorso di oggi, `src/models/traditional/pca_detector.py:46`); nessun intero nelle griglie (D-41). `PCADetector` e
+  il validatore (`src/utils/schema.py:222-226`) restano invariati. Se servisse un intero si applica l'opzione (a)
+  (forzare `full`), con una nuova voce.
+- **Fatti (2026-11-25, sola lettura):** il costo di `full` sulla forma della PCA a finestre (N = 2.824–3.430 righe ×
+  3.800 colonne) è già misurato nei 6 fit `pca` di V1 di F8: `fit_seconds` 7,5–10,4 s (OpenBLAS a 8 thread). Il percorso
+  `full` calcola l'SVD completa e tronca dopo (`sklearn/decomposition/_pca.py:568-582`), quindi il costo non dipende
+  dalla frazione.
+- **Conseguenza:** il vincolo ≤ N − 1 delle note del 2026-11-24 riguarda solo un `n_components` intero e non si applica.
+- **Approvazione:** utente, 2026-11-26.
+- **Collegamenti:** D-37, D-41.
+- **Documenti:** piano F9 (nota del 2026-11-26).
+
+### D-74 · Modello di previsione (integra D-10) — APPROVATA · 2026-11-26
+- **Testo della voce APERTA (aperta il 2026-11-16; storico, invariato):**
+  - **Origine:** D-71 (approvata): si aggiunge un modello di previsione ai run ufficiali, con conclusioni dichiarate per
+    famiglia di modelli. Integra D-10 (perimetro dei run ufficiali), il cui testo resta invariato.
+  - **Punti approvati (utente, 2026-11-16, su raccomandazione di Claude Project):**
+    - **a) Forma della previsione:** un solo punto previsto per finestra (dai primi W−1 punti si prevede l'ultimo).
+      Motivo: forma classica dei detector a previsione, semplice, distinta in modo netto dalla ricostruzione. La
+      previsione a più passi o sequence-to-sequence è scartata: darebbe un modello molto vicino a una ricostruzione e più
+      parametri da tarare.
+    - **b) Conseguenza di (a), non una decisione:** c'è un solo residuo per finestra (vettore per sensore), quindi
+      `window_time_agg` è degenerato (`last` = `mean`). `sensor_agg` e `normalizer` restano fattori veri.
+    - **c) Proiezione:** il modello di previsione usa solo `ts_agg = last`. Motivo: il residuo riguarda il solo punto
+      previsto (l'ultimo della finestra); con `ts_agg` offline (`mean`, `max`) all'istante t finirebbero errori di
+      finestre che prevedono altri istanti, anche successivi a t: lo score non sarebbe interpretabile né causale. In RQ1a
+      il modello entra solo in blocchi con `ts_agg` a un solo livello (`last`); gli altri fattori di misura (scenario,
+      statica contro oracolo, PA) restano.
+    - **d) Conseguenze da dichiarare nella tesi:**
+      - in RQ1a e RQ1b il modello di previsione sta in blocchi senza i fattori `ts_agg` e `window_time_agg` (come i
+        `native` per lo scoring);
+      - nel tuning (D-41) gli AE scelgono anche `window_time_agg` e il modello di previsione no: non è una disparità di
+        budget, perché l'opzione non esiste, ma va dichiarato.
+  - **Restano APERTI, da decidere prima di F8:** schema (chiavi, iperparametri); budget di tuning e parità di
+    trattamento (D-41).
+  - **Nota per F8:** quando il modello di previsione esiste:
+    - `analyze` / `analysis_grid` non produce righe offline (`ts_agg` `mean`, `max`) per il modello di previsione;
+    - `src/stats/plan.py` lo rifiuta nei blocchi con `window_time_agg` o `ts_agg` a più di un livello;
+    - test per entrambi i punti.
+  - **Ordine:** implementazione dopo M1, prima di F8. **Serve entro:** F8.
+  - **Collegamenti:** D-10, D-33, D-36, D-41, D-71.
+  - **Nota (2026-11-20, prerequisiti di F8; utente, su raccomandazione di Claude Project): schema e implementazione
+    approvati. La voce resta APERTA solo per budget e griglie di tuning (D-41).**
+    - **Fatti verificati nel codice (2026-11-20):**
+      - `PyTorchTrainer` è solo ricostruttivo: la loss è `criterion(recon_x, batch)` sulla finestra intera (`train_epoch`,
+        `evaluate`) e `get_error_matrix` confronta con tutta la finestra (`src/training/trainer.py:196-211`);
+      - un modello può dichiarare una sola aggregazione dei residui (precedente: `rolling_zscore`,
+        `residual_aggs = ("last",)`), e lo stadio di fit salva solo quelle dichiarate
+        (`src/pipeline/residual_cache.py:65-67`);
+      - `analysis_grid.residual_names` chiede tutte le `window_time_aggs` del piano per ogni modello non native e
+        `fit_scores` cicla su tutti i `ts_aggs` (`src/pipeline/analysis_grid.py:96-106`, `:203`, `:219`);
+      - `window_time_agg = none` è riservato ai modelli native (`src/pipeline/table_schema.py:220-224`);
+      - **chiavi dell'LSTM-AE:** lo schema di `lstm_autoencoder` ha `hidden_dim` e `latent_dim`
+        (`src/utils/schema.py:163-164`). `hidden_dim` ha lo stesso nome e lo stesso significato (dimensione dello stato
+        nascosto dell'LSTM). **`num_layers` non è una chiave dell'LSTM-AE:** esiste solo come argomento interno di
+        `LSTMEncoder` e `LSTMDecoder`, con lo stesso nome e lo stesso significato di `nn.LSTM`, ed è fisso a 1 perché
+        `LSTMAutoencoderNet` non lo passa (`src/models/deep/lstm_ae.py:18`, `:37`, `:60-63`). Segnalato all'utente al
+        passo 0: con `num_layers` come chiave il modello di previsione avrebbe un iperparametro che l'LSTM-AE non espone
+        (asimmetria dello spazio di tuning, D-41). Deciso alla revisione del passo 0 (punto «chiavi» sotto).
+    - **Decisioni:**
+      - **nome e architettura:** `lstm_forecaster`: LSTM sui primi W−1 punti della finestra più una testa lineare verso
+        gli F sensori; orizzonte 1 fisso (non è una chiave); blocco `training` condiviso con gli AE;
+      - **chiavi (revisione del passo 0, utente, 2026-11-20):** solo `{hidden_dim}`, con lo stesso nome e lo stesso
+        significato dell'LSTM-AE; **un solo strato** LSTM, come l'LSTM-AE (`num_layers` fisso a 1, non è una chiave).
+        Motivo: stessa architettura di base dell'LSTM-AE e nessun iperparametro di tuning in più rispetto all'AE (D-41);
+        l'unica differenza resta ricostruzione contro previsione. Scartate: `{hidden_dim, num_layers}` (disparità di
+        tuning) ed esporre `num_layers` nell'LSTM-AE (cambio di schema dell'AE, rischio per `config_id` e per la parità
+        di M1). **Da dichiarare in tesi.** Nessun valore predefinito nel codice; valori provvisori solo nei test
+        sintetici (D-41 aperta);
+      - **trainer (T2):** `ForecastTrainer`, sottoclasse di `PyTorchTrainer`. `PyTorchTrainer` resta intatto e
+        `FIT_CODE_VERSION` invariata;
+      - **residui:** `residual_aggs = ("last",)`; nelle tabelle `window_time_agg = last`;
+      - **analisi:** le righe offline (`ts_agg` `mean`, `max`) del modello sono **assenti**, non NaN; il loro conteggio si
+        registra in `analysis.json`;
+      - **export legacy:** rifiuta il modello (non esiste un corrispettivo storico);
+      - **`ANALYSIS_CODE_VERSION` aumentata** (il contratto delle uscite cambia); la golden di F6 si rigenera con la
+        regola di F7, ammessa solo se cambiano soltanto gli identificativi;
+      - **test di leakage obbligatorio:** modificare l'ultimo punto della finestra non cambia la previsione, modificare un
+        punto tra i primi W−1 la cambia.
+    - **Conseguenza da dichiarare:** un blocco che mescola AE e previsione non stima l'effetto di `ts_agg` sugli AE. In
+      F10 RQ1a avrà due blocchi: solo AE, con il fattore `ts_agg`; tutti i modelli, con `ts_agg = last`.
+    - **Restano APERTI:** budget di tuning, griglie e parità di trattamento (D-41).
+    - **Documenti:** piano F8 (passi 4, 5).
+    - **Realizzazione (passo 4 di F8, da rivedere alla revisione del passo):**
+      - `src/models/deep/lstm_forecaster.py`: `LSTMForecasterNet` (un `nn.LSTM` a un solo strato sui primi W−1 punti,
+        testa `nn.Linear(hidden_dim, F)` dallo stato nascosto finale) e `LSTMForecasterDetector` (`residual_aggs =
+        ("last",)`, `deterministic` falso, `native_only` falso); `hidden_dim`, `batch_size` e `device` obbligatori nel
+        codice del modello (nessun default); checkpoint come gli AE (D-67), con il trainer di previsione ricostruito in
+        `load`;
+      - `src/training/forecast_trainer.py` (file nuovo, così `src/training/trainer.py` resta intatto anche come file):
+        `ForecastTrainer(PyTorchTrainer)` ridefinisce `train_epoch`, `evaluate`, `get_error_matrix` (solo `last`) e
+        `get_reconstruction_errors`; `fit` (early stopping, ripristino dell'epoca migliore) è quello ereditato. Le chiavi
+        di training che `PyTorchTrainer` legge con un default storico sono obbligatorie;
+      - `src/models/base.py`: attributo di classe `allowed_ts_aggs` (`None` = tutti i `ts_agg`; previsione: `("last",)`),
+        aggiunta senza effetto sugli altri modelli;
+      - analisi (`analysis_grid.model_levels`, `analyze`): per ogni fit non native i livelli sono i `window_time_agg` del
+        piano salvati dal fit (`residual_aggs` di `meta.json`) e i `ts_agg` ammessi dalla classe. Le combinazioni tolte
+        sono assenti e contate in `analysis.json`, chiave `absent_rows` {modello: {motivo: {free, thr}}}, sempre presente
+        (vuota senza modello di previsione). **Scelta di realizzazione da rivedere:** oltre ai `ts_agg` offline
+        (motivo `offline_ts_agg`) sono assenti e contate anche le righe con `window_time_agg = mean` (motivo
+        `window_time_agg_degenerate`, conseguenza di (b): il residuo `mean` non esiste e sarebbe uguale a `last`);
+      - controllo preliminare `analyze.check_models_for_plan` (`ConfigError`, codice 2): un piano senza `last` tra i
+        `window_time_aggs` o i `ts_aggs` lascerebbe il modello senza righe ed è un errore; l'esportazione legacy rifiuta
+        i modelli senza corrispettivo storico (sotto, revisione del passo);
+      - `ANALYSIS_CODE_VERSION` 1 → 2; `registry.NEW_PIPELINE_ONLY` comprende `lstm_forecaster`.
+    - **Revisione del passo 4 (utente, 2026-11-20):**
+      - **approvate** le due scelte di realizzazione sopra: righe con `window_time_agg = mean` assenti e contate con il
+        motivo `window_time_agg_degenerate`; piano senza `last` con il modello presente → errore preliminare;
+      - **esportazione legacy, elenco di ammessi:** accetta solo i modelli di `registry.LEGACY_NUCLEUS`
+        (`legacy_export.refused_models`); ogni modello futuro è rifiutato per costruzione. Oltre a `lstm_forecaster` sono
+        ora rifiutati anche `conv_autoencoder_untrained` e `lstm_autoencoder_untrained` (D-69), che al passo 3 l'export
+        accettava pur senza corrispettivo in `main.py`. Sostituisce il primo disegno (elenco `REFUSED_MODELS` dei soli
+        rifiutati);
+      - **`residual_aggs` nel `fit_payload` (invariato):** il campo del payload (`["last", "mean"]`, da
+        `schema.RESIDUAL_AGGS`) è ciò che l'esperimento chiede ed entra nel `fit_key`; i residui salvati davvero sono
+        quelli di `meta.json` (`model.residual_aggs` e i record `residuals`): per `lstm_forecaster` solo `last`, come per
+        il rolling z-score. L'analisi legge `meta.json`. Cambiare il payload cambierebbe tutti i `fit_key` esistenti;
+      - **golden di F6, correzione della regola del passo:** la regola «golden rigenerata solo se cambiano soltanto gli
+        identificativi» era imprecisa, perché un aumento di versione cambia per forza il valore della versione. Regola
+        applicata: tabelle `free`, `thr`, `fits` identiche in forma d'identità; in `analysis.json` cambiano solo
+        `analysis_code_version` (1 → 2, nei due punti) e la chiave nuova `absent_rows: {}` (sempre presente, anche vuota),
+        cioè il contratto che giustifica l'aumento di versione. Golden rigenerata una volta;
+      - **golden di F7:** criterio nuovo nella nota del 2026-11-20 su D-73 (golden).
+    - **Passo 5 di F8, regole di `src/stats/plan.py` (utente, 2026-11-20, decisioni prese prima di scrivere il codice,
+      su raccomandazione di Claude Project; da rivedere alla revisione del passo):**
+      - **riscontro con lo schema:** le regole si ricavano dagli attributi della classe (`residual_aggs`,
+        `allowed_ts_aggs`; `plan.model_window_time_aggs`, `plan.model_ts_aggs`), mai dal nome `lstm_forecaster`; ogni
+        modello futuro con le stesse restrizioni è coperto;
+      - **scoring:** dovunque il piano dà uno scoring a un modello (RQ2 riferimento, famiglia e `rq2.baselines`, cioè le
+        righe descrittive tratte da `descriptive_baselines`; modelli dei blocchi di RQ1a; modelli di RQ4) il
+        `window_time_agg` deve avere righe: per il modello di previsione solo `last`;
+      - **RQ1a:** un blocco con il modello di previsione ha `ts_agg = [last]` (rifiutati sia i livelli offline in più sia
+        un solo livello offline);
+      - **RQ1b:** un blocco con il modello di previsione ha solo livelli di `scoring` con `window_time_agg = last`: più
+        di un `window_time_agg` e il solo `mean` sono due rifiuti distinti (il secondo va oltre la lettera del piano, «più
+        di un `window_time_agg`», per decisione dell'utente: altrimenti il blocco fallirebbe più tardi, ai controlli sugli
+        ingressi);
+      - **`descriptive`:** nessuna regola. Le voci non nominano modelli e `plan.py` non vede l'esperimento: con `ts_agg`
+        ≠ `last` il modello di previsione è assente dalla voce per costruzione, come le sue righe offline (`absent_rows`).
+        **Da dichiarare in tesi** insieme alla conseguenza del punto (d);
+      - **`descriptive_baselines`:** resta aperta a ogni modello (decisione del 2026-11-16), compreso quello di previsione;
+      - **`STATS_CODE_VERSION` invariata** (4): la modifica aggiunge solo rifiuti, quindi ogni piano valido prima dà le
+        stesse uscite (stesso criterio del passo 3); golden di F7 invariata;
+      - **test:** `tests/test_f8_forecaster_plan.py`, un test per ogni rifiuto e i casi ammessi; prove di difetto (6
+        mutazioni in memoria, tutte rilevate).
+- **Decisione su budget e griglie (utente, 2026-11-26; ultimo punto aperto della voce):**
+  - K = 8 per `lstm_forecaster`, `hidden_dim` nell'ordine degli slot 64, 8, 16, 32, 48, 128, 24, 96 (D-41). Chiude il
+    valore provvisorio 64 delle config di F8, che resta lo slot 1.
+  - Parità di trattamento con gli AE: stesso K, stesso blocco `training`, nessun iperparametro in più (nota del
+    2026-11-20 sopra).
+  - Scoring: 7 combinazioni per punto (solo `window_time_agg = last`, punto d), contro 14 degli AE: da dichiarare.
+  - Fatto (nota del 2026-11-25 su D-41): in V1 di F8 i 4 fit al tetto sono tutti di `lstm_forecaster`. In F9 i fit al
+    tetto si riportano per configurazione, senza esclusioni (D-39 invariata).
+- **Approvazione:** utente, 2026-11-26.
+- **Collegamenti:** D-39, D-41.
+- **Documenti:** piano F9 (nota del 2026-11-26).
+
 ---
 
 ## C. Software e riproducibilità — decisioni approvate
@@ -1115,6 +1503,12 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
 
 ### D-56 · Posizione di `store/` e budget di disco — APPROVATA · 2026-11-10
 - **Decisione:** `store/` nella radice del progetto, esclusa da git con `.gitignore`. Budget di disco: 5–10 GB.
+- **Nota (2026-11-26, F9, il testo sopra resta invariato; utente): budget di disco alzato a 30 GB.**
+  - **Stato:** `store/` occupa 4,54 GB al 2026-11-25 (§2.4 di `docs/f8_protocol_switch.md`).
+  - **Stima:** circa 12 GB dopo F9, più circa 7–8 GB per ogni esperimento di F11.
+  - **Nessuna cancellazione nello store.**
+  - Lo store separato del pilota di F9 (`store_pilot/`, passo 3) rientra nel budget; va escluso da git come `store/`.
+    La sua cancellazione la decide l'utente.
 
 ### D-58 · Spec del dataset e controlli strutturali parametrici — APPROVATA · 2026-11-10
 - **Decisione:**
@@ -2684,51 +3078,6 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
 
 ## D. Decisioni aperte (metodologiche)
 
-### D-30 · Margine δ — APERTA
-- **Opzioni:** (a) δ = 0,05 in AP normalizzata; (b) δ ricavato solo dalle macchine di sviluppo con una regola dichiarata;
-  (c) altro valore motivato. Criterio scartato: δ ≥ spread del protocollo sugli stessi dati (circolare).
-- **Vincolo:** va fissato prima dei run ufficiali e congelato in `configs/analysis/official.yaml`.
-- **Serve entro:** F10. Il codice di F7 deve trattare δ come parametro, senza valore predefinito.
-- **Nota di rimando (2026-11-16, F7, la voce resta APERTA):** δ è una chiave obbligatoria del piano statistico (D-73
-  P5), senza default; δ ≤ 0 è un errore. La regola a quattro esiti si applica agli IC di Bonferroni al 1 − α/m
-  (D-36): l'equivalenza è più conservativa del TOST classico. Il «Vincolo» sopra va letto così: δ si congela in
-  `configs/stats/official.yaml` (D-73 P5), non in `configs/analysis/official.yaml`.
-
-### D-37 · PCA di riferimento per RQ2 — APERTA
-- **Opzioni:** PCA a finestre (stesso input degli AE, raccomandata) oppure la migliore tra le due PCA scelta sulle
-  macchine di sviluppo. Distinta da D-06 (dati di fit).
-- **Serve entro:** F10.
-- **Nota di rimando (2026-11-24, da D-40, la voce resta APERTA):** la PCA puntuale ristandardizza internamente ogni
-  sensore con la deviazione standard su fit (`src/models/traditional/pca_pointwise.py:31-35`), quindi il pavimento
-  dello scaler (τ = 0,02, D-40) su di lei agisce solo sui sensori a range nullo, mentre agisce su tutti i sensori quasi
-  costanti per gli AE, il modello di previsione e la PCA a finestre. Con la PCA puntuale come riferimento di RQ2 il
-  pavimento sarebbe asimmetrico tra DL e riferimento; con la PCA a finestre no. Da considerare nella decisione.
-- **Nota di rimando (2026-11-25, da F8, la voce resta APERTA), solo fatto:**
-  - **Grandezza:** nell'esperimento di F8 i residui per sensore della PCA puntuale arrivano a circa 2,07e8 (residuo
-    quadratico, machine-1-1, sensore 32, test, in V2 e in V1).
-  - **Causa:** l'amplificazione interna 1/std sui sensori quasi costanti su fit, che il pavimento τ dello scaler non
-    limita.
-  - **Fonte:** §5 di `docs/f8_protocol_switch.md` (script `scripts/f8_extra/f8_inline_checks.py`, controllo 7).
-
-### D-41 · Budget di tuning — APERTA
-- **Da decidere:** K per famiglia (proposta 8), griglie, criterio di selezione (proposta: AP normalizzata media sulle 6
-  macchine di sviluppo, una configurazione globale per famiglia), seed nel tuning (proposta 3), se scoring e normalizer
-  robusto rientrano nel budget. **Serve entro:** F9.
-- **Nota (2026-11-24, da D-38, la voce resta APERTA):** nella griglia di F9 un `n_components` intero della PCA a
-  finestre va limitato a ≤ N − 1, con N = finestre di training su fit (`train_step` = 5, fit 60%): 2.824–3.430 sulle 6
-  macchine dev, minimo su SMD 2.823 (train più corto, 23.687 righe). Misura in sola lettura, `reports_local/f8_pre/`.
-  Vedi anche D-57.
-- **Nota (2026-11-24, la voce resta APERTA):** W = 100, `learning_rate`, `weight_decay`, `min_delta` e `batch_size`
-  sono valori storici fissi senza voce nel registro (fuori da D-39); non sono tarati, salvo quelli che entreranno nella
-  griglia di questa voce. Da dichiarare in tesi (nota del 2026-11-24 nel piano F8).
-- **Nota (2026-11-25, da F8, la voce resta APERTA), solo fatto:**
-  - **Fit al tetto in V1:** nell'esperimento di F8 con `max_epochs` / `patience` = 100 / 10 (variante V1) 4 fit su 54
-    si fermano al tetto secondo il criterio di D-39.
-  - **Quali:** sono tutti di `lstm_forecaster`, su machine-2-6 e machine-3-8 con seed 42 e 43 (best / stop: 94 / 100,
-    98 / 100, 96 / 100, 94 / 100). Conv-AE e LSTM-AE: 0 su 18 ciascuno.
-  - **D-39:** invariata (vincolo della voce).
-  - **Fonte:** §3.1 di `docs/f8_protocol_switch.md`.
-
 ### D-42 · Livelli dei fattori per RQ1a e RQ1b — APERTA · **Serve entro:** F10.
 - **Nota (2026-11-10, la voce resta APERTA):**
   - **Raccomandazione per i livelli di `n_past` di `roll_robust_z`:** escludere 2.880 dai livelli ufficiali oppure
@@ -2740,11 +3089,18 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
 - **Nota (2026-11-16, F7, la voce resta APERTA):** i blocchi della decomposizione (D-25), i livelli letti da RQ1a /
   RQ1b, la configurazione canonica di riferimento per τ e la versione principale di η² sono dati del piano statistico
   (D-73 P5), senza default.
+- **Nota (2026-11-26, F9, la voce resta APERTA):** la voce si deciderà dopo aver visto le prestazioni per modello sulle
+  6 macchine dev nel report di selezione di F9 (passo 4, D-41). È inevitabile, perché F9 precede F10; da dichiarare
+  nella tesi.
 
 ### D-43 · Descrittori per RQ3 (massimo 4) e ipotesi — APERTA · **Serve entro:** F10.
 - **Nota (2026-11-16, F7, la voce resta APERTA):** F7 implementa Spearman con IC bootstrap e l'interfaccia dei
   descrittori, ma solo con quelli ricavabili dalle tabelle (`prevalence`, `n_events` dello scenario `primary`);
   i descrittori che richiedono i dati (deriva, quota fuori range, rango PCA) attendono questa voce (D-73 P9).
+- **Nota (2026-11-26, F9, la voce resta APERTA):** la voce si deciderà dopo aver visto le prestazioni per modello sulle
+  6 macchine dev nel report di selezione di F9 (passo 4, D-41). È inevitabile, perché F9 precede F10; da dichiarare
+  nella tesi.
+
 ### D-44 · Regole di esclusione (fit fallito, macchina con un solo evento) — APERTA · **Serve entro:** F10.
 - **Nota (2026-11-12, F5, la voce resta APERTA):** lo stadio di fit registra senza escludere: un fit con loss non
   finita resta `complete` con `nonfinite_loss: true`, e per ogni residuo si registra `n_nonfinite`; un errore di
@@ -2770,172 +3126,14 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
   `exclude_fit` per i modelli deterministici) riducono la possibilità di calcolare RQ2. Con il minimo a 5 macchine per
   gruppo (D-76), il gruppo da 6 delle macchine di valutazione ne può perdere una sola. Da considerare quando si
   fissano i valori di questa voce.
-
-### D-46 · Sensibilità delle proporzioni dello split — APERTA
-- **Opzioni:** nessuna; oppure una sola variante (es. 70/15/15) sulle macchine di sviluppo in F9. **Serve entro:** F9.
-
-### D-57 · PCA a finestre con `n_components` intero: determinismo — APERTA · 2026-11-10
-- **Fatto verificato (codice, piano F2, K6):** con `n_components` intero, `PCADetector` usa `svd_solver="auto"`; con più
-  di 1.000 feature (W·F = 3.800) e poche componenti scikit-learn sceglie il solver randomizzato, e `random_state` vale il
-  seed (`setdefault` in `main.py`). Il modello è marcato deterministico, ma non lo è. Con `n_components` float (0,9,
-  run storici e M1) il solver è `full` e il problema non si presenta. La PCA puntuale (38 feature) usa
-  `covariance_eigh` ed è deterministica.
-- **Impatto:** nessuno sui run storici e su M1. Rilevante per il `fit_key` (il seed è escluso per i modelli
-  deterministici) e per D-41 se la griglia di tuning contiene `n_components` interi.
-- **Opzioni:** (a) forzare `svd_solver="full"`: deterministica, costo maggiore, da misurare; (b) lasciare `auto` e
-  trattare la PCA come non deterministica quando `n_components` è intero (seed nel `fit_key`, varianza tra seed da
-  riportare).
-- **Raccomandazione:** (a). La PCA è il riferimento di RQ2 (D-37): una varianza tra seed dovuta solo al solver
-  aggiungerebbe rumore al confronto senza un significato metodologico.
-- **In F2:** `random_state` esplicito; il validatore rifiuta la combinazione incoerente.
-- **In F4 (rev. 2026-11-11):** F4 non corregge il solver; `PCADetector` resta invariato e il validatore F2 continua a
-  rifiutare la combinazione incoerente. Il checkpoint (D-67) salva le componenti fittate, quindi i residui dopo `load`
-  non dipendono dal solver; `FitInfo` registra il solver richiesto e quello effettivo. Nessun default nuovo per
-  `n_components` o `svd_solver`.
-- **Serve entro:** prima di D-41 (griglia di F9).
-- **Revisione (2026-11-11):** le righe «In F2» e «Serve entro» sono state corrette su decisione dell'utente (piano F4,
-  C4); prima dicevano «Correzione del modello in F4» e «F4 (implementazione), D-41 (griglia)». La voce resta APERTA.
-- **Collegamenti:** D-37, D-41, `CLAUDE.md` §5.
-- **Nota (2026-11-24, da D-38, la voce resta APERTA):** con `train_step` = 5 e fit al 60% la PCA a finestre ha meno
-  finestre di training che feature (N = 2.824–3.430 sulle dev, minimo SMD 2.823, contro W·F = 3.800): un
-  `n_components` intero va limitato a ≤ N − 1 nella griglia di F9 (D-41). Il vincolo vale qualunque sia l'opzione
-  scelta qui (solver `full` o `auto`).
-
-### D-74 · Modello di previsione (integra D-10) — APERTA · 2026-11-16
-- **Origine:** D-71 (approvata): si aggiunge un modello di previsione ai run ufficiali, con conclusioni dichiarate per
-  famiglia di modelli. Integra D-10 (perimetro dei run ufficiali), il cui testo resta invariato.
-- **Punti approvati (utente, 2026-11-16, su raccomandazione di Claude Project):**
-  - **a) Forma della previsione:** un solo punto previsto per finestra (dai primi W−1 punti si prevede l'ultimo).
-    Motivo: forma classica dei detector a previsione, semplice, distinta in modo netto dalla ricostruzione. La
-    previsione a più passi o sequence-to-sequence è scartata: darebbe un modello molto vicino a una ricostruzione e più
-    parametri da tarare.
-  - **b) Conseguenza di (a), non una decisione:** c'è un solo residuo per finestra (vettore per sensore), quindi
-    `window_time_agg` è degenerato (`last` = `mean`). `sensor_agg` e `normalizer` restano fattori veri.
-  - **c) Proiezione:** il modello di previsione usa solo `ts_agg = last`. Motivo: il residuo riguarda il solo punto
-    previsto (l'ultimo della finestra); con `ts_agg` offline (`mean`, `max`) all'istante t finirebbero errori di
-    finestre che prevedono altri istanti, anche successivi a t: lo score non sarebbe interpretabile né causale. In RQ1a
-    il modello entra solo in blocchi con `ts_agg` a un solo livello (`last`); gli altri fattori di misura (scenario,
-    statica contro oracolo, PA) restano.
-  - **d) Conseguenze da dichiarare nella tesi:**
-    - in RQ1a e RQ1b il modello di previsione sta in blocchi senza i fattori `ts_agg` e `window_time_agg` (come i
-      `native` per lo scoring);
-    - nel tuning (D-41) gli AE scelgono anche `window_time_agg` e il modello di previsione no: non è una disparità di
-      budget, perché l'opzione non esiste, ma va dichiarato.
-- **Restano APERTI, da decidere prima di F8:** schema (chiavi, iperparametri); budget di tuning e parità di
-  trattamento (D-41).
-- **Nota per F8:** quando il modello di previsione esiste:
-  - `analyze` / `analysis_grid` non produce righe offline (`ts_agg` `mean`, `max`) per il modello di previsione;
-  - `src/stats/plan.py` lo rifiuta nei blocchi con `window_time_agg` o `ts_agg` a più di un livello;
-  - test per entrambi i punti.
-- **Ordine:** implementazione dopo M1, prima di F8. **Serve entro:** F8.
-- **Collegamenti:** D-10, D-33, D-36, D-41, D-71.
-- **Nota (2026-11-20, prerequisiti di F8; utente, su raccomandazione di Claude Project): schema e implementazione
-  approvati. La voce resta APERTA solo per budget e griglie di tuning (D-41).**
-  - **Fatti verificati nel codice (2026-11-20):**
-    - `PyTorchTrainer` è solo ricostruttivo: la loss è `criterion(recon_x, batch)` sulla finestra intera (`train_epoch`,
-      `evaluate`) e `get_error_matrix` confronta con tutta la finestra (`src/training/trainer.py:196-211`);
-    - un modello può dichiarare una sola aggregazione dei residui (precedente: `rolling_zscore`,
-      `residual_aggs = ("last",)`), e lo stadio di fit salva solo quelle dichiarate
-      (`src/pipeline/residual_cache.py:65-67`);
-    - `analysis_grid.residual_names` chiede tutte le `window_time_aggs` del piano per ogni modello non native e
-      `fit_scores` cicla su tutti i `ts_aggs` (`src/pipeline/analysis_grid.py:96-106`, `:203`, `:219`);
-    - `window_time_agg = none` è riservato ai modelli native (`src/pipeline/table_schema.py:220-224`);
-    - **chiavi dell'LSTM-AE:** lo schema di `lstm_autoencoder` ha `hidden_dim` e `latent_dim`
-      (`src/utils/schema.py:163-164`). `hidden_dim` ha lo stesso nome e lo stesso significato (dimensione dello stato
-      nascosto dell'LSTM). **`num_layers` non è una chiave dell'LSTM-AE:** esiste solo come argomento interno di
-      `LSTMEncoder` e `LSTMDecoder`, con lo stesso nome e lo stesso significato di `nn.LSTM`, ed è fisso a 1 perché
-      `LSTMAutoencoderNet` non lo passa (`src/models/deep/lstm_ae.py:18`, `:37`, `:60-63`). Segnalato all'utente al
-      passo 0: con `num_layers` come chiave il modello di previsione avrebbe un iperparametro che l'LSTM-AE non espone
-      (asimmetria dello spazio di tuning, D-41). Deciso alla revisione del passo 0 (punto «chiavi» sotto).
-  - **Decisioni:**
-    - **nome e architettura:** `lstm_forecaster`: LSTM sui primi W−1 punti della finestra più una testa lineare verso
-      gli F sensori; orizzonte 1 fisso (non è una chiave); blocco `training` condiviso con gli AE;
-    - **chiavi (revisione del passo 0, utente, 2026-11-20):** solo `{hidden_dim}`, con lo stesso nome e lo stesso
-      significato dell'LSTM-AE; **un solo strato** LSTM, come l'LSTM-AE (`num_layers` fisso a 1, non è una chiave).
-      Motivo: stessa architettura di base dell'LSTM-AE e nessun iperparametro di tuning in più rispetto all'AE (D-41);
-      l'unica differenza resta ricostruzione contro previsione. Scartate: `{hidden_dim, num_layers}` (disparità di
-      tuning) ed esporre `num_layers` nell'LSTM-AE (cambio di schema dell'AE, rischio per `config_id` e per la parità
-      di M1). **Da dichiarare in tesi.** Nessun valore predefinito nel codice; valori provvisori solo nei test
-      sintetici (D-41 aperta);
-    - **trainer (T2):** `ForecastTrainer`, sottoclasse di `PyTorchTrainer`. `PyTorchTrainer` resta intatto e
-      `FIT_CODE_VERSION` invariata;
-    - **residui:** `residual_aggs = ("last",)`; nelle tabelle `window_time_agg = last`;
-    - **analisi:** le righe offline (`ts_agg` `mean`, `max`) del modello sono **assenti**, non NaN; il loro conteggio si
-      registra in `analysis.json`;
-    - **export legacy:** rifiuta il modello (non esiste un corrispettivo storico);
-    - **`ANALYSIS_CODE_VERSION` aumentata** (il contratto delle uscite cambia); la golden di F6 si rigenera con la
-      regola di F7, ammessa solo se cambiano soltanto gli identificativi;
-    - **test di leakage obbligatorio:** modificare l'ultimo punto della finestra non cambia la previsione, modificare un
-      punto tra i primi W−1 la cambia.
-  - **Conseguenza da dichiarare:** un blocco che mescola AE e previsione non stima l'effetto di `ts_agg` sugli AE. In
-    F10 RQ1a avrà due blocchi: solo AE, con il fattore `ts_agg`; tutti i modelli, con `ts_agg = last`.
-  - **Restano APERTI:** budget di tuning, griglie e parità di trattamento (D-41).
-  - **Documenti:** piano F8 (passi 4, 5).
-  - **Realizzazione (passo 4 di F8, da rivedere alla revisione del passo):**
-    - `src/models/deep/lstm_forecaster.py`: `LSTMForecasterNet` (un `nn.LSTM` a un solo strato sui primi W−1 punti,
-      testa `nn.Linear(hidden_dim, F)` dallo stato nascosto finale) e `LSTMForecasterDetector` (`residual_aggs =
-      ("last",)`, `deterministic` falso, `native_only` falso); `hidden_dim`, `batch_size` e `device` obbligatori nel
-      codice del modello (nessun default); checkpoint come gli AE (D-67), con il trainer di previsione ricostruito in
-      `load`;
-    - `src/training/forecast_trainer.py` (file nuovo, così `src/training/trainer.py` resta intatto anche come file):
-      `ForecastTrainer(PyTorchTrainer)` ridefinisce `train_epoch`, `evaluate`, `get_error_matrix` (solo `last`) e
-      `get_reconstruction_errors`; `fit` (early stopping, ripristino dell'epoca migliore) è quello ereditato. Le chiavi
-      di training che `PyTorchTrainer` legge con un default storico sono obbligatorie;
-    - `src/models/base.py`: attributo di classe `allowed_ts_aggs` (`None` = tutti i `ts_agg`; previsione: `("last",)`),
-      aggiunta senza effetto sugli altri modelli;
-    - analisi (`analysis_grid.model_levels`, `analyze`): per ogni fit non native i livelli sono i `window_time_agg` del
-      piano salvati dal fit (`residual_aggs` di `meta.json`) e i `ts_agg` ammessi dalla classe. Le combinazioni tolte
-      sono assenti e contate in `analysis.json`, chiave `absent_rows` {modello: {motivo: {free, thr}}}, sempre presente
-      (vuota senza modello di previsione). **Scelta di realizzazione da rivedere:** oltre ai `ts_agg` offline
-      (motivo `offline_ts_agg`) sono assenti e contate anche le righe con `window_time_agg = mean` (motivo
-      `window_time_agg_degenerate`, conseguenza di (b): il residuo `mean` non esiste e sarebbe uguale a `last`);
-    - controllo preliminare `analyze.check_models_for_plan` (`ConfigError`, codice 2): un piano senza `last` tra i
-      `window_time_aggs` o i `ts_aggs` lascerebbe il modello senza righe ed è un errore; l'esportazione legacy rifiuta
-      i modelli senza corrispettivo storico (sotto, revisione del passo);
-    - `ANALYSIS_CODE_VERSION` 1 → 2; `registry.NEW_PIPELINE_ONLY` comprende `lstm_forecaster`.
-  - **Revisione del passo 4 (utente, 2026-11-20):**
-    - **approvate** le due scelte di realizzazione sopra: righe con `window_time_agg = mean` assenti e contate con il
-      motivo `window_time_agg_degenerate`; piano senza `last` con il modello presente → errore preliminare;
-    - **esportazione legacy, elenco di ammessi:** accetta solo i modelli di `registry.LEGACY_NUCLEUS`
-      (`legacy_export.refused_models`); ogni modello futuro è rifiutato per costruzione. Oltre a `lstm_forecaster` sono
-      ora rifiutati anche `conv_autoencoder_untrained` e `lstm_autoencoder_untrained` (D-69), che al passo 3 l'export
-      accettava pur senza corrispettivo in `main.py`. Sostituisce il primo disegno (elenco `REFUSED_MODELS` dei soli
-      rifiutati);
-    - **`residual_aggs` nel `fit_payload` (invariato):** il campo del payload (`["last", "mean"]`, da
-      `schema.RESIDUAL_AGGS`) è ciò che l'esperimento chiede ed entra nel `fit_key`; i residui salvati davvero sono
-      quelli di `meta.json` (`model.residual_aggs` e i record `residuals`): per `lstm_forecaster` solo `last`, come per
-      il rolling z-score. L'analisi legge `meta.json`. Cambiare il payload cambierebbe tutti i `fit_key` esistenti;
-    - **golden di F6, correzione della regola del passo:** la regola «golden rigenerata solo se cambiano soltanto gli
-      identificativi» era imprecisa, perché un aumento di versione cambia per forza il valore della versione. Regola
-      applicata: tabelle `free`, `thr`, `fits` identiche in forma d'identità; in `analysis.json` cambiano solo
-      `analysis_code_version` (1 → 2, nei due punti) e la chiave nuova `absent_rows: {}` (sempre presente, anche vuota),
-      cioè il contratto che giustifica l'aumento di versione. Golden rigenerata una volta;
-    - **golden di F7:** criterio nuovo nella nota del 2026-11-20 su D-73 (golden).
-  - **Passo 5 di F8, regole di `src/stats/plan.py` (utente, 2026-11-20, decisioni prese prima di scrivere il codice,
-    su raccomandazione di Claude Project; da rivedere alla revisione del passo):**
-    - **riscontro con lo schema:** le regole si ricavano dagli attributi della classe (`residual_aggs`,
-      `allowed_ts_aggs`; `plan.model_window_time_aggs`, `plan.model_ts_aggs`), mai dal nome `lstm_forecaster`; ogni
-      modello futuro con le stesse restrizioni è coperto;
-    - **scoring:** dovunque il piano dà uno scoring a un modello (RQ2 riferimento, famiglia e `rq2.baselines`, cioè le
-      righe descrittive tratte da `descriptive_baselines`; modelli dei blocchi di RQ1a; modelli di RQ4) il
-      `window_time_agg` deve avere righe: per il modello di previsione solo `last`;
-    - **RQ1a:** un blocco con il modello di previsione ha `ts_agg = [last]` (rifiutati sia i livelli offline in più sia
-      un solo livello offline);
-    - **RQ1b:** un blocco con il modello di previsione ha solo livelli di `scoring` con `window_time_agg = last`: più
-      di un `window_time_agg` e il solo `mean` sono due rifiuti distinti (il secondo va oltre la lettera del piano, «più
-      di un `window_time_agg`», per decisione dell'utente: altrimenti il blocco fallirebbe più tardi, ai controlli sugli
-      ingressi);
-    - **`descriptive`:** nessuna regola. Le voci non nominano modelli e `plan.py` non vede l'esperimento: con `ts_agg`
-      ≠ `last` il modello di previsione è assente dalla voce per costruzione, come le sue righe offline (`absent_rows`).
-      **Da dichiarare in tesi** insieme alla conseguenza del punto (d);
-    - **`descriptive_baselines`:** resta aperta a ogni modello (decisione del 2026-11-16), compreso quello di previsione;
-    - **`STATS_CODE_VERSION` invariata** (4): la modifica aggiunge solo rifiuti, quindi ogni piano valido prima dà le
-      stesse uscite (stesso criterio del passo 3); golden di F7 invariata;
-    - **test:** `tests/test_f8_forecaster_plan.py`, un test per ogni rifiuto e i casi ammessi; prove di difetto (6
-      mutazioni in memoria, tutte rilevate).
+- **Nota (2026-11-26, F9, la voce resta APERTA):**
+  - la voce si deciderà dopo aver visto le prestazioni per modello sulle 6 macchine dev nel report di selezione di F9
+    (passo 4, D-41). È inevitabile, perché F9 precede F10; da dichiarare nella tesi;
+  - la regola su fit falliti e AP NaN della selezione di F9 (D-41) vale solo per F9 e non anticipa questa voce.
 
 *(D-75 è stata approvata il 2026-11-20 ed è passata alla sezione B.)*
 *(D-38, D-39 e D-40 sono state approvate il 2026-11-24 e sono passate alla sezione B.)*
+*(D-30, D-37, D-41, D-46, D-57 e D-74 sono state approvate il 2026-11-26 e sono passate alla sezione B.)*
 
 ---
 

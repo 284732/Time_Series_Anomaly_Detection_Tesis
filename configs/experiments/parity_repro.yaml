@@ -7,7 +7,8 @@
 #
 # F8 passo 2 (D-77, strategia (i)): ogni valore che entra in config_sha256 o nel fit_key è dichiarato qui (valori
 # STORICI, gli stessi che base.yaml e configs/models/ avevano al run di M1), così questo esperimento non eredita nulla
-# da base.yaml (dove F8 metterà i valori canonici) né da configs/models/ (dove F9 scriverà le griglie).
+# da base.yaml (dove F8 metterà i valori canonici) né da configs/models/ (le griglie di F9 stanno fuori dal
+# loader, in configs/tuning/grid.yaml, D-41).
 # config_sha256 e fit_key coincidono con quelli del run di M1 (tests/test_f8_config_loading.py).
 experiment:
   name: parity_repro

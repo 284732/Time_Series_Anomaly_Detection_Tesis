@@ -9,7 +9,7 @@
 # da base.yaml né da configs/models/. Iperparametri: quelli storici di M1 (parity_repro) per i modelli in comune;
 # AE non addestrati appaiati ai loro AE (D-69); lstm_forecaster.hidden_dim = 64 PROVVISORIO (= LSTM-AE, D-41 aperta);
 # baseline ai default storici (configs/models/baselines.yaml). Seed: 42 per primo (riuso dei fit di M1 in V0); 43 e
-# 44 proposti da Claude il 2026-11-24, scelti prima dei run e senza guardare dati (da confermare). Solo le 6 macchine
+# 44 proposti da Claude il 2026-11-24, scelti prima dei run e senza guardare dati (confermati, D-41). Solo le 6 macchine
 # dev (configs/dev_machines.yaml, D-51). Lo lancia l'utente (CLAUDE.md §4).
 experiment:
   name: protocol_switch_dev_v3_split3
