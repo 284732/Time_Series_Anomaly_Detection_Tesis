@@ -42,7 +42,8 @@ def _root(spec):
 
 
 def _run(env, spec, datasets_dir=None):
-    return fitmod.run_fit(spec, datasets_dir=datasets_dir or env["datasets_dir"], repo_root=env["repo"])
+    return fitmod.run_fit(spec, datasets_dir=datasets_dir or env["datasets_dir"], repo_root=env["repo"],
+                          allow_eval_machines=True)
 
 
 def _metas(spec):

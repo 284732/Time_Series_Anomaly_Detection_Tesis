@@ -38,7 +38,7 @@ def metas(tmp_path_factory):
     mp = pytest.MonkeyPatch()
     mp.setattr(fitmod, "fit_one", fail_rolling)
     try:
-        fitmod.run_fit(spec, datasets_dir=paths["spec"].parent, repo_root=repo)
+        fitmod.run_fit(spec, datasets_dir=paths["spec"].parent, repo_root=repo, allow_eval_machines=True)
     finally:
         mp.undo()
     store = Store(root / "store")

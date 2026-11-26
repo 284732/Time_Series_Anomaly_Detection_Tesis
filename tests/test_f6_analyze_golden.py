@@ -108,8 +108,9 @@ def run_synth(work: Path):
     repo = make_repo(work / "repo")
     spec = synth_spec(str(paths["data"]), str(work / "store"), mode="split3", step=1, seeds=[42, 43],
                       run_models=MODELS)
-    fitmod.run_fit(spec, datasets_dir=paths["spec"].parent, repo_root=repo)
-    report = an.run_analysis(spec, golden_plan(), datasets_dir=paths["spec"].parent, repo_root=repo)
+    fitmod.run_fit(spec, datasets_dir=paths["spec"].parent, repo_root=repo, allow_eval_machines=True)
+    report = an.run_analysis(spec, golden_plan(), datasets_dir=paths["spec"].parent, repo_root=repo,
+                             allow_eval_machines=True)
     return report.analysis_dir, Store(work / "store")
 
 

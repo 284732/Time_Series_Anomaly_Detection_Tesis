@@ -111,6 +111,16 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
     valutazione potrebbe usare i fit ufficiali con il solo `analyze`;
   - **perché un flag e non una chiave di config:** un campo nuovo in `ExperimentConfig` cambierebbe il `config_sha256`
     di tutte le config esistenti, che si calcola dalla config risolta completa (`src/utils/config.py::config_sha256`).
+  - **realizzazione (passo 1 di F9, 2026-11-26):** «provenance del run e dei fit creati» vuol dire, solo con il flag
+    attivo (senza flag nessuna chiave in più):
+    - `fit`: `created_by.allow_eval_machines` nel `meta.json` dei fit creati (fuori da ogni hash, `fit.META_EXCLUDED`;
+      i fit riusati non si riscrivono) e nota della riga `started` del registro con le macchine eval;
+    - `analyze`: `run.json` del run (`allow_eval_machines`, `eval_machines`) e nota della riga `started` del registro;
+      mai `analysis.json`, che è un'uscita dell'analisi (hash del golden di F6); le righe delle tabelle hanno già
+      `machine_role`.
+    - Il controllo vale per ogni `kind` diverso da `official`; un dataset senza `split_file` non ha ruoli (nessun
+      controllo nel fit; `analyze` lo rifiuta già, D-72 C11). Le fixture sintetiche hanno macchine eval: i test
+      esistenti passano il flag; il rifiuto senza flag è coperto da `tests/test_f9_eval_refusal.py`.
 
 ### D-09 · 5 seed nella valutazione — APPROVATA · 2026-11-09
 - **Decisione:** 5 seed per gli AE nei run ufficiali; modelli deterministici una sola volta. Seed per il tuning: D-41.

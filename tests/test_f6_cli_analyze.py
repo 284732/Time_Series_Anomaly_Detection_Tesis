@@ -20,7 +20,7 @@ from src.pipeline import store as storemod
 from src.pipeline.store import Store
 from tests.fixtures.datasets import write_synth_dataset
 from tests.fixtures.f5 import synth_spec
-from tests.test_f5_cli import _fail_first, _tree, _write_lock
+from tests.test_f5_cli import ALLOW_EVAL_FLAG, _fail_first, _tree, _write_lock
 
 ROOT = Path(__file__).resolve().parents[1]
 MODELS = ("pca", "rolling_zscore")
@@ -60,7 +60,10 @@ def _plan(tmp_path, name="plan", **kw):
 
 
 def _cli(env, cmd, exp, *rest, datasets_dir=None):
-    return cli.main([cmd, str(exp), *[str(r) for r in rest], "--datasets-dir", str(datasets_dir or env["datasets_dir"])])
+    """machine-9-2 è eval nel dataset sintetico: fit e analyze con ``--allow-eval-machines`` (F9 passo 1, D-08)."""
+    flag = [ALLOW_EVAL_FLAG] if cmd in ("fit", "analyze") else []
+    return cli.main([cmd, str(exp), *[str(r) for r in rest], "--datasets-dir", str(datasets_dir or env["datasets_dir"]),
+                     *flag])
 
 
 @pytest.fixture
@@ -300,7 +303,7 @@ def test_clean_tmp_removes_orphan_analysis_tmp(env, tmp_path, fitted, monkeypatc
 def test_smoke_subprocess_fit_analyze_status(env, tmp_path, repo_store_guard):
     exp, store = _exp(env, tmp_path, name="smoke", run_models=("pca",))
     plan = _plan(tmp_path)
-    for args in (["fit", exp], ["analyze", exp, plan], ["status", exp]):
+    for args in (["fit", exp, ALLOW_EVAL_FLAG], ["analyze", exp, plan, ALLOW_EVAL_FLAG], ["status", exp]):
         p = subprocess.run([sys.executable, "-m", "src.cli", *[str(a) for a in args], "--datasets-dir",
                             str(env["datasets_dir"])], cwd=ROOT, capture_output=True, text=True, timeout=600)
         assert p.returncode == 0, (args, p.stdout, p.stderr)

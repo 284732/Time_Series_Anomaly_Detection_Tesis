@@ -46,8 +46,8 @@ def env(tmp_path_factory):
     spec = synth_spec(str(paths["data"]), str(root / "store"), seeds=[42], run_models=MODELS)
     spec["experiment"]["name"] = "parity_synth"
     datasets_dir = paths["spec"].parent
-    fitmod.run_fit(spec, datasets_dir=datasets_dir, repo_root=repo)
-    report = an.run_analysis(spec, legacy_plan(), datasets_dir=datasets_dir, repo_root=repo)
+    fitmod.run_fit(spec, datasets_dir=datasets_dir, repo_root=repo, allow_eval_machines=True)
+    report = an.run_analysis(spec, legacy_plan(), datasets_dir=datasets_dir, repo_root=repo, allow_eval_machines=True)
     ref = root / "reference"
     shutil.copytree(report.analysis_dir / "legacy", ref)
     return {"root": root, "spec": spec, "analysis_id": report.analysis_id, "analysis_dir": report.analysis_dir,

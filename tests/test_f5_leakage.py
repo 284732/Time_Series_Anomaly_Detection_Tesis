@@ -193,7 +193,7 @@ def _run_store(env, spec, monkeypatch=None, drop_head=False):
             p = real(*a, **k)
             return dataclasses.replace(p, score={k2: v for k2, v in p.score.items() if k2 != fitmod.TEST_CTX_HEAD})
         monkeypatch.setattr(fitmod, "prepare_machine", no_head)
-    fitmod.run_fit(spec, datasets_dir=env["datasets_dir"], repo_root=env["repo"])
+    fitmod.run_fit(spec, datasets_dir=env["datasets_dir"], repo_root=env["repo"], allow_eval_machines=True)
     if drop_head:
         monkeypatch.undo()
     fits = Path(_root(spec)) / "fits"

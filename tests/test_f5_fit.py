@@ -55,7 +55,7 @@ def _root(spec):
 
 
 def _run(env, spec, **kw):
-    return fitmod.run_fit(spec, datasets_dir=env["datasets_dir"], repo_root=env["repo"], **kw)
+    return fitmod.run_fit(spec, datasets_dir=env["datasets_dir"], repo_root=env["repo"], **kw, allow_eval_machines=True)
 
 
 @pytest.fixture(scope="module")
@@ -326,7 +326,9 @@ def test_meta_contents(run_a):
             assert {k: rc.array_record(z[k])["sha256"] for k in z.files} == m["scaler"]["arrays"]
         assert m["device"] == {"requested": "cpu", "effective": "cpu"}
         assert set(m["timings"]) >= {"fit_seconds", "residual_seconds", "total_seconds"}
-        assert set(m["created_by"]) == {"experiment", "kind", "run_id"}
+        # fit con --allow-eval-machines (machine-9-2 è eval, F9 passo 1): chiave registrata; senza flag è assente
+        # (tests/test_f9_eval_refusal.py)
+        assert set(m["created_by"]) == {"experiment", "kind", "run_id", "allow_eval_machines"}
 
 
 # ------------------------------------------------------------------ 8. lock

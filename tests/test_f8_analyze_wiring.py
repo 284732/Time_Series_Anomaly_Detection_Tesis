@@ -94,10 +94,10 @@ def _run(root: Path, data_dir: Path, datasets_dir: Path, repo: Path, tag: str, m
     spec = synth_spec(str(data_dir), str(root / f"store_{tag}"), mode="split3", step=1, seeds=[42],
                       run_models=MODELS)
     spec["data"]["machines"] = [MACHINE]
-    fitmod.run_fit(spec, datasets_dir=datasets_dir, repo_root=repo)
+    fitmod.run_fit(spec, datasets_dir=datasets_dir, repo_root=repo, allow_eval_machines=True)
     with monkeypatch.context() as mp:
         rec = _record(mp)
-        an.run_analysis(spec, PLAN, datasets_dir=datasets_dir, repo_root=repo)
+        an.run_analysis(spec, PLAN, datasets_dir=datasets_dir, repo_root=repo, allow_eval_machines=True)
     return rec
 
 

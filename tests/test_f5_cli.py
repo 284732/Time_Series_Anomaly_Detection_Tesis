@@ -47,8 +47,14 @@ def _yaml(env, tmp_path, name="exp", mutate=None, **kw):
     return p, Store(spec["paths"]["store_root"])
 
 
+ALLOW_EVAL_FLAG = "--allow-eval-machines"
+
+
 def _main(env, *args, datasets_dir=None):
-    return cli.main([args[0], str(args[1]), "--datasets-dir", str(datasets_dir or env["datasets_dir"]), *args[2:]])
+    """machine-9-2 è eval nel dataset sintetico: fit con ``--allow-eval-machines`` (F9 passo 1, nota su D-08)."""
+    flag = [ALLOW_EVAL_FLAG] if args[0] in ("fit", "analyze") else []
+    return cli.main([args[0], str(args[1]), "--datasets-dir", str(datasets_dir or env["datasets_dir"]), *args[2:],
+                     *flag])
 
 
 def _tree(root: Path):
@@ -160,8 +166,9 @@ def test_exit_130_on_keyboard_interrupt(env, tmp_path, monkeypatch):
 def test_smoke_subprocess_fit_and_status(env, tmp_path, repo_store_guard):
     path, store = _yaml(env, tmp_path, run_models=("pca", "input_norm"))
     for cmd in ("fit", "status"):
-        p = subprocess.run([sys.executable, "-m", "src.cli", cmd, str(path), "--datasets-dir", str(env["datasets_dir"])],
-                           cwd=ROOT, capture_output=True, text=True, timeout=300)
+        flag = [ALLOW_EVAL_FLAG] if cmd == "fit" else []
+        p = subprocess.run([sys.executable, "-m", "src.cli", cmd, str(path), "--datasets-dir", str(env["datasets_dir"]),
+                            *flag], cwd=ROOT, capture_output=True, text=True, timeout=300)
         assert p.returncode == 0, (cmd, p.stdout, p.stderr)
     assert p.stdout.count(" complete ") == 4
     repo_store_guard.check()

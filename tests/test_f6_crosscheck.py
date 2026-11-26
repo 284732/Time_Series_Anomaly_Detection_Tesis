@@ -71,11 +71,12 @@ def legacy_store(base):
     seeds [42, 43] (seed legacy = seeds[0] = 42): il caso dichiarato del deterministico con seeds[0] diverso."""
     store_root = str(base["root"] / "store_legacy")
     first = synth_spec(str(base["paths"]["data"]), store_root, seeds=[7], run_models=("pca", "rolling_zscore"))
-    fitmod.run_fit(first, datasets_dir=base["datasets_dir"], repo_root=base["repo"])
+    fitmod.run_fit(first, datasets_dir=base["datasets_dir"], repo_root=base["repo"], allow_eval_machines=True)
     spec = synth_spec(str(base["paths"]["data"]), store_root, seeds=[42, 43],
                       run_models=("pca", "rolling_zscore", "conv_autoencoder"))
-    fitmod.run_fit(spec, datasets_dir=base["datasets_dir"], repo_root=base["repo"])
-    report = an.run_analysis(spec, legacy_plan(), datasets_dir=base["datasets_dir"], repo_root=base["repo"])
+    fitmod.run_fit(spec, datasets_dir=base["datasets_dir"], repo_root=base["repo"], allow_eval_machines=True)
+    report = an.run_analysis(spec, legacy_plan(), datasets_dir=base["datasets_dir"], repo_root=base["repo"],
+                             allow_eval_machines=True)
     return spec, report, Store(store_root)
 
 
@@ -168,7 +169,7 @@ def split3_residuals(base):
     store_root = str(base["root"] / "store_split3")
     spec = synth_spec(str(base["paths"]["data"]), store_root, mode="split3", step=1, seeds=[42],
                       run_models=("pca", "conv_autoencoder"))
-    fitmod.run_fit(spec, datasets_dir=base["datasets_dir"], repo_root=base["repo"])
+    fitmod.run_fit(spec, datasets_dir=base["datasets_dir"], repo_root=base["repo"], allow_eval_machines=True)
     store = Store(store_root)
     out = {}
     for d in sorted((store.root / "fits").iterdir()):
@@ -288,8 +289,9 @@ def test_es_does_not_affect_models_that_do_not_use_it(base, tmp_path):
                 np.savetxt(f, x, fmt="%.6f", delimiter=",")
         spec = synth_spec(str(paths["data"]), str(tmp_path / f"store{int(perturb)}"), mode="split3", step=1,
                           seeds=[42], run_models=models)
-        fitmod.run_fit(spec, datasets_dir=paths["spec"].parent, repo_root=base["repo"])
-        report = an.run_analysis(spec, plan, datasets_dir=paths["spec"].parent, repo_root=base["repo"])
+        fitmod.run_fit(spec, datasets_dir=paths["spec"].parent, repo_root=base["repo"], allow_eval_machines=True)
+        report = an.run_analysis(spec, plan, datasets_dir=paths["spec"].parent, repo_root=base["repo"],
+                                 allow_eval_machines=True)
         store = Store(tmp_path / f"store{int(perturb)}")
         results.append({t: store.read_table(report.analysis_dir, t) for t in ("free", "thr", "fits")})
     keys = ["machine", "model", "seed", "scenario", "window_time_agg", "sensor_agg", "normalizer", "ts_agg", "metric"]

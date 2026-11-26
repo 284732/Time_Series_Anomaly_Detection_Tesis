@@ -43,7 +43,7 @@ def env(tmp_path_factory):
 def _build(env, name, **kw):
     kw.setdefault("seeds", (42,))
     spec = synth_spec(str(env["data"]), str(env["root"] / name), **kw)
-    fitmod.run_fit(spec, datasets_dir=env["datasets_dir"], repo_root=env["repo"])
+    fitmod.run_fit(spec, datasets_dir=env["datasets_dir"], repo_root=env["repo"], allow_eval_machines=True)
     return Path(spec["paths"]["store_root"])
 
 
@@ -393,7 +393,7 @@ def test_failed_or_missing_fit_is_an_explicit_error(env, monkeypatch, tmp_path):
     spec = synth_spec(str(env["data"]), str(tmp_path / "s_failed"), run_models=("pca",), seeds=(42,))
     cls = registry.get("pca")
     monkeypatch.setattr(cls, "fit", lambda self, *a, **k: (_ for _ in ()).throw(RuntimeError("iniettato")))
-    fitmod.run_fit(spec, datasets_dir=env["datasets_dir"], repo_root=env["repo"])
+    fitmod.run_fit(spec, datasets_dir=env["datasets_dir"], repo_root=env["repo"], allow_eval_machines=True)
     monkeypatch.undo()
     store = Store(spec["paths"]["store_root"])
     key = next(iter(_metas(store)))

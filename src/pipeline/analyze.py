@@ -5,8 +5,9 @@ esportazione legacy facoltativa (6a) dai residui dello store, identità e pubbli
 ``run_analysis``:
   1. validazione dell'esperimento (come ``fit``) e del piano; ``kind: official`` rifiutato fino a F10;
   2. controlli preliminari bloccanti, senza lock e senza scritture: coerenza piano–esperimento (D-24, D-60), divisione
-     dev/eval del dataset (C11), manifest, hash e contenuto di ogni macchina (le label lette sono quelle dell'hash,
-     C13), segmenti, storia di cal per le soglie mobili (C15, ``thresholds.check_history``), ``meta.json`` di ogni fit
+     dev/eval del dataset (C11), macchine di valutazione rifiutate negli esperimenti esplorativi salvo
+     ``allow_eval_machines`` (F9 passo 1, nota su D-08), manifest, hash e contenuto di ogni macchina (le label lette
+     sono quelle dell'hash, C13), segmenti, storia di cal per le soglie mobili (C15, ``thresholds.check_history``), ``meta.json`` di ogni fit
      pianificato (fit mancante, segmenti diversi o campo non classificato = errore);
   3. id provvisorio (D-72 B12; nessun array letto: gli sha256 sono nei ``meta.json``) e rifiuto anticipato se
      l'analisi esiste già;
@@ -144,7 +145,7 @@ def check_models_for_plan(plan: ap.AnalysisPlan, cfg) -> None:
                                   f"{list(cls.allowed_ts_aggs or plan.ts_aggs)}): il modello non avrebbe righe (D-74)")
 
 
-def _preflight(cfg, plan: ap.AnalysisPlan, datasets_dir):
+def _preflight(cfg, plan: ap.AnalysisPlan, datasets_dir, allow_eval_machines: bool = False):
     if cfg.kind == "official":
         raise AnalysisRefused("kind: official non disponibile prima di F10 (D-72)")
     ap.check_plan_for_experiment(plan, cfg)
@@ -162,6 +163,9 @@ def _preflight(cfg, plan: ap.AnalysisPlan, datasets_dir):
         machines = manifest.resolve(cfg.data.machines)
     except Exception as exc:
         raise AnalysisPreflightError([f"data.machines: {exc}"]) from None
+    refusal = fitmod.eval_refusal("analyze", cfg.kind, manifest.eval_among(machines), allow_eval_machines)
+    if refusal:                       # D-08: prima di leggere dati e store (il fit_key non contiene il kind)
+        raise AnalysisRefused(refusal)
     segs = {}
     for m in machines:
         try:
@@ -380,14 +384,23 @@ def _tables(store: Store, cfg, plan, manifest, machines, segs, tasks, metas, loc
 
 # ---------------------------------------------------------------- esecuzione
 def run_analysis(spec: Union[Mapping[str, Any], str, Path], plan: Union[Mapping[str, Any], str, Path],
-                 datasets_dir: Union[str, Path], repo_root: Union[str, Path]) -> AnalysisReport:
-    """Valida esperimento e piano (prima di ogni lettura dello store), poi esegue l'analisi (vedi docstring)."""
+                 datasets_dir: Union[str, Path], repo_root: Union[str, Path],
+                 allow_eval_machines: bool = False) -> AnalysisReport:
+    """Valida esperimento e piano (prima di ogni lettura dello store), poi esegue l'analisi (vedi docstring).
+    ``allow_eval_machines`` (flag di CLI ``--allow-eval-machines``, nota su D-08): ammette le macchine di valutazione
+    in un esperimento esplorativo; se attivo si registra in ``run.json`` e nella nota del registro, mai in
+    ``analysis.json`` (uscita dell'analisi; le righe hanno già ``machine_role``)."""
     cfg = fitmod.validated_config(spec)
-    return _run(cfg, _plan(plan), datasets_dir, repo_root)
+    return _run(cfg, _plan(plan), datasets_dir, repo_root, allow_eval_machines)
 
 
-def _run(cfg, plan: ap.AnalysisPlan, datasets_dir, repo_root) -> AnalysisReport:
-    manifest, machines, segs, tasks = _preflight(cfg, plan, datasets_dir)
+def _run(cfg, plan: ap.AnalysisPlan, datasets_dir, repo_root, allow_eval_machines: bool = False) -> AnalysisReport:
+    manifest, machines, segs, tasks = _preflight(cfg, plan, datasets_dir, allow_eval_machines)
+    eval_info = None
+    if allow_eval_machines:
+        eval_info = {fitmod.ALLOW_EVAL_KEY: True, "eval_machines": list(manifest.eval_among(machines))}
+        _log.warning("%s: macchine di valutazione ammesse in un esperimento %s: %s", fitmod.ALLOW_EVAL_FLAG,
+                     cfg.kind, eval_info["eval_machines"])
     store = Store(cfg.store_root)
     comps0, _ = _identity(store, cfg, plan, manifest, machines, segs, tasks)
     aid0 = ap.analysis_id(comps0)
@@ -402,12 +415,13 @@ def _run(cfg, plan: ap.AnalysisPlan, datasets_dir, repo_root) -> AnalysisReport:
         psha = ap.plan_sha256(plan)
         run = store.begin_run(kind=cfg.kind, experiment=cfg.name, stage=STAGE,
                               config_sha256=cfgmod.config_sha256(cfg), repo_root=repo_root, plan_sha256=psha,
-                              run_id=run_id)
+                              run_id=run_id,
+                              note="" if eval_info is None else fitmod.eval_note(eval_info["eval_machines"]))
         setup_run_logging(run.run_dir)
         try:
             dest, legacy, info = _execute(store, cfg, plan, manifest, machines, segs, tasks, metas, lock, run, comps,
                                           aid, psha, datasets_dir)
-            recorded = _record_run(store, run, aid, dest)
+            recorded = _record_run(store, run, aid, dest, eval_info)
         finally:
             close_run_logging(run.run_dir)
     _log.info("analisi %s: righe free %d, thr %d, fits %d (failed %d); legacy %s", aid, info["rows"]["free"],
@@ -421,14 +435,14 @@ def _run(cfg, plan: ap.AnalysisPlan, datasets_dir, repo_root) -> AnalysisReport:
     return AnalysisReport(run.run_id, run.run_dir, aid, dest, counts, recorded, info["nan_reasons"])
 
 
-def _record_run(store: Store, run, aid: str, dest: Path) -> bool:
+def _record_run(store: Store, run, aid: str, dest: Path, eval_info: Optional[Dict[str, Any]] = None) -> bool:
     """Dopo la pubblicazione l'analisi è completa (V13): ``run.json`` e registro sono solo il resoconto del run. Un
-    loro errore è un avviso (``status`` segnalerà l'incongruenza, passo 7), mai un fallimento dell'analisi."""
+    loro errore è un avviso (``status`` segnalerà l'incongruenza, passo 7), mai un fallimento dell'analisi.
+    ``eval_info``: flag ``--allow-eval-machines`` e macchine eval (nota su D-08), solo se il flag è attivo."""
     try:
-        (run.run_dir / RUN_JSON).write_text(json.dumps(
-            {"run_id": run.run_id, "stage": STAGE, "analysis_id": aid,
-             "analysis_dir": dest.relative_to(store.root).as_posix()}, indent=1, sort_keys=True) + "\n",
-            encoding="utf-8")
+        doc = {"run_id": run.run_id, "stage": STAGE, "analysis_id": aid,
+               "analysis_dir": dest.relative_to(store.root).as_posix(), **(eval_info or {})}
+        (run.run_dir / RUN_JSON).write_text(json.dumps(doc, indent=1, sort_keys=True) + "\n", encoding="utf-8")
         store.finish_run(run, "completed", note=f"analysis_id {aid}")
         return True
     except Exception as exc:

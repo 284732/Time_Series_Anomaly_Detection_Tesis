@@ -40,10 +40,11 @@ def build_analyses(root: Path) -> dict:
                  it.SCALER: it.experiment(it.SCALER, paths["data"], root / "store", "standard")}
         aids, shas = {}, {}
         for raw in specs.values():
-            fitmod.run_fit(copy.deepcopy(raw), datasets_dir=paths["spec"].parent, repo_root=repo)
+            fitmod.run_fit(copy.deepcopy(raw), datasets_dir=paths["spec"].parent, repo_root=repo,
+                           allow_eval_machines=True)
         for e, raw in specs.items():
             rep = an.run_analysis(copy.deepcopy(raw), it.analysis_plan(), datasets_dir=paths["spec"].parent,
-                                  repo_root=repo)
+                                  repo_root=repo, allow_eval_machines=True)
             aids[e] = rep.analysis_id
             shas[e] = json.loads((rep.analysis_dir / "analysis.json").read_text(encoding="utf-8"))["plan_sha256"]
         return {"root": root, "paths": paths, "repo": repo, "specs": specs, "aids": aids, "plan_shas": shas,

@@ -81,14 +81,14 @@ def env(tmp_path_factory):
     paths = write_synth_dataset(root / "synth")
     repo = make_repo(root / "repo")
     spec = synth_spec(str(paths["data"]), str(root / "store"))
-    fitmod.run_fit(spec, datasets_dir=paths["spec"].parent, repo_root=repo)
+    fitmod.run_fit(spec, datasets_dir=paths["spec"].parent, repo_root=repo, allow_eval_machines=True)
     return {"root": root, "data": paths["data"], "datasets_dir": paths["spec"].parent, "repo": repo, "spec": spec,
             "store": Store(root / "store")}
 
 
 def analyze(env, plan, spec=None, **kw):
     return an.run_analysis(copy.deepcopy(spec or env["spec"]), plan, datasets_dir=env["datasets_dir"],
-                           repo_root=env["repo"], **kw)
+                           repo_root=env["repo"], **kw, allow_eval_machines=True)
 
 
 @pytest.fixture(scope="module")
@@ -277,7 +277,8 @@ def test_dataset_without_dev_eval_split_is_refused(env, tmp_path):
     store = env["store"]
     runs, reg = _run_dirs(store), _registry(store)
     with pytest.raises(an.AnalysisRefused, match="split_file"):
-        an.run_analysis(spec, legacy_plan("last"), datasets_dir=paths["spec"].parent, repo_root=env["repo"])
+        an.run_analysis(spec, legacy_plan("last"), datasets_dir=paths["spec"].parent, repo_root=env["repo"],
+                        allow_eval_machines=True)
     assert _run_dirs(store) == runs and _registry(store) == reg
 
 
@@ -305,7 +306,7 @@ def small(env):
     mp = pytest.MonkeyPatch()
     mp.setattr(fitmod, "fit_one", fail_rolling)
     try:
-        fitmod.run_fit(spec, datasets_dir=env["datasets_dir"], repo_root=env["repo"])
+        fitmod.run_fit(spec, datasets_dir=env["datasets_dir"], repo_root=env["repo"], allow_eval_machines=True)
     finally:
         mp.undo()
     report = analyze(env, legacy_plan("last"), spec=spec)
@@ -519,6 +520,7 @@ def _subprocess(code: str) -> dict:
     return json.loads(out.stdout.strip().splitlines()[-1])
 
 
+@pytest.mark.slow          # circa 6,2 s (subprocess, F9 passo 1); incluso nella suite predefinita
 def test_legacy_export_path_leaves_global_state_unchanged(tmp_path):
     code = rf"""
 before = state()

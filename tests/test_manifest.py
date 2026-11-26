@@ -372,6 +372,7 @@ def _script(*args):
                           capture_output=True, text=True, cwd=ROOT)
 
 
+@pytest.mark.slow          # circa 5,1 s (subprocess dello script, F9 passo 1); incluso nella suite predefinita
 def test_make_data_hashes_write_check_and_refuse(alt):
     out = alt["spec"].parent / "h.yaml"
     common = ("--spec", alt["spec"], "--data-dir", alt["data"], "--out", out)

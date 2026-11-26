@@ -157,9 +157,11 @@ def synth(tmp_path_factory):
         p = root / f"{k}.yaml"
         p.write_text(yaml.safe_dump(spec, sort_keys=False), encoding="utf-8")
         files[k] = p
-        fitmod.run_fit(str(p), datasets_dir=ds, repo_root=repo)
-        aids[k] = an.run_analysis(str(p), copy.deepcopy(PLAN), datasets_dir=ds, repo_root=repo).analysis_id
-    ctx = an.run_analysis(str(files["V1"]), copy.deepcopy(CONTEXT_PLAN), datasets_dir=ds, repo_root=repo).analysis_id
+        fitmod.run_fit(str(p), datasets_dir=ds, repo_root=repo, allow_eval_machines=True)
+        aids[k] = an.run_analysis(str(p), copy.deepcopy(PLAN), datasets_dir=ds, repo_root=repo,
+                                  allow_eval_machines=True).analysis_id
+    ctx = an.run_analysis(str(files["V1"]), copy.deepcopy(CONTEXT_PLAN), datasets_dir=ds, repo_root=repo,
+                          allow_eval_machines=True).analysis_id
     return {"root": root, "store": store, "files": files, "aids": aids, "ctx": ctx, "ds": ds}
 
 

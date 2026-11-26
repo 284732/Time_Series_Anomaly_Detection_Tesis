@@ -42,6 +42,7 @@ def specs(report_stats):
     return s, fg.figure_specs(s)
 
 
+@pytest.mark.slow          # circa 5,3 s (due processi nuovi, F9 passo 1); incluso nella suite predefinita
 def test_same_bytes_in_two_processes_with_different_hash_seeds(report_stats):
     a = _render_in_subprocess(report_stats["stats_dir"], env_extra={"PYTHONHASHSEED": "0"})
     b = _render_in_subprocess(report_stats["stats_dir"], env_extra={"PYTHONHASHSEED": "12345"})
@@ -73,6 +74,7 @@ def test_style_is_fixed_and_the_font_comes_from_matplotlib(specs):
         assert k in fg.RC
 
 
+@pytest.mark.slow          # circa 7,6 s (processi nuovi con matplotlib, F9 passo 1); incluso nella suite predefinita
 def test_a_user_matplotlibrc_does_not_change_the_bytes(report_stats, tmp_path):
     cfg = tmp_path / "mplcfg"
     cfg.mkdir()

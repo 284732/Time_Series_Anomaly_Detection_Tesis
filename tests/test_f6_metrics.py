@@ -235,6 +235,7 @@ def _thresholds(rng, s):
                            np.quantile(s, rng.random(5))))
 
 
+@pytest.mark.slow          # circa 5,7 s (300 casi casuali, F9 passo 1); incluso nella suite predefinita
 def test_common_metrics_are_bit_identical_to_evaluate_timestamps():
     rng = np.random.default_rng(72)
     for _ in range(300):

@@ -265,6 +265,14 @@ class Manifest:
             return None
         return next(r for r in ROLES if machine in self._roles[r])
 
+    def eval_among(self, machines: Sequence[str]) -> Tuple[str, ...]:
+        """Macchine con ruolo ``eval`` tra quelle indicate, nell'ordine dato (D-08); () senza ``split_file``.
+        Legge solo il file dev/eval: nessun hash, nessun dato."""
+        if self._roles is None:
+            return ()
+        ev = set(self._roles["eval"])
+        return tuple(m for m in machines if m in ev)
+
     def _known(self, machine: str) -> str:
         if machine not in self.spec.machines:
             raise KeyError(f"macchina {machine!r} non presente nello spec {self.spec.name!r}")

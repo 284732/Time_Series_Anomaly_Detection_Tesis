@@ -145,9 +145,9 @@ def run(tmp_path_factory):
         exp_file.write_text(yaml.safe_dump(experiment_yaml(paths["data"], root / "store"), sort_keys=False),
                             encoding="utf-8")
         ds = paths["spec"].parent
-        fit_rep = fitmod.run_fit(exp_file, datasets_dir=ds, repo_root=repo)
+        fit_rep = fitmod.run_fit(exp_file, datasets_dir=ds, repo_root=repo, allow_eval_machines=True)
         t1 = time.perf_counter()
-        a_rep = an.run_analysis(exp_file, analysis_plan(), datasets_dir=ds, repo_root=repo)
+        a_rep = an.run_analysis(exp_file, analysis_plan(), datasets_dir=ds, repo_root=repo, allow_eval_machines=True)
         t2 = time.perf_counter()
         cfg = fitmod.validated_config(exp_file)
         aj = json.loads((a_rep.analysis_dir / "analysis.json").read_text(encoding="utf-8"))

@@ -10,7 +10,8 @@ Codici di uscita:
   1 = almeno un fit failed (fit; analyze: analisi pubblicata con fit failed solo in ``fits``) o un errore di
       integrità (status --verify);
   2 = config, piano o dati non validi (validazione, controlli preliminari compresi C15 e fit mancanti, label cambiate
-      durante l'esecuzione, analisi già presente, ``kind: official`` prima di F10);
+      durante l'esecuzione, analisi già presente, ``kind: official`` prima di F10; fit e analyze: macchine di
+      valutazione in un esperimento esplorativo senza ``--allow-eval-machines``, nota su D-08);
   3 = store occupato (lock attivo, rimasto senza ``--break-stale-lock``, di un altro host, illeggibile);
   4 = analyze e stats: pubblicazione non riuscita, nessun risultato (rinomina fallita dopo tutti i tentativi, B11);
   130 = interruzione (KeyboardInterrupt; registro ``interrupted``).
@@ -86,7 +87,8 @@ def cmd_fit(args) -> int:
         _err(f"config non valida: file di esperimento inesistente: {args.experiment}")
         return EXIT_INVALID
     try:
-        report = fitmod.run_fit(args.experiment, datasets_dir=args.datasets_dir, repo_root=REPO_ROOT)
+        report = fitmod.run_fit(args.experiment, datasets_dir=args.datasets_dir, repo_root=REPO_ROOT,
+                                allow_eval_machines=args.allow_eval_machines)
     except KeyboardInterrupt:
         _err("interrotto: registro 'interrupted', lock rilasciato, cartella temporanea del compito in corso rimossa")
         return EXIT_INTERRUPTED
@@ -282,7 +284,8 @@ def cmd_analyze(args) -> int:
             _err(f"config non valida: file di {what} inesistente: {path}")
             return EXIT_INVALID
     try:
-        report = anmod.run_analysis(args.experiment, args.plan, datasets_dir=args.datasets_dir, repo_root=REPO_ROOT)
+        report = anmod.run_analysis(args.experiment, args.plan, datasets_dir=args.datasets_dir, repo_root=REPO_ROOT,
+                                    allow_eval_machines=args.allow_eval_machines)
     except KeyboardInterrupt:
         _err("interrotto: registro 'interrupted', lock rilasciato, cartella temporanea dell'analisi lasciata per "
              "clean-tmp")
@@ -458,6 +461,10 @@ def build_parser() -> argparse.ArgumentParser:
             p.add_argument("plan", help="file YAML del piano di analisi (configs/analysis/<nome>.yaml)")
         p.add_argument("--datasets-dir", default=str(DEFAULT_DATASETS_DIR), help="cartella degli spec dei dataset")
         p.set_defaults(func=fn)
+        if name in ("fit", "analyze"):
+            p.add_argument(fitmod.ALLOW_EVAL_FLAG, action="store_true",
+                           help="ammette le macchine di valutazione in un esperimento esplorativo (D-08); il flag si "
+                                "registra nel registro, nel meta.json dei fit creati e in run.json dell'analisi")
         if name == "status":
             p.add_argument("--verify", action="store_true", help="verifica gli sha256 dei residui presenti")
         if name == "clean-tmp":

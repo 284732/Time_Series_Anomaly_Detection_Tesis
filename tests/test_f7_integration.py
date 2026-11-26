@@ -105,10 +105,11 @@ def test_fit_analyze_stats_end_to_end(tmp_path, monkeypatch, capsys):
     aids, shas = {}, {}
     t_fit = time.perf_counter()
     for e, raw in specs.items():
-        fitmod.run_fit(copy.deepcopy(raw), datasets_dir=paths["spec"].parent, repo_root=repo)
+        fitmod.run_fit(copy.deepcopy(raw), datasets_dir=paths["spec"].parent, repo_root=repo, allow_eval_machines=True)
     t_an = time.perf_counter()
     for e, raw in specs.items():
-        rep = an.run_analysis(copy.deepcopy(raw), analysis_plan(), datasets_dir=paths["spec"].parent, repo_root=repo)
+        rep = an.run_analysis(copy.deepcopy(raw), analysis_plan(), datasets_dir=paths["spec"].parent, repo_root=repo,
+                              allow_eval_machines=True)
         aids[e] = rep.analysis_id
         shas[e] = json.loads((rep.analysis_dir / "analysis.json").read_text(encoding="utf-8"))["plan_sha256"]
     t_st = time.perf_counter()

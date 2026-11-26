@@ -59,9 +59,9 @@ def experiment(name, scaler="minmax", **windows):
 
 def publish(root, raw):
     """Fit e analisi di ``raw`` nell'ambiente ``root`` (cartella di lavoro già impostata); restituisce l'id."""
-    fitmod.run_fit(copy.deepcopy(raw), datasets_dir=SPECS, repo_root=root / "repo")
+    fitmod.run_fit(copy.deepcopy(raw), datasets_dir=SPECS, repo_root=root / "repo", allow_eval_machines=True)
     return an.run_analysis(copy.deepcopy(raw), analysis_plan(), datasets_dir=SPECS,
-                           repo_root=root / "repo").analysis_id
+                           repo_root=root / "repo", allow_eval_machines=True).analysis_id
 
 
 @pytest.fixture(scope="module")

@@ -1193,6 +1193,14 @@ D-53 approvata (2026-11-10): `.pyc` tolti dal tracciamento, `dataset/` resta tra
       CLI `--allow-eval-machines`, registrato nella provenance del run e dei fit creati; la chiave è assente senza il
       flag, così le uscite di oggi restano identiche (golden F6 e F7 invariati); test scritto per primo, con prove di
       difetto;
+      - **Scostamento (2026-11-26, approvato con il passo 1):** le fixture sintetiche hanno macchine eval (machine-9-2
+        in `tests/fixtures/datasets.py`; in `synth_many.py` tutte tranne una per gruppo), quindi i test esistenti
+        passano `allow_eval_machines=True` / `--allow-eval-machines`; il rifiuto senza flag è coperto da
+        `tests/test_f9_eval_refusal.py`. Registrazione: i fit nel `created_by` del `meta.json` dei fit creati (fuori da
+        ogni hash); `analyze` in `run.json` e nella nota della riga `started` del registro, non in `analysis.json`
+        (hash del golden di F6); nota del registro anche per `fit`. Golden F6, F7 e snapshot F1 invariati;
+      - marcatura `slow` (modifica separata): 8 test oltre 5 s (misura `--durations` del passo 1), esclusi lo snapshot
+        F1 e i test golden; `pytest.ini` invariato;
     - **2 — griglia, generatore, piano di analisi di tuning, test «budget pari per costruzione»:** stesso K per le 6
       famiglie tarate, `input_norm` K = 1, AE non addestrati assenti; slot 1 = V1 (anche nel `fit_payload`); la regola
       K = 6 dà esattamente gli slot 1–6 per tutte le famiglie; livelli di scoring per famiglia dal piano (14, oppure 7

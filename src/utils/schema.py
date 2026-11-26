@@ -3,7 +3,8 @@ Schema della configurazione della nuova pipeline (F2): dataclass immutabili e va
 
 Regole:
   * chiave sconosciuta o campo mancante → ``ConfigError`` (nessun default implicito per i campi legati
-    a decisioni aperte: D-38 ``train_step``, D-39 epoche/patience, D-40 preprocessing, D-41 seed);
+    alle decisioni di protocollo, tutte approvate: D-38 ``train_step``, D-39 epoche/patience, D-40 preprocessing,
+    D-41 seed; i valori stanno nelle config, mai nel codice);
   * gli iperparametri ammessi sono elencati per modello in ``MODEL_SCHEMAS``; nessun default nel codice
     dei modelli viene usato in silenzio (tutti espliciti, così entrano nel ``fit_key``);
   * ``deterministic`` non si dichiara in config: è un attributo della classe del modello, eventualmente
@@ -222,8 +223,9 @@ def _validate_model(name: str, d: Any, path: str) -> ModelSpec:
     if name == "pca" and pca_svd_solver(params["n_components"]) == "auto" and spec.deterministic:
         raise ConfigError(
             f"{path}: PCA a finestre con n_components intero usa svd_solver='auto' (solver randomizzato con "
-            "molte feature) ma risulterebbe deterministica ai fini del fit_key: combinazione rifiutata (D-57, decisione aperta; "
-            f"scadenza prima di D-41). Usa n_components float oppure random_state: {FROM_SEED!r}.")
+            "molte feature) ma risulterebbe deterministica ai fini del fit_key: combinazione rifiutata (D-57: nella tesi "
+            "la PCA a finestre usa solo n_components float; un intero richiederebbe una nuova voce). Usa n_components "
+            f"float oppure random_state: {FROM_SEED!r}.")
     return spec
 
 

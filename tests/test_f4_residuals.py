@@ -315,8 +315,8 @@ def test_pca_checkpoint_restores_every_fitted_attribute(env, tmp_path, model_key
 
 
 def test_pca_with_integer_components_roundtrip(env, tmp_path):
-    """D-57 aperta: con n_components intero il checkpoint salva le componenti, quindi i residui non dipendono
-    dal solver al momento del load."""
+    """D-57 (approvata: nella tesi solo n_components float; qui un intero per l'interfaccia): con n_components intero
+    il checkpoint salva le componenti, quindi i residui non dipendono dal solver al momento del load."""
     cfg = {"n_components": 3, "random_state": 7}
     model = fit_like_main("pca", env["data"], config=cfg)
     assert model.fit_info_.svd_solver == "auto" and model.fit_info_.n_components == 3
@@ -410,6 +410,7 @@ for key, ckpt, out in zip(sys.argv[3::3], sys.argv[4::3], sys.argv[5::3]):
 """
 
 
+@pytest.mark.slow          # circa 6,6 s (subprocess che reimporta torch, F9 passo 1); incluso nella suite predefinita
 def test_ae_checkpoint_loads_in_a_fresh_process_from_the_checkpoint_only(env, tmp_path):
     """Istanza costruita solo dal checkpoint (nessuna config, nessun dato di training), in un processo nuovo
     (uno solo per entrambi gli AE: l'import di torch domina il tempo)."""

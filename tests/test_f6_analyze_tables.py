@@ -59,7 +59,7 @@ def env(tmp_path_factory):
     mp = pytest.MonkeyPatch()
     mp.setattr(fitmod, "fit_one", fail_input_norm)
     try:
-        fitmod.run_fit(spec, datasets_dir=paths["spec"].parent, repo_root=repo)
+        fitmod.run_fit(spec, datasets_dir=paths["spec"].parent, repo_root=repo, allow_eval_machines=True)
     finally:
         mp.undo()
     return {"root": root, "data": paths["data"], "datasets_dir": paths["spec"].parent, "repo": repo, "spec": spec,
@@ -68,7 +68,7 @@ def env(tmp_path_factory):
 
 def analyze(env, plan, spec=None, datasets_dir=None):
     return an.run_analysis(copy.deepcopy(spec or env["spec"]), plan, datasets_dir=datasets_dir or env["datasets_dir"],
-                           repo_root=env["repo"])
+                           repo_root=env["repo"], allow_eval_machines=True)
 
 
 @pytest.fixture(scope="module")
@@ -296,6 +296,7 @@ import json, sys
 """
 
 
+@pytest.mark.slow          # circa 5,3 s (subprocess, F9 passo 1); incluso nella suite predefinita
 def test_split3_without_legacy_export_reads_residuals_and_never_imports_main(env):
     plan = table_plan(pct=95.0, scenarios=("primary",))
     code = _STATE + rf"""
@@ -308,7 +309,8 @@ def spy(*a, **k):
     calls.append(a[2])
     return real(*a, **k)
 an.rc.get_residuals = spy
-report = an.run_analysis({env['spec']!r}, {plan!r}, datasets_dir=r"{env['datasets_dir']}", repo_root=r"{env['repo']}")
+report = an.run_analysis({env['spec']!r}, {plan!r}, datasets_dir=r"{env['datasets_dir']}", repo_root=r"{env['repo']}",
+                         allow_eval_machines=True)
 print(json.dumps({{"at_import": at_import, "after": "main" in sys.modules, "calls": len(calls)}}))
 """
     out = subprocess.run([sys.executable, "-c", code], cwd=ROOT, capture_output=True, text=True, timeout=600)

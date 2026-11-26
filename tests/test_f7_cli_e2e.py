@@ -67,8 +67,8 @@ def e2e(tmp_path_factory):
         p = root / f"{name}.yaml"
         p.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
         files[name] = p
-        fitmod.run_fit(str(p), datasets_dir=ds, repo_root=repo)
-        rep = an.run_analysis(str(p), copy.deepcopy(plan_an), datasets_dir=ds, repo_root=repo)
+        fitmod.run_fit(str(p), datasets_dir=ds, repo_root=repo, allow_eval_machines=True)
+        rep = an.run_analysis(str(p), copy.deepcopy(plan_an), datasets_dir=ds, repo_root=repo, allow_eval_machines=True)
         aids[name] = rep.analysis_id
         shas[name] = json.loads((rep.analysis_dir / "analysis.json").read_text(encoding="utf-8"))["plan_sha256"]
     env = {"specs": {e: str(f) for e, f in files.items()}, "plan_shas": shas}

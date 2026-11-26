@@ -143,6 +143,7 @@ def test_two_reports_are_identical_byte_for_byte(report_stats, tmp_path):
     assert all(b"\r\n" not in b for n, b in outs[0].items() if n.endswith((".md", ".tex", ".csv", ".json")))
 
 
+@pytest.mark.slow          # circa 6,3 s (subprocess della CLI, F9 passo 1); incluso nella suite predefinita
 def test_smoke_subprocess(report_stats, tmp_path):
     out = tmp_path / "rep"
     r = subprocess.run([sys.executable, "-m", "src.cli", "report", str(report_stats["stats_dir"]), "--out",

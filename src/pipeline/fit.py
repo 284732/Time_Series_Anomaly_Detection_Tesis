@@ -166,6 +166,26 @@ class DeviceMismatch(RuntimeError):
     """Device effettivo diverso da quello richiesto nel fit_key: il compito non entra in cache (nota su D-70)."""
 
 
+# Macchine di valutazione negli esperimenti esplorativi (F9 passo 1, nota del 2026-11-26 su D-08)
+ALLOW_EVAL_FLAG = "--allow-eval-machines"
+ALLOW_EVAL_KEY = "allow_eval_machines"
+
+
+def eval_refusal(stage: str, kind: str, eval_machines: Sequence[str], allow: bool) -> Optional[str]:
+    """Messaggio di rifiuto, oppure None. Si controlla ogni kind diverso da ``official`` (oggi ``exploratory``);
+    ``eval_machines`` = ``Manifest.eval_among`` delle macchine selezionate (vuoto senza ``split_file``)."""
+    if kind == "official" or allow or not eval_machines:
+        return None
+    return (f"{stage}: macchine di valutazione {list(eval_machines)} in un esperimento kind: {kind}, rifiutate (D-08: "
+            f"tuning ed esperimenti esplorativi solo sulle macchine di sviluppo). Per ammetterle in modo esplicito e "
+            f"registrato: {ALLOW_EVAL_FLAG}")
+
+
+def eval_note(eval_machines: Sequence[str]) -> str:
+    """Nota della riga ``started`` del registro quando il flag è attivo."""
+    return f"{ALLOW_EVAL_FLAG}: macchine eval {list(eval_machines)}"
+
+
 
 
 @dataclass(frozen=True)
@@ -217,8 +237,9 @@ def _scaler_arrays(scaler: SMDScaler) -> Dict[str, np.ndarray]:
     return {k: np.asarray(v) for k, v in vars(scaler).items() if k.endswith("_") and isinstance(v, np.ndarray)}
 
 
-def _preflight(cfg: ExperimentConfig, datasets_dir: Union[str, Path]):
-    """Controlli bloccanti prima di qualunque scrittura: manifest, hash e contenuto, segmenti (nota su D-58)."""
+def _preflight(cfg: ExperimentConfig, datasets_dir: Union[str, Path], allow_eval_machines: bool = False):
+    """Controlli bloccanti prima di qualunque scrittura: manifest, macchine di valutazione (D-08), hash e contenuto,
+    segmenti (nota su D-58). Restituisce il manifest e le macchine eval selezionate."""
     if cfg.kind == "official":
         raise FitRefused("kind: official non disponibile prima di F10 (D-70)")
     try:
@@ -231,6 +252,10 @@ def _preflight(cfg: ExperimentConfig, datasets_dir: Union[str, Path]):
         machines = manifest.resolve(cfg.data.machines)
     except Exception as exc:          # macchine sconosciute o ruoli mancanti
         failures.append(f"data.machines: {exc}")
+    eval_machines = manifest.eval_among(machines)
+    refusal = eval_refusal("fit", cfg.kind, eval_machines, allow_eval_machines)
+    if refusal:                        # prima di leggere i dati
+        raise FitRefused(refusal)
     for m in machines:
         try:
             train, test, _ = manifest.load(m)
@@ -241,7 +266,7 @@ def _preflight(cfg: ExperimentConfig, datasets_dir: Union[str, Path]):
             failures.append(f"{m}: {exc}")
     if failures:
         raise PreflightError(failures)
-    return manifest
+    return manifest, eval_machines
 
 
 def _task_header(task: FitTask, cfg: ExperimentConfig, manifest) -> Dict[str, Any]:
@@ -355,27 +380,35 @@ def _summary_csv(rows: List[Dict[str, Any]]) -> str:
 
 
 def run_fit(spec: Union[Mapping[str, Any], str, Path], datasets_dir: Union[str, Path], repo_root: Union[str, Path],
-            score_batch: Optional[int] = None) -> FitReport:
+            score_batch: Optional[int] = None, allow_eval_machines: bool = False) -> FitReport:
     """Valida la specifica (primo passo, prima di lock, ``begin_run`` e di qualunque scrittura), poi esegue o riusa
-    tutti i fit del run. Errori di validazione e dei dati bloccano prima di qualunque scrittura (codice 2, passo 6)."""
-    return _run_fit(validated_config(spec), datasets_dir, repo_root, score_batch)
+    tutti i fit del run. Errori di validazione e dei dati bloccano prima di qualunque scrittura (codice 2, passo 6).
+    ``allow_eval_machines`` (flag di CLI ``--allow-eval-machines``, nota su D-08): ammette le macchine di valutazione in
+    un esperimento esplorativo; se attivo si registra nella nota del registro e nel ``created_by`` dei fit creati
+    (fuori da ogni hash), altrimenti nessuna chiave in più."""
+    return _run_fit(validated_config(spec), datasets_dir, repo_root, score_batch, allow_eval_machines)
 
 
 def _run_fit(cfg: ExperimentConfig, datasets_dir: Union[str, Path], repo_root: Union[str, Path],
-             score_batch: Optional[int]) -> FitReport:
+             score_batch: Optional[int], allow_eval_machines: bool = False) -> FitReport:
     """Corpo di ``run_fit`` su una config già validata da ``validated_config``. Privata: i test non la usano."""
-    manifest = _preflight(cfg, datasets_dir)
+    manifest, eval_machines = _preflight(cfg, datasets_dir, allow_eval_machines)
     tasks = plan_fits(cfg, manifest)
     store = Store(cfg.store_root)
     run_id = new_run_id()
     rows: List[Dict[str, Any]] = []
     with store.lock(run_id):
         run = store.begin_run(kind=cfg.kind, experiment=cfg.name, stage="fit",
-                              config_sha256=cfgmod.config_sha256(cfg), repo_root=repo_root, run_id=run_id)
+                              config_sha256=cfgmod.config_sha256(cfg), repo_root=repo_root, run_id=run_id,
+                              note=eval_note(eval_machines) if allow_eval_machines else "")
         setup_run_logging(run.run_dir)
         try:
             prov = provenance.collect(repo_root)
             created_by = {"experiment": cfg.name, "kind": cfg.kind, "run_id": run_id}
+            if allow_eval_machines:
+                created_by[ALLOW_EVAL_KEY] = True
+                _log.warning("%s: macchine di valutazione ammesse in un esperimento %s: %s", ALLOW_EVAL_FLAG,
+                             cfg.kind, list(eval_machines))
             for machine in dict.fromkeys(t.machine for t in tasks):
                 prepared = None
                 for task in (t for t in tasks if t.machine == machine):

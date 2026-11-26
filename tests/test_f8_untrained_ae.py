@@ -261,14 +261,14 @@ def test_fit_and_analysis_with_untrained_models(tmp_path, repo_store_guard):
     b = spec["training"]["batch_size"]
     for u in ("conv_autoencoder_untrained", "lstm_autoencoder_untrained"):
         spec["models"][u] = dict(spec["models"][PAIRS[u]], score_batch_size=b)
-    fitmod.run_fit(spec, datasets_dir=paths["spec"].parent, repo_root=repo)
+    fitmod.run_fit(spec, datasets_dir=paths["spec"].parent, repo_root=repo, allow_eval_machines=True)
     store = Store(tmp_path / "store")
     cfg = validate_experiment(copy.deepcopy(spec))
     plan = {"scenarios": ["primary"], "window_time_aggs": ["last", "mean"],
             "scorings": [{"sensor_agg": "mean", "normalizer": "std"}], "ts_aggs": ["last"],
             "thresholds": {"static_pct": [99.0], "roll_quantile": [], "roll_robust_z": [], "oracle": False},
             "pa": []}
-    rep = an.run_analysis(spec, plan, datasets_dir=paths["spec"].parent, repo_root=repo)
+    rep = an.run_analysis(spec, plan, datasets_dir=paths["spec"].parent, repo_root=repo, allow_eval_machines=True)
     free = store.read_table(rep.analysis_dir, "free")
     fits = store.read_table(rep.analysis_dir, "fits")
     for u in ("conv_autoencoder_untrained", "lstm_autoencoder_untrained"):

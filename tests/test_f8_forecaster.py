@@ -347,8 +347,9 @@ def analysed(tmp_path_factory):
     from src.pipeline.store import Store
     tmp = tmp_path_factory.mktemp("f8_forecaster")
     paths, repo, spec = _env(tmp)
-    fitmod.run_fit(copy.deepcopy(spec), datasets_dir=paths["spec"].parent, repo_root=repo)
-    rep = an.run_analysis(copy.deepcopy(spec), _plan(), datasets_dir=paths["spec"].parent, repo_root=repo)
+    fitmod.run_fit(copy.deepcopy(spec), datasets_dir=paths["spec"].parent, repo_root=repo, allow_eval_machines=True)
+    rep = an.run_analysis(copy.deepcopy(spec), _plan(), datasets_dir=paths["spec"].parent, repo_root=repo,
+                          allow_eval_machines=True)
     store = Store(tmp / "store")
     return {"store": store, "rep": rep, "spec": spec, "paths": paths, "repo": repo,
             "free": store.read_table(rep.analysis_dir, "free"), "thr": store.read_table(rep.analysis_dir, "thr"),
@@ -419,8 +420,9 @@ def test_no_absent_rows_without_the_forecaster(tmp_path, repo_store_guard):
     from src.pipeline import analyze as an
     from src.pipeline import fit as fitmod
     paths, repo, spec = _env(tmp_path, run_models=("pca", "rolling_zscore"))
-    fitmod.run_fit(copy.deepcopy(spec), datasets_dir=paths["spec"].parent, repo_root=repo)
-    rep = an.run_analysis(copy.deepcopy(spec), _plan(), datasets_dir=paths["spec"].parent, repo_root=repo)
+    fitmod.run_fit(copy.deepcopy(spec), datasets_dir=paths["spec"].parent, repo_root=repo, allow_eval_machines=True)
+    rep = an.run_analysis(copy.deepcopy(spec), _plan(), datasets_dir=paths["spec"].parent, repo_root=repo,
+                          allow_eval_machines=True)
     aj = json.loads((rep.analysis_dir / "analysis.json").read_text(encoding="utf-8"))
     assert aj["absent_rows"] == {}
     repo_store_guard.check()
@@ -437,7 +439,8 @@ def test_plan_without_last_is_refused_before_any_write(analysed, over, what):
     runs_before = sorted(p.name for p in (analysed["store"].root / "runs").rglob("*"))
     with pytest.raises(ConfigError, match=what):
         an.run_analysis(copy.deepcopy(analysed["spec"]), _plan(**over),
-                        datasets_dir=analysed["paths"]["spec"].parent, repo_root=analysed["repo"])
+                        datasets_dir=analysed["paths"]["spec"].parent, repo_root=analysed["repo"],
+                        allow_eval_machines=True)
     assert sorted(p.name for p in (analysed["store"].root / "runs").rglob("*")) == runs_before
 
 
@@ -457,7 +460,7 @@ def test_legacy_export_refuses_models_outside_the_legacy_nucleus(tmp_path, repo_
                                      score_batch_size=spec["training"]["batch_size"])
     with pytest.raises(ConfigError, match=f"{model}.*LEGACY_NUCLEUS"):
         an.run_analysis(copy.deepcopy(spec), _plan(**LEGACY_PLAN), datasets_dir=paths["spec"].parent,
-                        repo_root=repo)
+                        repo_root=repo, allow_eval_machines=True)
     assert not (tmp_path / "store").exists()
     repo_store_guard.check()
 

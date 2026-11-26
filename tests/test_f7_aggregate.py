@@ -372,8 +372,9 @@ def legacy_run(tmp_path_factory):
     repo = make_repo(root / "repo")
     spec = synth_spec(str(paths["data"]), str(root / "store"), seeds=[42, 43],
                       run_models=("pca", "rolling_zscore", "conv_autoencoder"))
-    fitmod.run_fit(spec, datasets_dir=paths["spec"].parent, repo_root=repo)
-    report = an.run_analysis(spec, legacy_plan(), datasets_dir=paths["spec"].parent, repo_root=repo)
+    fitmod.run_fit(spec, datasets_dir=paths["spec"].parent, repo_root=repo, allow_eval_machines=True)
+    report = an.run_analysis(spec, legacy_plan(), datasets_dir=paths["spec"].parent, repo_root=repo,
+                             allow_eval_machines=True)
     store = Store(root / "store")
     tables = {t: store.read_table(report.analysis_dir, t) for t in ("free", "thr")}
     return {"legacy": report.analysis_dir / "legacy", "tables": tables, "root": root}
