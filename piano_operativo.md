@@ -1201,7 +1201,8 @@ D-53 approvata (2026-11-10): `.pyc` tolti dal tracciamento, `dataset/` resta tra
     - **3 — pilota sui tempi** in uno **store separato** (`store_pilot/`, escluso da git; nessun riuso previsto; la
       cancellazione la decide l'utente): slot 2–8 delle tre famiglie addestrate, seed 42, 6 macchine dev,
       `max_epochs` / `patience` 3 / 3 (solo per misurare i tempi, non tocca D-39); stima e regola K = 8 / 6 con la
-      formula di D-41 (con la mediana di `residual_seconds`); nessuna metrica letta; nota nel registro;
+      formula di D-41 (con la mediana di `residual_seconds`): K = 8 previsto, K = 6 solo se la stima supera 40 h a muro
+      *(rev. 2026-11-26, prima di qualunque dato del pilota: prima 20 h)*; nessuna metrica letta; nota nel registro;
     - **4 — analisi di tuning e selezione:** piano senza soglie mobili (`scenarios: [primary]`, `ts_aggs: [last]`, 2
       `window_time_agg` × 7 coppie); modulo e script di selezione tra i K esperimenti con test (criterio, spareggio,
       fit falliti e NaN, righe assenti contro NaN, fit mancanti da riprendere, k effettivo della PCA, fit al tetto);

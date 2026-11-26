@@ -999,6 +999,12 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
     (D-36): l'equivalenza è più conservativa del TOST classico. Il «Vincolo» sopra va letto così: δ si congela in
     `configs/stats/official.yaml` (D-73 P5), non in `configs/analysis/official.yaml`.
 - **Decisione:** δ = **0,05** in AP normalizzata (opzione (a)).
+- **Motivazione:** δ = 0,05 è una convenzione di rilevanza pratica (5% della distanza tra un detector casuale e uno
+  perfetto in AP normalizzata), fissata prima dei risultati di F9; non è ricavata da un calcolo dei costi e non è
+  l'unico valore difendibile.
+- **Sensibilità prevista (esplorativa, da congelare nel piano statistico in F10):** esiti della regola a quattro esiti
+  anche con δ = 0,02 e δ = 0,10, riportati accanto a quelli con δ = 0,05 insieme agli IC; la decisione confermativa
+  resta con δ = 0,05.
 - **Quando:** fissato il 2026-11-26, dopo il report di F8 (approvato il 2026-11-25) e prima di qualunque risultato di F9.
 - **Da dichiarare (nella tesi):**
   - il report di F8 (`docs/f8_protocol_switch.md`) non contiene confronti DL − PCA: solo Δ tra varianti del protocollo,
@@ -1082,14 +1088,17 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
       di V1 nello slot 1);
     - `rolling_zscore` (`top_k`, `eps`): 1 5, 0,01 · 2 1, 0,01 · 3 1, 0,1 · 4 5, 0,1 · 5 10, 0,01 · 6 10, 0,1 ·
       7 3, 0,01 · 8 3, 0,1.
-  - **Regola K = 6 (fissata il 2026-11-26, prima di qualunque dato del pilota):** se la stima del pilota supera 20 h, per
-    tutte le famiglie si tengono gli slot 1–6 e si tolgono gli slot 7–8.
+  - **Regola K = 8 / 6 (fissata il 2026-11-26, prima di qualunque dato del pilota):** K = 8 è il valore previsto. Solo se
+    la stima del pilota supera **40 h**, come freno per il calendario, per tutte le famiglie si tengono gli slot 1–6 e si
+    tolgono gli slot 7–8.
     - Stima = somma, sui fit nuovi degli slot 2–8, di (secondi per epoca del pilota × mediana di `stopped_epoch` dei fit
       di V1 della stessa famiglia + mediana di `residual_seconds` dei fit di V1 della stessa famiglia) per i modelli
       addestrati; PCA, PCA puntuale e baseline con il loro `total_seconds` di V1.
-    - «20 h» sono **secondi trascorsi di un processo sequenziale (tempo a muro)**, come `fit_seconds`,
+    - «40 h» sono **secondi trascorsi di un processo sequenziale (tempo a muro)**, come `fit_seconds`,
       `residual_seconds` e `total_seconds` di `meta.json`, non tempo di CPU.
     - Correzione del 2026-11-26, prima di qualunque dato del pilota: aggiunta la mediana di `residual_seconds`.
+    - Correzione del 2026-11-26, prima di qualunque dato del pilota: soglia portata da 20 h a 40 h di tempo a muro;
+      formula, slot da togliere e ordine degli slot invariati.
     - Il pilota misura solo tempi: nessuna metrica letta, nessuna analisi; store separato (passo 3 di F9).
   - **Chiavi di training e di finestra:** nessuna nelle griglie. W = 100, `learning_rate`, `weight_decay`, `min_delta`
     e `batch_size` restano ai valori storici; `max_epochs` / `patience` 100 / 10 (D-39); `train_step` 5 (D-38). Fissi e
