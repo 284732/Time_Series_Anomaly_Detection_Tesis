@@ -1172,7 +1172,8 @@ D-53 approvata (2026-11-10): `.pyc` tolti dal tracciamento, `dataset/` resta tra
 - **Completata quando:** configurazioni selezionate salvate, con motivazione in `docs/decisioni.md`.
 - **Rischi:** tentazione di guardare le macchine di valutazione, impedita dal controllo sopra. Stima del costo: circa
   15 h a muro con K = 8 (circa 11 h con K = 6), dai costi per famiglia di V1 di F8; si sostituisce con la stima del
-  pilota (passo 3). *(rev. 2026-11-26: prima «circa 7 ore di CPU con `train_step=5`, da verificare».)*
+  pilota (passo 3). *(rev. 2026-11-26: prima «circa 7 ore di CPU con `train_step=5`, da verificare».)* Stima del pilota
+  (2026-11-27, nota su D-41): 7,17 h a muro con K = 8, quindi K = 8.
 - **Nota (2026-11-26): piano di F9 approvato dall'utente** (decisioni D-30, D-37, D-41, D-46, D-57, D-74 approvate;
   note su D-06, D-08, D-11, D-36, D-42, D-43, D-44, D-56, D-69).
   - **Formato:** griglia in `configs/tuning/grid.yaml`, punti elencati nell'ordine degli slot (nessun prodotto
@@ -1215,6 +1216,12 @@ D-53 approvata (2026-11-10): `.pyc` tolti dal tracciamento, `dataset/` resta tra
       `max_epochs` / `patience` 3 / 3 (solo per misurare i tempi, non tocca D-39); stima e regola K = 8 / 6 con la
       formula di D-41 (con la mediana di `residual_seconds`): K = 8 previsto, K = 6 solo se la stima supera 40 h a muro
       *(rev. 2026-11-26, prima di qualunque dato del pilota: prima 20 h)*; nessuna metrica letta; nota nel registro;
+      - **Fatto (2026-11-27, nota su D-41): K = 8.** Pilota sul commit `c0a8fec` (`store_pilot/`, run da
+        `20261127T105133-3c98ac59` a `20261127T110525-908f18f4`, 126 fit, nessuno fallito); stima sul commit `b511dcc`
+        (correzione del confronto lista/tupla dei `fit_payload`), uscite in `reports_local/f9_pilot/`: 504 fit nuovi,
+        7,17 h a muro con K = 8 (5,01 h con K = 6). Con tutti i fit addestrati al tetto di 100 epoche invece della
+        mediana di V1 la stima sarebbe di circa 11 h (10,9 h), sotto 40 h: K = 8 non dipende da questa ipotesi.
+        `grid.yaml` invariato (`k: 8`), nessuna rigenerazione;
     - **4 — analisi di tuning e selezione:** piano senza soglie mobili (`scenarios: [primary]`, `ts_aggs: [last]`, 2
       `window_time_agg` × 7 coppie); modulo e script di selezione tra i K esperimenti con test (criterio, spareggio,
       fit falliti e NaN, righe assenti contro NaN, fit mancanti da riprendere, k effettivo della PCA, fit al tetto);

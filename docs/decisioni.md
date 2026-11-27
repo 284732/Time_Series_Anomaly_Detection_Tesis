@@ -1156,6 +1156,22 @@ Fonte di livello 1 della gerarchia dei documenti (vedi `CLAUDE.md` §3.2): per i
 - **Fuori da F9 (da dichiarare):** PCA su fit+es (D-06) ed epoche fisse; il piano F9 li prevedeva, non si eseguono.
 - **Costo previsto (stima da V1 di F8, da sostituire con quella del pilota):** circa 2,2 h a muro e 0,84 GB per slot di
   fit nuovi; circa 15 h con K = 8, circa 11 h con K = 6.
+- **Nota (2026-11-27): stima del pilota e K = 8** (regola K = 8 / 6 sopra, invariata).
+  - **Pilota:** sul commit `c0a8fec`, store `store_pilot/`, 7 run (slot 2–8) da `20261127T105133-3c98ac59` a
+    `20261127T110525-908f18f4`, 18 fit per run (3 famiglie addestrate × 6 dev, seed 42), nessun fit fallito.
+  - **Stima:** `scripts/f9_pilot_estimate.py` sul commit `b511dcc`, uscite in `reports_local/f9_pilot/` (`estimate.json`,
+    `fits.csv`). La prima esecuzione su `c0a8fec` si era fermata prima di scrivere: il confronto dei `fit_payload`
+    trattava come diverse la tupla del payload pianificato e la lista del `meta.json` riletto (`channels` del Conv-AE),
+    corretto in `b511dcc` con il JSON canonico del `fit_key`; pilota invariato e valido (126 payload su 126 uguali).
+  - **Valori (tempo a muro):** 504 fit nuovi negli slot 2–8; **7,17 h con K = 8** (5,01 h con K = 6). Per famiglia:
+    `pca` 0,15 h; `pca_pointwise` 0,05 h; `conv_autoencoder` 1,58 h; `lstm_autoencoder` 3,10 h; `lstm_forecaster`
+    2,28 h; `rolling_zscore` 0,01 h. La stima è sotto la stima preliminare da V1 (circa 15 h).
+  - **Decisione: K = 8** (7,17 h ≤ 40 h). In `configs/tuning/grid.yaml` `k` resta 8: nessuna rigenerazione degli
+    esperimenti.
+  - **Robustezza rispetto all'ipotesi sulle epoche:** la stima usa la mediana di `stopped_epoch` di V1 (57,5 per Conv-AE
+    e LSTM-AE, 75,5 per il modello di previsione). Se tutti i fit addestrati arrivassero al tetto di 100 epoche, la
+    stima sarebbe di circa 11 h (10,9 h, calcolata da `estimate.json` e `fits.csv`), comunque sotto 40 h: K = 8 non
+    dipende da questa ipotesi.
 - **Approvazione:** utente, 2026-11-26.
 - **Collegamenti:** D-06, D-08, D-09, D-11, D-20, D-38, D-39, D-42, D-43, D-44, D-51, D-57, D-69, D-74.
 - **Documenti:** piano F9 (nota del 2026-11-26); `configs/tuning/grid.yaml` (passo 2 di F9).
