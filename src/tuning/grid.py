@@ -18,6 +18,10 @@ verificate da ``load_grid`` (``ConfigError`` altrimenti, chiavi YAML duplicate r
 ``config_sha256`` o nel ``fit_key`` è scritto per esteso, nulla si eredita); i valori fissi vengono da
 ``configs/base.yaml`` (protocollo canonico), le macchine da ``configs/dev_machines.yaml``. ``render`` la scrive in
 YAML con un'intestazione; ``scripts/make_tuning_experiments.py`` scrive o verifica i file.
+
+Pilota sui tempi (passo 3 di F9, blocco ``pilot``): ``pilot_experiment`` = esperimento dello slot (2..k) con le sole
+famiglie addestrate (tutte e sole, nell'ordine della griglia), i seed e le epoche del pilota e uno store separato da
+quello di tuning; punti, protocollo e macchine identici. La stima la fa ``src/tuning/pilot.py``.
 """
 
 import copy
@@ -36,10 +40,12 @@ DEFAULT_GRID = _ROOT / "configs" / "tuning" / "grid.yaml"
 DEFAULT_BASE = _ROOT / "configs" / "base.yaml"
 DEFAULT_DEV = _ROOT / "configs" / "dev_machines.yaml"
 DEFAULT_OUT = _ROOT / "configs" / "experiments" / "tuning"
+DEFAULT_PILOT_OUT = _ROOT / "configs" / "experiments" / "tuning_pilot"
 SLOT_FILE = "slot_{}.yaml"
 
-GRID_KEYS = ("k", "k_reduced", "seeds", "machines", "store_root", "experiment_prefix", "families", "untuned",
+GRID_KEYS = ("k", "k_reduced", "seeds", "machines", "store_root", "experiment_prefix", "families", "untuned", "pilot",
              "tie_break")
+PILOT_KEYS = ("families", "seeds", "max_epochs", "patience", "store_root", "experiment_prefix", "threshold_hours")
 TIE_BREAK_KEYS = ("order", "complexity", "window_time_aggs", "scorings")
 TIE_BREAK_ORDER = ("complexity", "slot", "scoring")                   # D-41
 COMPLEXITY_KEYS = ("n_features", "window_size", "by_family")
@@ -55,6 +61,18 @@ EXPERIMENT_ORDER = ("experiment", "paths", "device", "data", "split", "preproces
 
 
 @dataclass(frozen=True)
+class Pilot:
+    """Pilota sui tempi (passo 3 di F9): slot 2..k delle famiglie addestrate, seed ed epoche ridotti."""
+    families: Tuple[str, ...]
+    seeds: Tuple[int, ...]
+    max_epochs: int
+    patience: int
+    store_root: str
+    experiment_prefix: str
+    threshold_hours: float
+
+
+@dataclass(frozen=True)
 class Grid:
     """Griglia validata. ``families``: punti completi (``fixed`` compresi) nell'ordine degli slot."""
     k: int
@@ -65,6 +83,7 @@ class Grid:
     experiment_prefix: str
     families: Mapping[str, Tuple[Mapping[str, Any], ...]]
     untuned: Mapping[str, Mapping[str, Any]]
+    pilot: Pilot
     tie_break: Mapping[str, Any]
 
     def slots(self, reduced: bool = False) -> Tuple[int, ...]:
@@ -82,6 +101,10 @@ class Grid:
         if slot == 1:
             out.update({m: copy.deepcopy(dict(p)) for m, p in self.untuned.items()})
         return out
+
+    def pilot_slots(self) -> Tuple[int, ...]:
+        """Slot del pilota: tutti salvo lo slot 1, che riusa i fit di V1."""
+        return self.slots()[1:]
 
     def budget(self, reduced: bool = False) -> Dict[str, int]:
         """Punti distinti per modello sugli slot attivi (configurazioni di iperparametri provate)."""
@@ -178,6 +201,29 @@ def _tie_break(d: Any, families: Mapping[str, Any]) -> Dict[str, Any]:
             "window_time_aggs": tuple(wtas), "scorings": tuple(pairs)}
 
 
+def _pilot(d: Any, families: Mapping[str, Any], seeds: Tuple[int, ...], store_root: str, prefix: str) -> Pilot:
+    d = _keys(d, "pilot", PILOT_KEYS)
+    trained = [f for f in families if _schema.MODEL_SCHEMAS[f].trained]
+    fams = d["families"]
+    if not isinstance(fams, list) or fams != trained:
+        raise ConfigError(f"pilot.families: attese tutte e sole le famiglie addestrate nell'ordine della griglia "
+                          f"{trained} (D-41), trovato {fams!r}")
+    pseeds = _schema._int_list(d["seeds"], "pilot.seeds")
+    if len(set(pseeds)) != len(pseeds) or not set(pseeds) <= set(seeds):
+        raise ConfigError(f"pilot.seeds: seed distinti tra quelli della griglia {list(seeds)}, trovato {list(pseeds)}")
+    proot = _schema._str(d["store_root"], "pilot.store_root")
+    if Path(proot) == Path(store_root):
+        raise ConfigError(f"pilot.store_root: dev'essere uno store separato da {store_root!r} (passo 3 di F9)")
+    pprefix = _schema._path_name(d["experiment_prefix"], "pilot.experiment_prefix")
+    if pprefix == prefix:
+        raise ConfigError("pilot.experiment_prefix: dev'essere diverso da experiment_prefix")
+    return Pilot(families=tuple(fams), seeds=pseeds,
+                 max_epochs=_schema._int(1)(d["max_epochs"], "pilot.max_epochs"),
+                 patience=_schema._int(0)(d["patience"], "pilot.patience"),
+                 store_root=proot, experiment_prefix=pprefix,
+                 threshold_hours=_schema._real(0.0, True)(d["threshold_hours"], "pilot.threshold_hours"))
+
+
 def validate_grid(raw: Any) -> Grid:
     d = _keys(raw, "grid", GRID_KEYS)
     k = _schema._int(1)(d["k"], "k")
@@ -206,10 +252,12 @@ def validate_grid(raw: Any) -> Grid:
             raise ConfigError(f"untuned.{n}: ha iperparametri {sorted(_schema.MODEL_SCHEMAS[n].params)}: va tarato con "
                               f"k = {k} punti (budget pari, D-41)")
         untuned[n] = _validate_params(n, p if p is not None else {}, f"untuned.{n}")
-    return Grid(k=k, k_reduced=k_reduced, seeds=seeds, machines=machines,
-                store_root=_schema._str(d["store_root"], "store_root"),
-                experiment_prefix=_schema._path_name(d["experiment_prefix"], "experiment_prefix"),
-                families=families, untuned=untuned, tie_break=_tie_break(d["tie_break"], families))
+    store_root = _schema._str(d["store_root"], "store_root")
+    prefix = _schema._path_name(d["experiment_prefix"], "experiment_prefix")
+    return Grid(k=k, k_reduced=k_reduced, seeds=seeds, machines=machines, store_root=store_root,
+                experiment_prefix=prefix, families=families, untuned=untuned,
+                pilot=_pilot(d["pilot"], families, seeds, store_root, prefix),
+                tie_break=_tie_break(d["tie_break"], families))
 
 
 def load_grid(path: Union[str, Path] = DEFAULT_GRID) -> Grid:
@@ -274,6 +322,22 @@ def slot_experiment(grid: Grid, slot: int, base: Mapping[str, Any], dev_machines
     return exp
 
 
+def pilot_experiment(grid: Grid, slot: int, base: Mapping[str, Any], dev_machines: Sequence[str]) -> Dict[str, Any]:
+    """Esperimento del pilota per lo slot (2..k): quello dello slot con le sole famiglie addestrate, i seed e le epoche
+    del pilota e lo store separato; tutto il resto (punti, protocollo, macchine) identico."""
+    if slot not in grid.pilot_slots():
+        raise ValueError(f"slot {slot} fuori dal pilota {list(grid.pilot_slots())}")
+    p = grid.pilot
+    exp = slot_experiment(grid, slot, base, dev_machines)
+    exp["experiment"] = {"name": f"{p.experiment_prefix}_{slot}", "kind": KIND, "seeds": list(p.seeds)}
+    exp["paths"] = {"store_root": p.store_root}
+    exp["training"] = {**exp["training"], "max_epochs": p.max_epochs, "patience": p.patience}
+    exp["models"] = {m: v for m, v in exp["models"].items() if m in p.families}
+    exp["run_models"] = [m for m in exp["run_models"] if m in p.families]
+    _schema.validate_experiment(copy.deepcopy(exp))
+    return exp
+
+
 def _fmt(params: Mapping[str, Any]) -> str:
     return ", ".join(f"{k}={list(v) if isinstance(v, tuple) else v}" for k, v in params.items()) or "-"
 
@@ -286,13 +350,21 @@ def render(grid: Grid, slot: int, exp: Mapping[str, Any]) -> str:
         "# scritti per esteso: nulla si eredita, stile D-77); configs/dev_machines.yaml (6 macchine dev, D-08, D-51).",
         "# Lo lancia l'utente (CLAUDE.md §4).",
     ]
+    pilot = exp["experiment"]["name"].startswith(grid.pilot.experiment_prefix + "_")
+    if pilot:
+        p = grid.pilot
+        head.append(f"# PILOTA SUI TEMPI (passo 3 di F9, D-41): slot {slot} con le sole famiglie addestrate, seed "
+                    f"{list(p.seeds)},")
+        head.append(f"# max_epochs / patience {p.max_epochs} / {p.patience} (solo per misurare i tempi, D-39 "
+                    f"invariata), store separato {p.store_root}.")
+        head.append("# Nessuna metrica, nessuna analisi: i tempi li legge scripts/f9_pilot_estimate.py.")
     if slot == 1:
         head.append("# Slot 1 = configurazione storica = V1 di F8 (protocol_switch_dev/v1_canonical.yaml senza gli AE")
         head.append("# non addestrati): stessi fit_key, quindi i fit di V1 si riusano (test_f9_tuning_grid.py).")
-    if slot > grid.k_reduced:
+    if slot > grid.k_reduced and not pilot:
         head.append(f"# Slot oltre k_reduced = {grid.k_reduced}: escluso se si applica la regola K = 8 / 6 di D-41.")
     head.append(f"# Punti dello slot {slot}:")
-    head += [f"#   {m}: {_fmt(p)}" for m, p in grid.models_of_slot(slot).items()]
+    head += [f"#   {m}: {_fmt(p)}" for m, p in grid.models_of_slot(slot).items() if m in exp["models"]]
     body = yaml.safe_dump(dict(exp), sort_keys=False, default_flow_style=None, allow_unicode=True, width=120)
     return "\n".join(head) + "\n" + body
 
@@ -305,6 +377,15 @@ def generate(grid_path: Union[str, Path] = DEFAULT_GRID, base_path: Union[str, P
     base = load_yaml_strict(Path(base_path))
     dev = load_dev_machines(dev_path)
     return {SLOT_FILE.format(s): render(grid, s, slot_experiment(grid, s, base, dev)) for s in grid.slots()}
+
+
+def generate_pilot(grid_path: Union[str, Path] = DEFAULT_GRID, base_path: Union[str, Path] = DEFAULT_BASE,
+                   dev_path: Union[str, Path] = DEFAULT_DEV) -> Dict[str, str]:
+    """{nome del file: testo} degli esperimenti del pilota, slot 2..k."""
+    grid = load_grid(grid_path)
+    base = load_yaml_strict(Path(base_path))
+    dev = load_dev_machines(dev_path)
+    return {SLOT_FILE.format(s): render(grid, s, pilot_experiment(grid, s, base, dev)) for s in grid.pilot_slots()}
 
 
 def scoring_combos(plan: Any, model: str) -> Tuple[Tuple[str, str, str], ...]:

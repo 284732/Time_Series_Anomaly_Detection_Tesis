@@ -89,6 +89,20 @@ untuned:
 # Gli AE non addestrati (D-69) non si tarano e non compaiono negli esperimenti di tuning: usano l'architettura
 # selezionata del loro AE (D-41). Il generatore li rifiuta in `families` e in `untuned`.
 
+# Pilota sui tempi (passo 3 di F9, D-41): slot 2..k delle famiglie addestrate, stessi punti e stesso protocollo degli
+# slot salvo seed ed epoche; solo per misurare i secondi per epoca (nessuna metrica letta, nessuna analisi). Esperimenti
+# generati in configs/experiments/tuning_pilot/slot_<k>.yaml; store separato, escluso da git (nessun riuso previsto,
+# la cancellazione la decide l'utente). Stima: scripts/f9_pilot_estimate.py.
+pilot:
+  families: [conv_autoencoder, lstm_autoencoder, lstm_forecaster]   # tutte e sole le famiglie addestrate
+  seeds: [42]
+  max_epochs: 3             # solo per misurare i tempi: non tocca D-39 (100 / 10 negli slot)
+  patience: 3
+  store_root: store_pilot
+  experiment_prefix: tuning_pilot_slot
+  threshold_hours: 40       # regola K = 8 / 6 (D-41): K = k_reduced solo se la stima supera 40 h a muro (40 h
+                            # esatte: K = k)
+
 # Spareggio a parità esatta del criterio di D-41 (AP normalizzata, primary, ts_agg last; media sui seed per macchina,
 # poi sulle 6 macchine a pesi uguali). Sta qui e non nel piano di analisi, perché plan_sha256 normalizza l'ordine
 # delle liste (D-41). Si applica nell'ordine di `order` (passo 4 di F9).

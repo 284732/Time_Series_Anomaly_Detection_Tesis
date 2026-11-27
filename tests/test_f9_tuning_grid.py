@@ -348,6 +348,7 @@ def test_defect_family_removed_from_the_grid_is_caught_by_the_budget():
     raw = _raw_grid()
     raw["families"].pop("lstm_autoencoder")
     raw["tie_break"]["complexity"]["by_family"].pop("lstm_autoencoder")
+    raw["pilot"]["families"].remove("lstm_autoencoder")
     g = tg.validate_grid(raw)
     base, dev = load_yaml_strict(BASE), tg.load_dev_machines(DEV_FILE)
     cfgs = [schema.validate_experiment(tg.slot_experiment(g, s, base, dev)) for s in g.slots()]
@@ -388,3 +389,37 @@ def test_defect_slot_1_different_from_v1_changes_the_fit_payload(grid, slots):
     a = {(t.machine, t.model): t.fit_key for t in plan_tasks(cfg, cfg.data.machines, dvs) if t.model == "pca"}
     b = {(t.machine, t.model): t.fit_key for t in plan_tasks(slots[1], cfg.data.machines, dvs) if t.model == "pca"}
     assert a.keys() == b.keys() and all(a[k] != b[k] for k in a)
+
+
+# ------------------------------------------------------------------ terminazioni di riga (core.autocrlf)
+def _crlf_copy(src, dst):
+    dst.write_bytes(src.read_text(encoding="utf-8").replace("\n", "\r\n").encode("utf-8"))
+    assert b"\r\n" in dst.read_bytes()
+    return dst
+
+
+def test_crlf_checkout_gives_the_same_files_hashes_and_fit_keys(tmp_path):
+    """Un clone con ``core.autocrlf`` diverso (CRLF al posto di LF in griglia, base, macchine e slot) dà gli stessi
+    testi generati, ``--check`` a 0 e gli stessi ``config_sha256`` e ``fit_key``: nessun hash è calcolato sui byte."""
+    from src.utils.config import config_sha256
+    g, b, d = (_crlf_copy(p, tmp_path / p.name) for p in (GRID, BASE, DEV_FILE))
+    assert tg.generate(g, b, d) == tg.generate(GRID, BASE, DEV_FILE)
+    assert tg.generate_pilot(g, b, d) == tg.generate_pilot(GRID, BASE, DEV_FILE)
+    out, pout = tmp_path / "tuning", tmp_path / "tuning_pilot"
+    out.mkdir()
+    pout.mkdir()
+    for s in range(1, K + 1):
+        _crlf_copy(_slot_path(s), out / tg.SLOT_FILE.format(s))
+    for s in range(2, K + 1):
+        _crlf_copy(tg.DEFAULT_PILOT_OUT / tg.SLOT_FILE.format(s), pout / tg.SLOT_FILE.format(s))
+    script = ROOT / "scripts" / "make_tuning_experiments.py"
+    r = subprocess.run([sys.executable, str(script), "--check", "--grid", str(g), "--base", str(b), "--dev", str(d),
+                        "--out", str(out), "--pilot-out", str(pout)], capture_output=True, text=True)
+    assert r.returncode == 0, r.stdout + r.stderr
+    dvs = {m: f"dv-{m}" for m in load_experiment(_slot_path(1)).data.machines}
+    for s in range(1, K + 1):
+        lf = load_experiment(_slot_path(s))
+        cr = load_experiment(out / tg.SLOT_FILE.format(s), base_path=b)
+        assert config_sha256(cr) == config_sha256(lf)
+        assert [t.fit_key for t in plan_tasks(cr, cr.data.machines, dvs)] == \
+            [t.fit_key for t in plan_tasks(lf, lf.data.machines, dvs)]

@@ -1,0 +1,34 @@
+# GENERATO da scripts/make_tuning_experiments.py (F9 passo 2, D-41): non modificare a mano, si rigenera.
+# Fonti: configs/tuning/grid.yaml (slot 7 di 8); configs/base.yaml (protocollo canonico, valori
+# scritti per esteso: nulla si eredita, stile D-77); configs/dev_machines.yaml (6 macchine dev, D-08, D-51).
+# Lo lancia l'utente (CLAUDE.md §4).
+# PILOTA SUI TEMPI (passo 3 di F9, D-41): slot 7 con le sole famiglie addestrate, seed [42],
+# max_epochs / patience 3 / 3 (solo per misurare i tempi, D-39 invariata), store separato store_pilot.
+# Nessuna metrica, nessuna analisi: i tempi li legge scripts/f9_pilot_estimate.py.
+# Punti dello slot 7:
+#   conv_autoencoder: channels=[16, 32], latent_dim=4
+#   lstm_autoencoder: hidden_dim=32, latent_dim=4
+#   lstm_forecaster: hidden_dim=24
+experiment:
+  name: tuning_pilot_slot_7
+  kind: exploratory
+  seeds: [42]
+paths: {store_root: store_pilot}
+device: cpu
+data:
+  dataset: smd
+  data_dir: dataset
+  machines: [machine-1-1, machine-1-7, machine-2-6, machine-2-8, machine-3-11, machine-3-8]
+split:
+  mode: split3
+  fractions: [0.6, 0.2, 0.2]
+preprocessing: {scaler_type: minmax, min_range: 0.02, clip: null}
+windows: {window_size: 100, step: 1, train_step: 5}
+training: {max_epochs: 3, patience: 3, min_delta: 1.0e-06, learning_rate: 0.001, weight_decay: 1.0e-05, batch_size: 64}
+models:
+  conv_autoencoder:
+    channels: [16, 32]
+    latent_dim: 4
+  lstm_autoencoder: {hidden_dim: 32, latent_dim: 4}
+  lstm_forecaster: {hidden_dim: 24}
+run_models: [conv_autoencoder, lstm_autoencoder, lstm_forecaster]

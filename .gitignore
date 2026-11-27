@@ -2,5 +2,7 @@ __pycache__/
 *.pyc
 .pytest_cache/
 store/
+# store del pilota sui tempi di F9 (passo 3): nessun riuso previsto, la cancellazione la decide l'utente
+store_pilot/
 # report d'esempio generati in locale (F7 passo 11-bis), mai tracciati
 reports_local/
