@@ -8,10 +8,12 @@ F9 passo 3: esperimenti del pilota sui tempi e stima del costo con la regola K =
     ``total_seconds`` di V1 per i deterministici; slot 1 escluso; stima a K = 6 solo sugli slot 2..6);
   * confine: 40 h esatte → K = 8, appena sopra → K = 6;
   * prove di difetto: fit mancanti, falliti, con epoche o architettura diverse, riferimento mancante.
-Nessun dato reale e nessuno store reale: i ``meta.json`` sono costruiti in memoria dai compiti delle config.
+Nessun dato reale e nessuno store reale: i ``meta.json`` sono costruiti dai compiti delle config e passano per JSON
+come quelli riletti dallo store (tuple → liste: difetto trovato sul pilota reale, confronto in forma canonica).
 """
 
 import copy
+import json
 import os
 import subprocess
 import sys
@@ -122,9 +124,11 @@ PILOT_FIT = {"conv_autoencoder": 3.0, "lstm_autoencoder": 9.0, "lstm_forecaster"
 
 
 def _meta(task, *, fit=0.0, res=0.0, total=0.0, stop=None, status="complete", payload=None):
-    return {"fit_key": task.fit_key, "status": status, "fit_payload": copy.deepcopy(payload or task.payload),
+    """``meta.json`` come lo rilegge lo store: passaggio per JSON (le tuple del payload diventano liste)."""
+    meta = {"fit_key": task.fit_key, "status": status, "fit_payload": copy.deepcopy(payload or task.payload),
             "timings": {"fit_seconds": fit, "residual_seconds": res, "total_seconds": total},
             "fit_info": {"stopped_epoch": stop}}
+    return json.loads(json.dumps(meta))
 
 
 def _inputs(cfgs, dvs, slot_factor=lambda s: 1.0):
@@ -233,6 +237,38 @@ def test_defect_pilot_with_other_epochs_or_architecture(cfgs, dvs):
     swapped = {**pilot, 7: pilot[8], 8: pilot[7]}                      # pilota di uno slot attribuito a un altro
     with pytest.raises(tp.EstimateError, match="stesso fit_payload"):
         _est(ref, swapped, targets)
+
+
+def test_payload_compared_in_canonical_form_list_tuple_yes_values_and_types_no(cfgs, dvs):
+    """Difetto trovato sul pilota reale: ``channels`` è una tupla nel payload pianificato e una lista nel
+    ``meta.json`` riletto. Il confronto usa la forma canonica del ``fit_key`` (tuple → liste, 1 ≠ 1.0)."""
+    assert tp._comparable({"a": (16, 32)}) == tp._comparable({"a": [16, 32]})
+    assert tp._comparable({"a": 1}) != tp._comparable({"a": 1.0})
+    assert tp._comparable({"a": 1}) != tp._comparable({"a": True})
+    ref, pilot, targets = _inputs(cfgs, dvs)
+    conv = [t for t in targets[2] if t.model == "conv_autoencoder"]
+    assert conv and all(isinstance(t.payload["model"]["params"]["channels"], tuple) for t in conv)
+    assert all(isinstance(m["fit_payload"]["model"]["params"]["channels"], list)
+               for t, m in pilot[2] if t.model == "conv_autoencoder")
+    assert _est(ref, pilot, targets)["n_fits"] == 504                 # lista contro tupla: accettato
+
+    def conv_param(slot, fn):
+        out = []
+        for t, m in pilot[slot]:
+            m = copy.deepcopy(m)
+            if t.model == "conv_autoencoder":
+                fn(m["fit_payload"]["model"]["params"])
+            out.append((t, m))
+        return {**pilot, slot: out}
+    bad = conv_param(2, lambda p: p.__setitem__("channels", [16, 64]))
+    with pytest.raises(tp.EstimateError, match="stesso fit_payload"):
+        _est(ref, bad, targets)
+    bad = conv_param(2, lambda p: p.__setitem__("latent_dim", float(p["latent_dim"])))   # 8 contro 8.0
+    with pytest.raises(tp.EstimateError, match="stesso fit_payload"):
+        _est(ref, bad, targets)
+    bad = conv_param(2, lambda p: p.__setitem__("channels", [float(p["channels"][0]), p["channels"][1]]))
+    with pytest.raises(tp.EstimateError, match="stesso fit_payload"):
+        _est(ref, bad, targets)
 
 
 def test_defect_reference_missing_failed_or_without_epochs(cfgs, dvs):

@@ -20,6 +20,7 @@ import copy
 import statistics
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
+from src.utils import config as cfgmod
 from src.utils import schema as _schema
 
 HOUR = 3600.0
@@ -52,12 +53,15 @@ def _timing(meta: Mapping[str, Any], key: str) -> float:
     return float(v)
 
 
-def _comparable(payload: Mapping[str, Any]) -> Dict[str, Any]:
+def _comparable(payload: Mapping[str, Any]) -> str:
+    """Payload senza seed ed epoche, come JSON canonico del ``fit_key`` (tuple → liste; 1 ≠ 1.0 ≠ True, che il
+    confronto tra oggetti Python confonderebbe): il ``meta.json`` riletto ha liste dove il payload pianificato ha
+    tuple."""
     p = copy.deepcopy(dict(payload))
     p.pop("seed", None)
     if "training" in p:
         p["training"] = {k: v for k, v in p["training"].items() if k not in ("max_epochs", "patience")}
-    return p
+    return cfgmod.canonical_json(p)
 
 
 def estimate(*, reference: Sequence[Tuple[Any, Optional[Mapping[str, Any]]]],
@@ -88,7 +92,7 @@ def estimate(*, reference: Sequence[Tuple[Any, Optional[Mapping[str, Any]]]],
 
     # pilota: secondi per epoca per (slot, modello, macchina), con il controllo del fit_payload
     spe: Dict[Tuple[int, str, str], float] = {}
-    pay: Dict[Tuple[int, str, str], Dict[str, Any]] = {}
+    pay: Dict[Tuple[int, str, str], str] = {}
     for slot, items in pilot.items():
         for task, meta in items:
             meta = _complete(meta, f"pilota slot {slot}", task)
