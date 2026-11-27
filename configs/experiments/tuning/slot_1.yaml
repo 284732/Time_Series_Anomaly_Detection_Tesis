@@ -1,0 +1,41 @@
+# GENERATO da scripts/make_tuning_experiments.py (F9 passo 2, D-41): non modificare a mano, si rigenera.
+# Fonti: configs/tuning/grid.yaml (slot 1 di 8); configs/base.yaml (protocollo canonico, valori
+# scritti per esteso: nulla si eredita, stile D-77); configs/dev_machines.yaml (6 macchine dev, D-08, D-51).
+# Lo lancia l'utente (CLAUDE.md §4).
+# Slot 1 = configurazione storica = V1 di F8 (protocol_switch_dev/v1_canonical.yaml senza gli AE
+# non addestrati): stessi fit_key, quindi i fit di V1 si riusano (test_f9_tuning_grid.py).
+# Punti dello slot 1:
+#   pca: n_components=0.9, random_state=42
+#   pca_pointwise: n_components=0.9
+#   conv_autoencoder: channels=[32, 64], latent_dim=16
+#   lstm_autoencoder: hidden_dim=64, latent_dim=16
+#   lstm_forecaster: hidden_dim=64
+#   rolling_zscore: top_k=5, eps=0.01
+#   input_norm: -
+experiment:
+  name: tuning_slot_1
+  kind: exploratory
+  seeds: [42, 43, 44]
+paths: {store_root: store}
+device: cpu
+data:
+  dataset: smd
+  data_dir: dataset
+  machines: [machine-1-1, machine-1-7, machine-2-6, machine-2-8, machine-3-11, machine-3-8]
+split:
+  mode: split3
+  fractions: [0.6, 0.2, 0.2]
+preprocessing: {scaler_type: minmax, min_range: 0.02, clip: null}
+windows: {window_size: 100, step: 1, train_step: 5}
+training: {max_epochs: 100, patience: 10, min_delta: 1.0e-06, learning_rate: 0.001, weight_decay: 1.0e-05, batch_size: 64}
+models:
+  pca: {n_components: 0.9, random_state: 42}
+  pca_pointwise: {n_components: 0.9}
+  conv_autoencoder:
+    channels: [32, 64]
+    latent_dim: 16
+  lstm_autoencoder: {hidden_dim: 64, latent_dim: 16}
+  lstm_forecaster: {hidden_dim: 64}
+  rolling_zscore: {top_k: 5, eps: 0.01}
+  input_norm: {}
+run_models: [pca, pca_pointwise, conv_autoencoder, lstm_autoencoder, lstm_forecaster, rolling_zscore, input_norm]

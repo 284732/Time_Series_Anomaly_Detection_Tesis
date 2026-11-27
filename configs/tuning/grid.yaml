@@ -1,0 +1,116 @@
+# Griglia di tuning di F9 (D-41 approvata il 2026-11-26; D-74 modello di previsione; D-57 PCA solo float).
+# FUORI dal loader delle config: non è un livello di configs/models/ (si unirebbe a ogni esperimento, D-41). La legge
+# solo src/tuning/grid.py; gli esperimenti si generano con `python scripts/make_tuning_experiments.py` in
+# configs/experiments/tuning/slot_<k>.yaml (file generati e committati, non modificare a mano).
+#
+# Formato: punti elencati nell'ordine degli slot, nessun prodotto cartesiano. Lo slot k contiene il k-esimo punto di
+# ogni famiglia tarata; lo slot 1 è la configurazione storica, uguale a V1 di F8
+# (configs/experiments/protocol_switch_dev/v1_canonical.yaml): stessi fit_key, quindi riuso dei fit di V1.
+# Valori fissi (dataset, device, split, preprocessing, finestre, training): da configs/base.yaml (protocollo canonico),
+# scritti per esteso in ogni esperimento generato (stile D-77). Nessuna chiave di training o di finestra entra nella
+# griglia (D-41): W = 100, learning_rate, weight_decay, min_delta, batch_size storici; epoche 100 / 10 (D-39);
+# train_step 5 (D-38).
+
+k: 8                        # punti per famiglia tarata, uguale per tutte (D-41)
+k_reduced: 6                # regola K = 8 / 6 (D-41): solo se la stima del pilota supera 40 h a muro, slot 1..6 per
+                            # tutte le famiglie (slot 7 e 8 tolti); la decide il passo 3, con una nota nel registro
+seeds: [42, 43, 44]         # D-41
+machines: dev               # solo le 6 macchine dev di configs/dev_machines.yaml (D-08, D-51), scritte per esteso
+store_root: store           # stesso store di V1 di F8: lo slot 1 riusa i suoi fit
+experiment_prefix: tuning_slot   # nome dell'esperimento dello slot k: tuning_slot_<k>
+
+# Famiglie tarate (K = k), nell'ordine di run_models. `fixed`: iperparametri uguali in tutti gli slot.
+families:
+  pca:                      # PCA a finestre, riferimento di RQ2 (D-37); n_components solo float (D-57)
+    fixed: {random_state: 42}    # con un float non influisce; serve al riuso dei fit di V1 nello slot 1 (D-41)
+    points:
+      - {n_components: 0.9}      # 1 storico
+      - {n_components: 0.5}      # 2
+      - {n_components: 0.7}      # 3
+      - {n_components: 0.8}      # 4
+      - {n_components: 0.95}     # 5
+      - {n_components: 0.99}     # 6
+      - {n_components: 0.6}      # 7
+      - {n_components: 0.97}     # 8
+  pca_pointwise:            # PCA puntuale, baseline descrittiva (D-37); n_components solo float (D-41)
+    points:
+      - {n_components: 0.9}      # 1 storico
+      - {n_components: 0.5}      # 2
+      - {n_components: 0.7}      # 3
+      - {n_components: 0.8}      # 4
+      - {n_components: 0.95}     # 5
+      - {n_components: 0.99}     # 6
+      - {n_components: 0.6}      # 7
+      - {n_components: 0.97}     # 8
+  conv_autoencoder:
+    points:
+      - {channels: [32, 64], latent_dim: 16}   # 1 storico
+      - {channels: [16, 32], latent_dim: 8}    # 2
+      - {channels: [16, 32], latent_dim: 16}   # 3
+      - {channels: [16, 32], latent_dim: 32}   # 4
+      - {channels: [32, 64], latent_dim: 8}    # 5
+      - {channels: [32, 64], latent_dim: 32}   # 6
+      - {channels: [16, 32], latent_dim: 4}    # 7
+      - {channels: [32, 64], latent_dim: 4}    # 8
+  lstm_autoencoder:
+    points:
+      - {hidden_dim: 64, latent_dim: 16}       # 1 storico
+      - {hidden_dim: 32, latent_dim: 8}        # 2
+      - {hidden_dim: 32, latent_dim: 16}       # 3
+      - {hidden_dim: 32, latent_dim: 32}       # 4
+      - {hidden_dim: 64, latent_dim: 8}        # 5
+      - {hidden_dim: 64, latent_dim: 32}       # 6
+      - {hidden_dim: 32, latent_dim: 4}        # 7
+      - {hidden_dim: 64, latent_dim: 4}        # 8
+  lstm_forecaster:          # D-74
+    points:
+      - {hidden_dim: 64}         # 1 = V1 di F8
+      - {hidden_dim: 8}          # 2
+      - {hidden_dim: 16}         # 3
+      - {hidden_dim: 32}         # 4
+      - {hidden_dim: 48}         # 5
+      - {hidden_dim: 128}        # 6
+      - {hidden_dim: 24}         # 7
+      - {hidden_dim: 96}         # 8
+  rolling_zscore:
+    points:
+      - {top_k: 5, eps: 0.01}    # 1 storico
+      - {top_k: 1, eps: 0.01}    # 2
+      - {top_k: 1, eps: 0.1}     # 3
+      - {top_k: 5, eps: 0.1}     # 4
+      - {top_k: 10, eps: 0.01}   # 5
+      - {top_k: 10, eps: 0.1}    # 6
+      - {top_k: 3, eps: 0.01}    # 7
+      - {top_k: 3, eps: 0.1}     # 8
+
+# Modelli con K = 1 (nessun iperparametro): solo nello slot 1, dopo le famiglie tarate (riuso dei fit di V1).
+untuned:
+  input_norm: {}
+# Gli AE non addestrati (D-69) non si tarano e non compaiono negli esperimenti di tuning: usano l'architettura
+# selezionata del loro AE (D-41). Il generatore li rifiuta in `families` e in `untuned`.
+
+# Spareggio a parità esatta del criterio di D-41 (AP normalizzata, primary, ts_agg last; media sui seed per macchina,
+# poi sulle 6 macchine a pesi uguali). Sta qui e non nel piano di analisi, perché plan_sha256 normalizza l'ordine
+# delle liste (D-41). Si applica nell'ordine di `order` (passo 4 di F9).
+tie_break:
+  order: [complexity, slot, scoring]
+  complexity:               # 1. il valore minore vince
+    n_features: 38          # F di SMD
+    window_size: 100        # W, uguale a windows.window_size di configs/base.yaml (verificato dal generatore)
+    by_family:
+      conv_autoencoder: trainable_params    # parametri addestrabili con F = 38, W = 100
+      lstm_autoencoder: trainable_params
+      lstm_forecaster: trainable_params
+      pca: n_components                     # frazione di varianza minore
+      pca_pointwise: n_components
+      # rolling_zscore, input_norm: criterio non definito, si passa allo slot
+  # 2. slot più basso
+  window_time_aggs: [last, mean]            # 3. ordine dichiarato dello scoring: prima window_time_agg ...
+  scorings:                                 #    ... poi la coppia (sensor_agg, normalizer)
+    - {sensor_agg: mean, normalizer: none}
+    - {sensor_agg: mean, normalizer: std}
+    - {sensor_agg: max, normalizer: std}
+    - {sensor_agg: top5, normalizer: std}
+    - {sensor_agg: mean, normalizer: robust}
+    - {sensor_agg: max, normalizer: robust}
+    - {sensor_agg: top5, normalizer: robust}

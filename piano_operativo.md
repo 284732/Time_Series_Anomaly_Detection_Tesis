@@ -69,12 +69,12 @@ D-53 approvata (2026-11-10): `.pyc` tolti dal tracciamento, `dataset/` resta tra
 10. ~~`train_step` [D-38]~~ — **risolta da D-38** (approvata 2026-11-24): 5 per tutti i modelli a finestre.
 11. ~~`max_epochs` e patience [D-39] (proposta: 100 e 10)~~ — **risolta da D-39** (approvata 2026-11-24): 100 e 10.
 12. ~~Preprocessing canonico [D-40]~~ — **risolta da D-40** (approvata 2026-11-24): minmax su fit con pavimento τ = 0,02.
-13. Budget di tuning, griglie, criterio di selezione, seed per il tuning, ruolo di scoring e normalizer robusto nel budget [D-41].
-14. Sensibilità delle proporzioni dello split [D-46].
+13. ~~Budget di tuning, griglie, criterio di selezione, seed per il tuning, ruolo di scoring e normalizer robusto nel budget [D-41]~~ — **risolta da D-41** (approvata 2026-11-26): K = 8 per famiglia (slot 1–6 se il pilota supera 40 h), griglie in `configs/tuning/grid.yaml`, AP normalizzata media sulle 6 dev, seed 42, 43, 44, scoring (normalizer robusto compreso) nel budget.
+14. ~~Sensibilità delle proporzioni dello split [D-46]~~ — **risolta da D-46** (approvata 2026-11-26): una sola variante 70/15/15 sulle dev, confronto descrittivo.
 
 **Gruppo C — prima del congelamento (F10):**
-15. δ [D-30] (la metrica primaria è già approvata, D-07).
-16. PCA di riferimento per RQ2 [D-37].
+15. ~~δ [D-30] (la metrica primaria è già approvata, D-07)~~ — **risolta da D-30** (approvata 2026-11-26): δ = 0,05 in AP normalizzata.
+16. ~~PCA di riferimento per RQ2 [D-37]~~ — **risolta da D-37** (approvata 2026-11-26): PCA a finestre (`pca`).
 17. Livelli dei fattori per RQ1a e RQ1b [D-42].
 18. Descrittori per RQ3 [D-43].
 19. Regole di esclusione [D-44].
@@ -1206,6 +1206,10 @@ D-53 approvata (2026-11-10): `.pyc` tolti dal tracciamento, `dataset/` resta tra
       K = 6 dà esattamente gli slot 1–6 per tutte le famiglie; livelli di scoring per famiglia dal piano (14, oppure 7
       per il modello di previsione e 1 per `rolling_zscore`); file generati uguali all'uscita del generatore; solo
       macchine dev;
+      - **Difetto noto (2026-11-27, approvato con il passo 2):** `configs/analysis/tuning.yaml` usa `static_pct` [98],
+        non usato dalla selezione: un piano senza soglie (`static_pct` [], `oracle` false, `pa` []) passa il validatore,
+        ma `analyze` fallisce sulla tabella `thr` vuota (`TableSchemaError` su `thr.seed`, verificato su dati sintetici
+        il 2026-11-27). Non corretto in F9 per non toccare `analyze` e i golden; da risolvere in F12 (nota in F12);
     - **3 — pilota sui tempi** in uno **store separato** (`store_pilot/`, escluso da git; nessun riuso previsto; la
       cancellazione la decide l'utente): slot 2–8 delle tre famiglie addestrate, seed 42, 6 macchine dev,
       `max_epochs` / `patience` 3 / 3 (solo per misurare i tempi, non tocca D-39); stima e regola K = 8 / 6 con la
@@ -1292,6 +1296,11 @@ D-53 approvata (2026-11-10): `.pyc` tolti dal tracciamento, `dataset/` resta tra
 - **Nota (2026-11-24, da F8 passo 2, utente):** messaggio di log degli AE non addestrati: «up to 0 epochs (early
   stopping, patience=5)», dove 5 è il default storico di `PyTorchTrainer` (il trainer riceve solo `epochs` = 0).
   Nessun effetto (zero epoche, nessun early stopping): correggere solo il testo.
+- **Nota (2026-11-27, da F9 passo 2, utente):** un piano di analisi senza soglie (`static_pct` [], `oracle` false,
+  `pa` []) passa il validatore (`src/utils/analysis_plan.py::validate_plan`), ma `analyze` fallisce sulla tabella `thr`
+  vuota (`TableSchemaError: thr.seed: atteso intero, trovato object`, verificato su dati sintetici il 2026-11-27). Da
+  risolvere qui: `analyze` accetta una `thr` vuota, oppure il validatore rifiuta il piano. Per ora
+  `configs/analysis/tuning.yaml` usa `static_pct` [98] (nota del passo 2 di F9).
 
 ---
 

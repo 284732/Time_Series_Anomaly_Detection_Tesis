@@ -1,0 +1,27 @@
+# F9, piano di analisi del tuning (D-41, passo 2 di F9), per gli esperimenti configs/experiments/tuning/slot_<k>.yaml.
+# Criterio di selezione (D-41): ap_norm della tabella free (diagnostic falso), scenario primary (D-20), ts_agg last:
+# scenario e proiezione dell'analisi primaria di RQ2. Nessuna soglia mobile (D-42 aperta, e la selezione non la usa).
+# Scoring = griglia di scoring di D-41: window_time_agg {last, mean} x 7 coppie (sensor_agg, normalizer). Livelli per
+# modello applicati dall'analisi: 14 combinazioni per i modelli non native, 7 per lstm_forecaster (solo last, D-74),
+# 1 per rolling_zscore (native). L'ordine di spareggio sta in configs/tuning/grid.yaml, non qui (plan_sha256
+# normalizza l'ordine delle liste).
+# static_pct [98.0]: requisito tecnico, non usato dalla selezione. Il validatore ammette un piano senza soglie
+# (static_pct [], oracle false), ma `analyze` si ferma sulla tabella thr vuota (thr.seed di tipo object, verificato il
+# 2026-11-27 su dati sintetici); 98 = soglia statica storica (D-50). Nessun PA, nessun oracolo.
+scenarios: [primary]
+window_time_aggs: [last, mean]
+scorings:
+  - {sensor_agg: mean, normalizer: none}
+  - {sensor_agg: mean, normalizer: std}
+  - {sensor_agg: max, normalizer: std}
+  - {sensor_agg: top5, normalizer: std}
+  - {sensor_agg: mean, normalizer: robust}
+  - {sensor_agg: max, normalizer: robust}
+  - {sensor_agg: top5, normalizer: robust}
+ts_aggs: [last]
+thresholds:
+  static_pct: [98.0]
+  roll_quantile: []
+  roll_robust_z: []
+  oracle: false
+pa: []
